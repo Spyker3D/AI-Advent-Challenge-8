@@ -1,0 +1,17 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "AIAssistant"
+
+include(":app")
+include(":core:network")
+include(":core:ui")
+include(":core:domain")
+include(":core:data")
+include(":feature:chat")
+include(":feature:settings")

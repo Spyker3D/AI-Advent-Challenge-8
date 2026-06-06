@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml:2:13-83
+INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml:2:13-83
+	package
+		INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml
+	xmlns:android
+		ADDED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml:2:23-81
+uses-sdk
+INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml reason: use-sdk injection requested
+INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml
+INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml
+	android:targetSdkVersion
+		INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml
+	android:minSdkVersion
+		INJECTED from C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\feature\chat\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest8294779953413295087.xml
