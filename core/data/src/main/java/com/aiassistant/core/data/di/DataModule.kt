@@ -1,9 +1,11 @@
 package com.aiassistant.core.data.di
 
 import android.content.Context
+import com.aiassistant.core.data.client.LlmClientImpl
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.repository.ChatRepositoryImpl
 import com.aiassistant.core.data.repository.SettingsRepositoryImpl
+import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.repository.SettingsRepository
 import dagger.Binds
@@ -23,6 +25,11 @@ abstract class DataModule {
     abstract fun bindSettingsRepository(
         settingsRepositoryImpl: SettingsRepositoryImpl
     ): SettingsRepository
+    
+    @Binds
+    abstract fun bindLlmClient(
+        llmClientImpl: LlmClientImpl
+    ): LlmClient
 
     companion object {
         @Provides
