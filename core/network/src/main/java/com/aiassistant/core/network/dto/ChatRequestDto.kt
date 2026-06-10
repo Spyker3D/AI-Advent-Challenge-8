@@ -10,5 +10,7 @@ data class ChatRequestDto(
     @SerializedName("temperature")
     val temperature: Float,
     @SerializedName("max_tokens")
-    val maxTokens: Int
+    val maxTokens: Int? = null,
+    @SerializedName("stop")
+    val stop: List<String>? = null
 )

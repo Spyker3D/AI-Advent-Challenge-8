@@ -60,6 +60,11 @@ dependencies {
     // SharedPreferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
     
+    // Room
+    implementation("androidx.room:room-runtime:2.4.3")
+    implementation("androidx.room:room-ktx:2.4.3")
+    kapt("androidx.room:room-compiler:2.4.3")
+    
     implementation("androidx.core:core-ktx:1.12.0")
     
     testImplementation("junit:junit:4.13.2")

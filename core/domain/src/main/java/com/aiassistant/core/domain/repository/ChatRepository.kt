@@ -8,6 +8,9 @@ import com.aiassistant.core.domain.entity.Message
 interface ChatRepository {
     suspend fun sendMessage(chatRequest: ChatRequest): Result<AiChatResponse>
     
+    /**
+     * Deprecated: Use ChatAgent.sendMessageWithRestrictions instead
+     */
     suspend fun sendMessageWithRestrictions(
         chatRequest: ChatRequest,
         useJsonFormat: Boolean,

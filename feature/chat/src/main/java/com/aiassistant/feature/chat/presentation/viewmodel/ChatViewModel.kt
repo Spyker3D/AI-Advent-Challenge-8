@@ -2,6 +2,7 @@ package com.aiassistant.feature.chat.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aiassistant.core.domain.agent.ChatAgent
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.ChatRequest
@@ -9,6 +10,8 @@ import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.domain.repository.ChatRepository
+import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
+import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SendMessageUseCase
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
@@ -25,6 +28,9 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val sendMessageUseCase: SendMessageUseCase,
     private val getChatSettingsUseCase: GetChatSettingsUseCase,
+    private val getChatHistoryUseCase: GetChatHistoryUseCase,
+    private val clearChatHistoryUseCase: ClearChatHistoryUseCase,
+    private val chatAgent: ChatAgent,
     private val chatRepository: ChatRepository
 ) : ViewModel() {
 
@@ -57,7 +63,7 @@ class ChatViewModel @Inject constructor(
     private fun loadChatHistory() {
         viewModelScope.launch {
             try {
-                val messages = chatRepository.getMessages()
+                val messages = getChatHistoryUseCase()
                 _uiState.value = _uiState.value.copy(messages = messages)
             } catch (e: Exception) {
                 // Handle error silently or log it
@@ -65,10 +71,14 @@ class ChatViewModel @Inject constructor(
         }
     }
     
+    fun refreshSettings() {
+        observeChatSettings()
+    }
+    
     private fun clearChatHistory() {
         viewModelScope.launch {
             try {
-                chatRepository.clearMessages()
+                clearChatHistoryUseCase()
             } catch (e: Exception) {
                 // Handle error silently or log it
             }
@@ -120,9 +130,7 @@ class ChatViewModel @Inject constructor(
 
                 // Send message with restrictions if any are enabled
                 val result = if (_uiState.value.useJsonFormat || _uiState.value.limitLength || _uiState.value.useStopSequence) {
-                    // For restrictions, we still use the repository directly for now
-                    // A full implementation would handle this in the ChatAgent
-                    chatRepository.sendMessageWithRestrictions(
+                    chatAgent.sendMessageWithRestrictions(
                         chatRequest = chatRequest,
                         useJsonFormat = _uiState.value.useJsonFormat,
                         limitLength = _uiState.value.limitLength,
@@ -135,23 +143,10 @@ class ChatViewModel @Inject constructor(
 
                 result
                     .onSuccess { response ->
-                        // Update UI with both user and assistant messages
-                        // The ChatAgent handles persistence internally
-                        val userMessage = Message(
-                            id = UUID.randomUUID().toString(),
-                            content = currentMessage,
-                            role = MessageRole.USER
-                        )
-                        
-                        val assistantMessage = Message(
-                            id = UUID.randomUUID().toString(),
-                            content = response.message,
-                            role = MessageRole.ASSISTANT,
-                            metadata = response.metadata
-                        )
-                        
+                        // Reload messages from repository since ChatAgent handles persistence
+                        val updatedMessages = chatRepository.getMessages()
                         _uiState.value = _uiState.value.copy(
-                            messages = _uiState.value.messages + userMessage + assistantMessage,
+                            messages = updatedMessages,
                             isLoading = false
                         )
                     }

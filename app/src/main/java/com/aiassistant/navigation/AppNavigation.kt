@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.aiassistant.di.ViewModelFactory
 import com.aiassistant.feature.chat.presentation.screen.ChatScreen
+import com.aiassistant.feature.chat.presentation.screen.Day2Screen
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.settings.presentation.screen.SettingsScreen
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
@@ -22,6 +23,8 @@ fun AppNavigation(
     ) {
         composable(Screen.Chat.route) {
             val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
+            // Refresh settings when returning to chat screen
+            chatViewModel.refreshSettings()
             ChatScreen(
                 viewModel = chatViewModel,
                 onNavigateToSettings = {
@@ -36,6 +39,18 @@ fun AppNavigation(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.Day2.route) {
+            val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
+            // Refresh settings when returning to day2 screen
+            chatViewModel.refreshSettings()
+            Day2Screen(
+                viewModel = chatViewModel,
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
                 }
             )
         }

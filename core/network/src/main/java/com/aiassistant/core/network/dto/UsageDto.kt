@@ -8,5 +8,7 @@ data class UsageDto(
     @SerializedName("completion_tokens")
     val completionTokens: Int,
     @SerializedName("total_tokens")
-    val totalTokens: Int
+    val totalTokens: Int,
+    @SerializedName("cost")
+    val cost: Double? = null
 )

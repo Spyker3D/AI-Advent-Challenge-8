@@ -9,4 +9,10 @@ sealed class SettingsUiEvent {
     data class SystemPromptChanged(val systemPrompt: String) : SettingsUiEvent()
     object SaveSettings : SettingsUiEvent()
     object ResetToDefaults : SettingsUiEvent()
+    
+    // Day 2 events
+    data class UseJsonFormatChanged(val useJsonFormat: Boolean) : SettingsUiEvent()
+    data class LimitLengthChanged(val limitLength: Boolean) : SettingsUiEvent()
+    data class UseStopSequenceChanged(val useStopSequence: Boolean) : SettingsUiEvent()
+    data class StopSequenceChanged(val stopSequenceText: String) : SettingsUiEvent()
 }

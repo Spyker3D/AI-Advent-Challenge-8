@@ -14,9 +14,10 @@ class AgentModule {
     @Singleton
     fun provideChatAgent(
         chatRepository: com.aiassistant.core.domain.repository.ChatRepository,
-        llmClient: com.aiassistant.core.domain.agent.LlmClient
+        llmClient: com.aiassistant.core.domain.agent.LlmClient,
+        ioDispatcher: CoroutineDispatcher
     ): ChatAgent {
-        return ChatAgent(chatRepository, llmClient)
+        return ChatAgent(chatRepository, llmClient, ioDispatcher)
     }
     
     @Provides
