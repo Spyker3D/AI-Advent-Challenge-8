@@ -43,7 +43,12 @@ class ChatViewModel @Inject constructor(
                     selectedModel = settings.selectedModel,
                     temperature = settings.temperature,
                     maxTokens = settings.maxTokens,
-                    systemPrompt = settings.systemPrompt
+                    systemPrompt = settings.systemPrompt,
+                    // Day 2 fields
+                    useJsonFormat = settings.useJsonFormat,
+                    limitLength = settings.limitLength,
+                    useStopSequence = settings.useStopSequence,
+                    stopSequenceText = settings.stopSequenceText
                 )
             }
             .launchIn(viewModelScope)
@@ -84,19 +89,6 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.ClearChat -> {
                 _uiState.value = _uiState.value.copy(messages = emptyList())
                 clearChatHistory()
-            }
-            // Day 2 events
-            is ChatUiEvent.UseJsonFormatChanged -> {
-                _uiState.value = _uiState.value.copy(useJsonFormat = event.useJsonFormat)
-            }
-            is ChatUiEvent.LimitLengthChanged -> {
-                _uiState.value = _uiState.value.copy(limitLength = event.limitLength)
-            }
-            is ChatUiEvent.UseStopSequenceChanged -> {
-                _uiState.value = _uiState.value.copy(useStopSequence = event.useStopSequence)
-            }
-            is ChatUiEvent.StopSequenceChanged -> {
-                _uiState.value = _uiState.value.copy(stopSequenceText = event.stopSequenceText)
             }
             is ChatUiEvent.ModelSelected -> {
                 _uiState.value = _uiState.value.copy(selectedModel = event.model)

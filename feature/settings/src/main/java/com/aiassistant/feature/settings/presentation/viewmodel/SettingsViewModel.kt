@@ -39,21 +39,42 @@ class SettingsViewModel @Inject constructor(
         when (event) {
             is SettingsUiEvent.ModelChanged -> {
                 updateSettings { it.copy(selectedModel = event.model) }
+                saveSettings()
             }
             is SettingsUiEvent.TemperatureChanged -> {
                 updateSettings { it.copy(temperature = event.temperature) }
+                saveSettings()
             }
             is SettingsUiEvent.MaxTokensChanged -> {
                 updateSettings { it.copy(maxTokens = event.maxTokens) }
+                saveSettings()
             }
             is SettingsUiEvent.SystemPromptChanged -> {
                 updateSettings { it.copy(systemPrompt = event.systemPrompt) }
+                saveSettings()
             }
             is SettingsUiEvent.SaveSettings -> {
                 saveSettings()
             }
             is SettingsUiEvent.ResetToDefaults -> {
                 resetToDefaults()
+            }
+            // Day 2 events
+            is SettingsUiEvent.UseJsonFormatChanged -> {
+                updateSettings { it.copy(useJsonFormat = event.useJsonFormat) }
+                saveSettings()
+            }
+            is SettingsUiEvent.LimitLengthChanged -> {
+                updateSettings { it.copy(limitLength = event.limitLength) }
+                saveSettings()
+            }
+            is SettingsUiEvent.UseStopSequenceChanged -> {
+                updateSettings { it.copy(useStopSequence = event.useStopSequence) }
+                saveSettings()
+            }
+            is SettingsUiEvent.StopSequenceChanged -> {
+                updateSettings { it.copy(stopSequenceText = event.stopSequenceText) }
+                saveSettings()
             }
         }
     }

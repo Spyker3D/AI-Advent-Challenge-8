@@ -11,5 +11,10 @@ data class ChatUiState(
     val maxTokens: Int = 1000,
     val systemPrompt: String = "You are a helpful AI assistant.",
     val error: String? = null,
-    val currentMessage: String = ""
+    val currentMessage: String = "",
+    // Day 2 fields (loaded from settings)
+    val useJsonFormat: Boolean = false,
+    val limitLength: Boolean = false,
+    val useStopSequence: Boolean = false,
+    val stopSequenceText: String = ""
 )

@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -209,6 +210,61 @@ fun SettingsScreen(
                     placeholder = { Text("Define the AI assistant's behavior and personality...") },
                     maxLines = 5
                 )
+            }
+
+            // Day 2 - Response Format Control
+            SettingsCard(title = "Response Format Control") {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Switches
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Use JSON format")
+                        Switch(
+                            checked = uiState.settings.useJsonFormat,
+                            onCheckedChange = { viewModel.handleEvent(SettingsUiEvent.UseJsonFormatChanged(it)) }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Limit response length")
+                        Switch(
+                            checked = uiState.settings.limitLength,
+                            onCheckedChange = { viewModel.handleEvent(SettingsUiEvent.LimitLengthChanged(it)) }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Use Stop Sequence")
+                        Switch(
+                            checked = uiState.settings.useStopSequence,
+                            onCheckedChange = { viewModel.handleEvent(SettingsUiEvent.UseStopSequenceChanged(it)) }
+                        )
+                    }
+
+                    // Stop Sequence Text Field (visible only when Use Stop Sequence is enabled)
+                    if (uiState.settings.useStopSequence) {
+                        OutlinedTextField(
+                            value = uiState.settings.stopSequenceText,
+                            onValueChange = { viewModel.handleEvent(SettingsUiEvent.StopSequenceChanged(it)) },
+                            label = { Text("Stop Sequence") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             }
         }
     }

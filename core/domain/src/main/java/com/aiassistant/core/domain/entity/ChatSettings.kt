@@ -4,7 +4,12 @@ data class ChatSettings(
     val selectedModel: AiModel = AiModel.getDefault(),
     val temperature: Float = 0.7f,
     val maxTokens: Int = 1000,
-    val systemPrompt: String = "You are a helpful AI assistant."
+    val systemPrompt: String = "You are a helpful AI assistant.",
+    // Day 2 fields
+    val useJsonFormat: Boolean = false,
+    val limitLength: Boolean = false,
+    val useStopSequence: Boolean = false,
+    val stopSequenceText: String = ""
 ) {
     companion object {
         const val MIN_TEMPERATURE = 0.0f
