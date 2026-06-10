@@ -286,73 +286,7 @@ fun Day2Screen(
                 }
             }
 
-            // Response Format Control Section
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = "Response Format Control",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                // Switches
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Use JSON format")
-                    Switch(
-                        checked = uiState.useJsonFormat,
-                        onCheckedChange = { viewModel.handleEvent(ChatUiEvent.UseJsonFormatChanged(it)) }
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Limit response length")
-                    Switch(
-                        checked = uiState.limitLength,
-                        onCheckedChange = { viewModel.handleEvent(ChatUiEvent.LimitLengthChanged(it)) }
-                    )
-                }
-
-                                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Use Stop Sequence")
-                    Switch(
-                        checked = uiState.useStopSequence,
-                        onCheckedChange = { viewModel.handleEvent(ChatUiEvent.UseStopSequenceChanged(it)) }
-                    )
-                }
-
-                // Stop Sequence Text Field (visible only when Use Stop Sequence is enabled)
-                if (uiState.useStopSequence) {
-                    OutlinedTextField(
-                        value = uiState.stopSequenceText,
-                        onValueChange = { viewModel.handleEvent(ChatUiEvent.StopSequenceChanged(it)) },
-                        label = { Text("Stop Sequence") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp)
-                    )
-                }
-            }
+            
 
             // Input section
             Row(
