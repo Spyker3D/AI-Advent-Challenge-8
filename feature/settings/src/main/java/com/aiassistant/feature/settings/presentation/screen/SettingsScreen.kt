@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -263,6 +264,94 @@ fun SettingsScreen(
                             label = { Text("Stop Sequence") },
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+                }
+            }
+
+            // Context Compression Settings
+            SettingsCard(title = "Context Compression") {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Use Context Compression Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Use Context Compression")
+                        Switch(
+                            checked = uiState.settings.useContextCompression,
+                            onCheckedChange = { viewModel.handleEvent(SettingsUiEvent.UseContextCompressionChanged(it)) }
+                        )
+                    }
+
+                    // Keep Last Messages Dropdown
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Keep Last Messages")
+                        
+                        var keepLastExpanded by remember { mutableStateOf(false) }
+                        val keepLastOptions = listOf(4, 6, 8, 10)
+
+                        ExposedDropdownMenuBox(
+                            expanded = keepLastExpanded,
+                            onExpandedChange = { keepLastExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                modifier = Modifier.menuAnchor(),
+                                value = uiState.settings.keepLastMessagesCount.toString(),
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepLastExpanded) },
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                                label = { Text("Messages") }
+                            )
+                            ExposedDropdownMenu(
+                                expanded = keepLastExpanded,
+                                onDismissRequest = { keepLastExpanded = false }
+                            ) {
+                                keepLastOptions.forEach { count ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                count.toString(),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.handleEvent(
+                                                SettingsUiEvent.KeepLastMessagesCountChanged(
+                                                    count
+                                                )
+                                            )
+                                            keepLastExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Clear Summary Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Clear Summary")
+                        // Note: This would require implementing a way to communicate with the chat ViewModel
+                        // For now, we'll leave this as a placeholder
+                        Button(
+                            onClick = { /* TODO: Implement clear summary functionality */ },
+                            enabled = false // Disabled until implemented
+                        ) {
+                            Text("Clear")
+                        }
                     }
                 }
             }

@@ -31,10 +31,7 @@ import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,7 +61,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aiassistant.core.domain.entity.AiModel
+
 import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
@@ -97,8 +94,12 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     // val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
-    var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    
+    // Refresh settings when returning from settings screen
+    LaunchedEffect(Unit) {
+        viewModel.refreshSettings()
+    }
     
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -423,267 +424,6 @@ fun ChatScreen(
                 }
             }
 
-            // Model Selection Dropdown
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Selected Model:",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it }
-                ) {
-                    OutlinedTextField(
-                        modifier = Modifier.menuAnchor(),
-                        value = uiState.selectedModel.displayName,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        textStyle = MaterialTheme.typography.bodyMedium
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        AiModel.values().forEach { model ->
-                            DropdownMenuItem(
-                                text = { Text(model.displayName, style = MaterialTheme.typography.bodyMedium) },
-                                onClick = {
-                                    viewModel.handleEvent(ChatUiEvent.ModelSelected(model))
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-
-            // Context Compression Section
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Context Compression",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Use Context Compression Switch
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Use Context Compression",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Switch(
-                            checked = uiState.useContextCompression,
-                            onCheckedChange = { checked ->
-                                viewModel.handleEvent(
-                                    ChatUiEvent.UseContextCompressionChanged(
-                                        checked
-                                    )
-                                )
-                            }
-                        )
-                    }
-
-                    // Keep Last Messages Dropdown
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Keep Last Messages",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-
-                        var keepLastExpanded by remember { mutableStateOf(false) }
-                        val keepLastOptions = listOf(4, 6, 8, 10)
-
-                        ExposedDropdownMenuBox(
-                            expanded = keepLastExpanded,
-                            onExpandedChange = { keepLastExpanded = it }
-                        ) {
-                            OutlinedTextField(
-                                modifier = Modifier.menuAnchor(),
-                                value = uiState.keepLastMessagesCount.toString(),
-                                onValueChange = {},
-                                readOnly = true,
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepLastExpanded) },
-                                textStyle = MaterialTheme.typography.bodyMedium,
-                                label = { Text("Messages") }
-                            )
-                            ExposedDropdownMenu(
-                                expanded = keepLastExpanded,
-                                onDismissRequest = { keepLastExpanded = false }
-                            ) {
-                                keepLastOptions.forEach { count ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                count.toString(),
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                        },
-                                        onClick = {
-                                            viewModel.handleEvent(
-                                                ChatUiEvent.KeepLastMessagesCountChanged(
-                                                    count
-                                                )
-                                            )
-                                            keepLastExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Clear Summary Button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Clear Summary",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Button(
-                            onClick = { viewModel.handleEvent(ChatUiEvent.ClearSummary) },
-                            enabled = uiState.conversationSummary.isNotEmpty()
-                        ) {
-                            Text("Clear")
-                        }
-                    }
-
-                    // Compression Status
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Compression Status:",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = if (uiState.useContextCompression) "Active" else "Disabled",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (uiState.useContextCompression) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Summary Status
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Summary Status:",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = if (uiState.conversationSummary.isEmpty()) "Empty" else "Available",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (uiState.conversationSummary.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    // Token Metrics
-                    if (uiState.useContextCompression) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "Token Metrics:",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Full History Tokens:",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text(
-                                    text = uiState.fullHistoryTokensEstimate.toString(),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Compressed Tokens:",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text(
-                                    text = uiState.compressedHistoryTokensEstimate.toString(),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Saved Tokens:",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text(
-                                    text = uiState.savedTokensEstimate.toString(),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-
-                            val compressionRatio = if (uiState.fullHistoryTokensEstimate > 0) {
-                                (100 - (uiState.compressedHistoryTokensEstimate.toFloat() / uiState.fullHistoryTokensEstimate.toFloat() * 100)).toInt()
-                            } else 0
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Compression Ratio:",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text(
-                                    text = "${compressionRatio}%",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
             // File attachment section
             if (uiState.attachedFileName != null) {
                 AttachedFileSection(
@@ -691,6 +431,52 @@ fun ChatScreen(
                     fileText = uiState.attachedFileText ?: "",
                     onClear = { viewModel.handleEvent(ChatUiEvent.ClearAttachedFile) }
                 )
+            }
+            
+            // Context Compression Section
+            if (uiState.useContextCompression) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Context Compression Metrics",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Full History Tokens: ${uiState.fullHistoryTokensEstimate}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "Compressed Tokens: ${uiState.compressedHistoryTokensEstimate}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Saved Tokens: ${uiState.savedTokensEstimate}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "Compression Ratio: ${uiState.compressionRatioPercent}%",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
             }
             
             // Input section (existing chat input)

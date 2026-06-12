@@ -112,9 +112,7 @@ class ChatViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(messages = emptyList())
                 clearChatHistory()
             }
-            is ChatUiEvent.ModelSelected -> {
-                _uiState.value = _uiState.value.copy(selectedModel = event.model)
-            }
+
             is ChatUiEvent.FileAttached -> {
                 _uiState.value = _uiState.value.copy(
                     attachedFileName = event.fileName,
@@ -127,15 +125,10 @@ class ChatViewModel @Inject constructor(
                     attachedFileText = null
                 )
             }
-            is ChatUiEvent.UseContextCompressionChanged -> {
-                updateContextCompressionSetting(event.useContextCompression)
-            }
-            is ChatUiEvent.KeepLastMessagesCountChanged -> {
-                updateKeepLastMessagesCount(event.count)
-            }
             is ChatUiEvent.ClearSummary -> {
                 clearConversationSummary()
             }
+
         }
     }
 
@@ -168,6 +161,15 @@ class ChatViewModel @Inject constructor(
             timestamp = System.currentTimeMillis()
         )
         
+        // Check if we need to generate a new summary BEFORE adding the user message
+        // Generate summary only when: numberOfNewMessagesSinceLastSummary >= 10
+        val shouldGenerateSummary = _uiState.value.useContextCompression && 
+            (_uiState.value.messages.size + 1) >= _uiState.value.lastSummaryMessageCount + 10
+            
+        if (shouldGenerateSummary) {
+            generateConversationSummary()
+        }
+
         _uiState.value = _uiState.value.copy(
             messages = _uiState.value.messages + userMessage,
             currentMessage = "",
@@ -177,14 +179,11 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // Check if we need to generate a new summary
-                if (_uiState.value.useContextCompression && 
-                    _uiState.value.messages.size >= _uiState.value.summaryMessageCount + 10) {
-                    generateConversationSummary()
-                }
+                // Calculate token metrics before building the request
+                val requestTokens = TokenCounter.countTokens(finalMessage)
                 
                 // Build the appropriate history based on context compression settings
-                val effectiveHistory = if (_uiState.value.useContextCompression && 
+                val (effectiveHistory, historyTokens) = if (_uiState.value.useContextCompression && 
                     _uiState.value.conversationSummary.isNotEmpty()) {
                     // Create compressed history with summary and last N messages
                     val summaryMessage = Message(
@@ -193,14 +192,20 @@ class ChatViewModel @Inject constructor(
                         role = MessageRole.SYSTEM
                     )
                     
-                    // Take the last N messages
+                    // Take the last N messages (including the current user message which is now in the messages list)
                     val lastMessages = _uiState.value.messages.takeLast(_uiState.value.keepLastMessagesCount)
                     
+                    // Calculate history tokens for compressed context
+                    val summaryTokens = TokenCounter.countTokens(summaryMessage.content)
+                    val lastMessagesTokens = lastMessages.sumOf { TokenCounter.countTokens(it.content) }
+                    val historyTokens = summaryTokens + lastMessagesTokens
+                    
                     // Combine summary and last messages
-                    listOf(summaryMessage) + lastMessages
+                    Pair(listOf(summaryMessage) + lastMessages, historyTokens)
                 } else {
-                    // Use full history
-                    _uiState.value.messages
+                    // Use full history (including the current user message which is now in the messages list)
+                    val historyTokens = _uiState.value.messages.sumOf { TokenCounter.countTokens(it.content) }
+                    Pair(_uiState.value.messages, historyTokens)
                 }
                 
                 val chatRequest = ChatRequest(
@@ -227,13 +232,20 @@ class ChatViewModel @Inject constructor(
 
                 result
                     .onSuccess { response ->
+                        // Create token metrics with the calculated values
+                        val tokenMetrics = TokenMetrics(
+                            currentRequestTokens = requestTokens,
+                            historyTokens = historyTokens,
+                            completionTokens = response.tokenMetrics?.completionTokens
+                        )
+                        
                         // Add assistant response to messages
                         val assistantMessage = Message(
                             id = UUID.randomUUID().toString(),
                             content = response.message,
                             role = MessageRole.ASSISTANT,
                             timestamp = System.currentTimeMillis(),
-                            tokenMetrics = response.tokenMetrics
+                            tokenMetrics = tokenMetrics
                         )
                         
                         _uiState.value = _uiState.value.copy(
@@ -273,35 +285,14 @@ class ChatViewModel @Inject constructor(
     
     // Context compression helper methods
     
-    private fun updateContextCompressionSetting(useContextCompression: Boolean) {
-        viewModelScope.launch {
-            try {
-                val currentSettings = getChatSettingsUseCase().first()
-                val updatedSettings = currentSettings.copy(useContextCompression = useContextCompression)
-                saveChatSettingsUseCase(updatedSettings)
-            } catch (e: Exception) {
-                // Handle error silently
-            }
-        }
-    }
-    
-    private fun updateKeepLastMessagesCount(count: Int) {
-        viewModelScope.launch {
-            try {
-                val currentSettings = getChatSettingsUseCase().first()
-                val updatedSettings = currentSettings.copy(keepLastMessagesCount = count)
-                saveChatSettingsUseCase(updatedSettings)
-            } catch (e: Exception) {
-                // Handle error silently
-            }
-        }
-    }
-    
     private fun clearConversationSummary() {
         _uiState.value = _uiState.value.copy(
             conversationSummary = "",
-            summaryMessageCount = 0
+            summaryMessageCount = 0,
+            lastSummaryMessageCount = 0
         )
+        // Update token estimates after clearing summary
+        updateTokenEstimates()
     }
     
     private fun generateConversationSummary() {
@@ -364,7 +355,8 @@ $limitedConversationText""".trimIndent()
                         // Update the UI state with the new summary
                         _uiState.value = _uiState.value.copy(
                             conversationSummary = response.message,
-                            summaryMessageCount = messagesToSummarize.size
+                            summaryMessageCount = messagesToSummarize.size,
+                            lastSummaryMessageCount = _uiState.value.messages.size
                         )
                         
                         // Update token estimates
@@ -397,6 +389,7 @@ $limitedConversationText""".trimIndent()
         
         val compressedTokens = if (_uiState.value.useContextCompression && _uiState.value.conversationSummary.isNotEmpty()) {
             // Estimate tokens for summary + last N messages
+            // Note: We don't count the full history messages that were replaced by the summary
             val summaryTokens = TokenCounter.countTokens("Conversation Summary: ${_uiState.value.conversationSummary}")
             val lastMessagesTokens = messages.takeLast(_uiState.value.keepLastMessagesCount)
                 .sumOf { TokenCounter.countTokens(it.content) }
@@ -408,10 +401,18 @@ $limitedConversationText""".trimIndent()
         
         val savedTokens = fullHistoryTokens - compressedTokens
         
+        // Calculate compression ratio with better precision handling
+        val compressionRatio = if (fullHistoryTokens > 0 && compressedTokens < fullHistoryTokens) {
+            ((fullHistoryTokens - compressedTokens).toLong() * 100 / fullHistoryTokens).toInt()
+        } else {
+            0
+        }
+        
         _uiState.value = _uiState.value.copy(
             fullHistoryTokensEstimate = fullHistoryTokens,
             compressedHistoryTokensEstimate = compressedTokens,
-            savedTokensEstimate = savedTokens
+            savedTokensEstimate = savedTokens,
+            compressionRatioPercent = compressionRatio
         )
     }
 }

@@ -15,4 +15,8 @@ sealed class SettingsUiEvent {
     data class LimitLengthChanged(val limitLength: Boolean) : SettingsUiEvent()
     data class UseStopSequenceChanged(val useStopSequence: Boolean) : SettingsUiEvent()
     data class StopSequenceChanged(val stopSequenceText: String) : SettingsUiEvent()
+    
+    // Context compression events
+    data class UseContextCompressionChanged(val useContextCompression: Boolean) : SettingsUiEvent()
+    data class KeepLastMessagesCountChanged(val keepLastMessagesCount: Int) : SettingsUiEvent()
 }

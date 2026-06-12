@@ -76,6 +76,16 @@ class SettingsViewModel @Inject constructor(
                 updateSettings { it.copy(stopSequenceText = event.stopSequenceText) }
                 saveSettings()
             }
+            // Context compression events
+            is SettingsUiEvent.UseContextCompressionChanged -> {
+                updateSettings { it.copy(useContextCompression = event.useContextCompression) }
+                saveSettings()
+            }
+            is SettingsUiEvent.KeepLastMessagesCountChanged -> {
+                updateSettings { it.copy(keepLastMessagesCount = event.keepLastMessagesCount) }
+                saveSettings()
+            }
+
         }
     }
 

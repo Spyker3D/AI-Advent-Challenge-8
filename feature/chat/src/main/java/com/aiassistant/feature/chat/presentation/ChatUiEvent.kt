@@ -1,7 +1,6 @@
 package com.aiassistant.feature.chat.presentation
 
 import android.net.Uri
-import com.aiassistant.core.domain.entity.AiModel
 
 sealed class ChatUiEvent {
     data class MessageChanged(val message: String) : ChatUiEvent()
@@ -9,15 +8,10 @@ sealed class ChatUiEvent {
     object ClearError : ChatUiEvent()
     object ClearChat : ChatUiEvent()
     
-    // Model selection event
-    data class ModelSelected(val model: AiModel) : ChatUiEvent()
-    
     // File attachment events
     data class FileAttached(val fileName: String, val fileContent: String) : ChatUiEvent()
     object ClearAttachedFile : ChatUiEvent()
     
-    // Context compression events
-    data class UseContextCompressionChanged(val useContextCompression: Boolean) : ChatUiEvent()
-    data class KeepLastMessagesCountChanged(val count: Int) : ChatUiEvent()
+    // Context compression events (handled through settings)
     object ClearSummary : ChatUiEvent()
 }

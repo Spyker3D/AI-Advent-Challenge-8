@@ -27,5 +27,7 @@ data class ChatUiState(
     val summaryMessageCount: Int = 0,
     val fullHistoryTokensEstimate: Int = 0,
     val compressedHistoryTokensEstimate: Int = 0,
-    val savedTokensEstimate: Int = 0
+    val savedTokensEstimate: Int = 0,
+    val compressionRatioPercent: Int = 0,
+    val lastSummaryMessageCount: Int = 0
 )
