@@ -84,7 +84,7 @@ fun Day2Screen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "AI Assistant - Day 2",
+                        text = "AI Assistant",
                         style = MaterialTheme.typography.headlineSmall
                     )
                 },

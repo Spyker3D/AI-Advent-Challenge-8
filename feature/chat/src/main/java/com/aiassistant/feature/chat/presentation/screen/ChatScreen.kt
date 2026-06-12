@@ -78,6 +78,13 @@ import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 
+// Sealed class for different item types in the chat
+sealed class ChatItem {
+    data class MessageItem(val message: com.aiassistant.core.domain.entity.Message) : ChatItem()
+    data class TokenMetricsItem(val tokenMetrics: com.aiassistant.core.domain.entity.TokenMetrics) : ChatItem()
+    object LoadingIndicatorItem : ChatItem()
+}
+
 @Suppress("EXPERIMENTAL_API_USAGE")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -104,10 +111,29 @@ fun ChatScreen(
         }
     )
 
-    // Auto-scroll to bottom when new messages are added
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+    // Auto-scroll to bottom when new messages are added or when loading starts
+    LaunchedEffect(uiState.messages.size, uiState.isLoading) {
+        // Re-calculate chat items to determine the actual item count
+        val chatItems = mutableListOf<ChatItem>()
+        uiState.messages.forEach { message ->
+            chatItems.add(ChatItem.MessageItem(message))
+            // Add token metrics as separate items for assistant messages
+            message.tokenMetrics?.let { tokenMetrics ->
+                if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                    chatItems.add(ChatItem.TokenMetricsItem(tokenMetrics))
+                }
+            }
+            // Add loading indicator only after the last user message when loading
+            if (message.role == com.aiassistant.core.domain.entity.MessageRole.USER && 
+                uiState.isLoading && 
+                message == uiState.messages.lastOrNull { it.role == com.aiassistant.core.domain.entity.MessageRole.USER }) {
+                chatItems.add(ChatItem.LoadingIndicatorItem)
+            }
+        }
+        
+        // Scroll to the last item
+        if (chatItems.isNotEmpty()) {
+            listState.animateScrollToItem(chatItems.size - 1)
         }
     }
 
@@ -125,7 +151,7 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "AI Assistant - Day 2",
+                        text = "AI Assistant",
                         style = MaterialTheme.typography.headlineSmall
                     )
                 },
@@ -180,25 +206,32 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        // Create a list that includes both messages and token metrics
-                        val itemsWithTokens = mutableListOf<Any>()
+                        // Create a list that includes messages, token metrics, and loading indicators
+                        val chatItems = mutableListOf<ChatItem>()
                         uiState.messages.forEach { message ->
-                            itemsWithTokens.add(message)
-                                                    // Add token metrics as separate items for assistant messages
-                        message.tokenMetrics?.let { tokenMetrics ->
-                            if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
-                                itemsWithTokens.add(tokenMetrics)
+                            chatItems.add(ChatItem.MessageItem(message))
+                            // Add token metrics as separate items for assistant messages
+                            message.tokenMetrics?.let { tokenMetrics ->
+                                if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                                    chatItems.add(ChatItem.TokenMetricsItem(tokenMetrics))
+                                }
+                            }
+                            // Add loading indicator only after the last user message when loading
+                            if (message.role == com.aiassistant.core.domain.entity.MessageRole.USER && 
+                                uiState.isLoading && 
+                                message == uiState.messages.lastOrNull { it.role == com.aiassistant.core.domain.entity.MessageRole.USER }) {
+                                chatItems.add(ChatItem.LoadingIndicatorItem)
                             }
                         }
-                        }
                         
-                        items(itemsWithTokens) { item ->
+                        items(chatItems) { item ->
                             when (item) {
-                                is com.aiassistant.core.domain.entity.Message -> {
+                                is ChatItem.MessageItem -> {
+                                    val message = item.message
                                     // Show structured cards if JSON parsing succeeded for assistant messages
-                                    if (item.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT && uiState.useJsonFormat) {
+                                    if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT && uiState.useJsonFormat) {
                                         // Try to parse the message content as FormattedAiResponse
-                                        val formattedResponse = viewModel.parseFormattedResponse(item.content)
+                                        val formattedResponse = viewModel.parseFormattedResponse(message.content)
                                         if (formattedResponse != null) {
                                             // Don't show the message bubble for successful JSON parsing
                                             // Show structured cards only
@@ -307,7 +340,7 @@ fun ChatScreen(
                                         } else {
                                             // Show message bubble if JSON parsing failed but JSON format was requested
                                             MessageBubble(
-                                                message = item,
+                                                message = message,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                             
@@ -330,31 +363,30 @@ fun ChatScreen(
                                     } else {
                                         // Show message bubble for all other messages (user messages or non-JSON assistant messages)
                                         MessageBubble(
-                                            message = item,
+                                            message = message,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }
                                 }
-                                is com.aiassistant.core.domain.entity.TokenMetrics -> {
+                                is ChatItem.TokenMetricsItem -> {
                                     // Show token metrics as a separate message
                                     TokenMetricsMessage(
-                                        tokenMetrics = item,
+                                        tokenMetrics = item.tokenMetrics,
                                         modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                is ChatItem.LoadingIndicatorItem -> {
+                                    LoadingIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Loading indicator
-                        if (uiState.isLoading) {
-                            item {
-                                LoadingIndicator(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp)
-                                )
-                            }
-                        }
+                        // Loading indicator is now shown after user messages
+                        // This ensures it appears in the right place in the conversation flow
                     }
                 }
             }

@@ -140,9 +140,16 @@ class ChatViewModel @Inject constructor(
             android.util.Log.d("ChatViewModel", "File attached: false")
         }
 
-        // Note: With the new ChatAgent, the user message will be handled internally
-        // We still update the UI state immediately for responsiveness
+        // Add user message immediately to UI for responsiveness
+        val userMessage = Message(
+            id = UUID.randomUUID().toString(),
+            content = finalMessage,
+            role = MessageRole.USER,
+            timestamp = System.currentTimeMillis()
+        )
+        
         _uiState.value = _uiState.value.copy(
+            messages = _uiState.value.messages + userMessage,
             currentMessage = "",
             isLoading = true,
             error = null
@@ -173,10 +180,17 @@ class ChatViewModel @Inject constructor(
 
                 result
                     .onSuccess { response ->
-                        // Reload messages from repository since ChatAgent handles persistence
-                        val updatedMessages = chatRepository.getMessages()
+                        // Add assistant response to messages
+                        val assistantMessage = Message(
+                            id = UUID.randomUUID().toString(),
+                            content = response.message,
+                            role = MessageRole.ASSISTANT,
+                            timestamp = System.currentTimeMillis(),
+                            tokenMetrics = response.tokenMetrics
+                        )
+                        
                         _uiState.value = _uiState.value.copy(
-                            messages = updatedMessages,
+                            messages = _uiState.value.messages + assistantMessage,
                             isLoading = false,
                             // Clear attached file after sending
                             attachedFileName = null,
