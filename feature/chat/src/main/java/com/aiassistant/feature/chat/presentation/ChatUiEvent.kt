@@ -15,4 +15,9 @@ sealed class ChatUiEvent {
     // File attachment events
     data class FileAttached(val fileName: String, val fileContent: String) : ChatUiEvent()
     object ClearAttachedFile : ChatUiEvent()
+    
+    // Context compression events
+    data class UseContextCompressionChanged(val useContextCompression: Boolean) : ChatUiEvent()
+    data class KeepLastMessagesCountChanged(val count: Int) : ChatUiEvent()
+    object ClearSummary : ChatUiEvent()
 }

@@ -31,6 +31,9 @@ class SettingsDataStore @Inject constructor(
         val LIMIT_LENGTH = androidx.datastore.preferences.core.booleanPreferencesKey("limit_length")
         val USE_STOP_SEQUENCE = androidx.datastore.preferences.core.booleanPreferencesKey("use_stop_sequence")
         val STOP_SEQUENCE_TEXT = stringPreferencesKey("stop_sequence_text")
+        // Context compression fields
+        val USE_CONTEXT_COMPRESSION = androidx.datastore.preferences.core.booleanPreferencesKey("use_context_compression")
+        val KEEP_LAST_MESSAGES_COUNT = intPreferencesKey("keep_last_messages_count")
     }
 
     val chatSettings: Flow<ChatSettings> = context.dataStore.data.map { preferences ->
@@ -45,7 +48,10 @@ class SettingsDataStore @Inject constructor(
             useJsonFormat = preferences[PreferencesKeys.USE_JSON_FORMAT] ?: false,
             limitLength = preferences[PreferencesKeys.LIMIT_LENGTH] ?: false,
             useStopSequence = preferences[PreferencesKeys.USE_STOP_SEQUENCE] ?: false,
-            stopSequenceText = preferences[PreferencesKeys.STOP_SEQUENCE_TEXT] ?: ""
+            stopSequenceText = preferences[PreferencesKeys.STOP_SEQUENCE_TEXT] ?: "",
+            // Context compression fields
+            useContextCompression = preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] ?: false,
+            keepLastMessagesCount = preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] ?: 6
         )
     }
 
@@ -60,6 +66,9 @@ class SettingsDataStore @Inject constructor(
             preferences[PreferencesKeys.LIMIT_LENGTH] = settings.limitLength
             preferences[PreferencesKeys.USE_STOP_SEQUENCE] = settings.useStopSequence
             preferences[PreferencesKeys.STOP_SEQUENCE_TEXT] = settings.stopSequenceText
+            // Context compression fields
+            preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] = settings.useContextCompression
+            preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] = settings.keepLastMessagesCount
         }
     }
 }

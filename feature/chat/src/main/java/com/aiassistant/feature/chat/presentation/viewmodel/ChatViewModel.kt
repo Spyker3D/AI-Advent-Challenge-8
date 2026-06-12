@@ -11,15 +11,19 @@ import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.domain.entity.TokenMetrics
 import com.aiassistant.core.domain.repository.ChatRepository
+import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
+import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SendMessageUseCase
+import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.ChatUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -29,10 +33,12 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val sendMessageUseCase: SendMessageUseCase,
     private val getChatSettingsUseCase: GetChatSettingsUseCase,
+    private val saveChatSettingsUseCase: SaveChatSettingsUseCase,
     private val getChatHistoryUseCase: GetChatHistoryUseCase,
     private val clearChatHistoryUseCase: ClearChatHistoryUseCase,
     private val chatAgent: ChatAgent,
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val llmClient: LlmClient
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -55,8 +61,13 @@ class ChatViewModel @Inject constructor(
                     useJsonFormat = settings.useJsonFormat,
                     limitLength = settings.limitLength,
                     useStopSequence = settings.useStopSequence,
-                    stopSequenceText = settings.stopSequenceText
+                    stopSequenceText = settings.stopSequenceText,
+                    // Context compression fields
+                    useContextCompression = settings.useContextCompression,
+                    keepLastMessagesCount = settings.keepLastMessagesCount
                 )
+                // Update token estimates when settings change
+                updateTokenEstimates()
             }
             .launchIn(viewModelScope)
     }
@@ -116,6 +127,15 @@ class ChatViewModel @Inject constructor(
                     attachedFileText = null
                 )
             }
+            is ChatUiEvent.UseContextCompressionChanged -> {
+                updateContextCompressionSetting(event.useContextCompression)
+            }
+            is ChatUiEvent.KeepLastMessagesCountChanged -> {
+                updateKeepLastMessagesCount(event.count)
+            }
+            is ChatUiEvent.ClearSummary -> {
+                clearConversationSummary()
+            }
         }
     }
 
@@ -157,12 +177,39 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Check if we need to generate a new summary
+                if (_uiState.value.useContextCompression && 
+                    _uiState.value.messages.size >= _uiState.value.summaryMessageCount + 10) {
+                    generateConversationSummary()
+                }
+                
+                // Build the appropriate history based on context compression settings
+                val effectiveHistory = if (_uiState.value.useContextCompression && 
+                    _uiState.value.conversationSummary.isNotEmpty()) {
+                    // Create compressed history with summary and last N messages
+                    val summaryMessage = Message(
+                        id = UUID.randomUUID().toString(),
+                        content = "Conversation Summary: ${_uiState.value.conversationSummary}",
+                        role = MessageRole.SYSTEM
+                    )
+                    
+                    // Take the last N messages
+                    val lastMessages = _uiState.value.messages.takeLast(_uiState.value.keepLastMessagesCount)
+                    
+                    // Combine summary and last messages
+                    listOf(summaryMessage) + lastMessages
+                } else {
+                    // Use full history
+                    _uiState.value.messages
+                }
+                
                 val chatRequest = ChatRequest(
                     message = finalMessage,
                     model = _uiState.value.selectedModel,
                     temperature = _uiState.value.temperature,
                     maxTokens = _uiState.value.maxTokens,
-                    systemPrompt = _uiState.value.systemPrompt
+                    systemPrompt = _uiState.value.systemPrompt,
+                    history = effectiveHistory
                 )
 
                 // Send message using ChatAgent for both cases
@@ -196,6 +243,9 @@ class ChatViewModel @Inject constructor(
                             attachedFileName = null,
                             attachedFileText = null
                         )
+                        
+                        // Update token estimates after sending message
+                        updateTokenEstimates()
                     }
                     .onFailure { throwable ->
                         _uiState.value = _uiState.value.copy(
@@ -220,6 +270,148 @@ class ChatViewModel @Inject constructor(
             null
         }
     }
+    
+    // Context compression helper methods
+    
+    private fun updateContextCompressionSetting(useContextCompression: Boolean) {
+        viewModelScope.launch {
+            try {
+                val currentSettings = getChatSettingsUseCase().first()
+                val updatedSettings = currentSettings.copy(useContextCompression = useContextCompression)
+                saveChatSettingsUseCase(updatedSettings)
+            } catch (e: Exception) {
+                // Handle error silently
+            }
+        }
+    }
+    
+    private fun updateKeepLastMessagesCount(count: Int) {
+        viewModelScope.launch {
+            try {
+                val currentSettings = getChatSettingsUseCase().first()
+                val updatedSettings = currentSettings.copy(keepLastMessagesCount = count)
+                saveChatSettingsUseCase(updatedSettings)
+            } catch (e: Exception) {
+                // Handle error silently
+            }
+        }
+    }
+    
+    private fun clearConversationSummary() {
+        _uiState.value = _uiState.value.copy(
+            conversationSummary = "",
+            summaryMessageCount = 0
+        )
+    }
+    
+    private fun generateConversationSummary() {
+        viewModelScope.launch {
+            try {
+                // Get messages to summarize (excluding the last keepLastMessagesCount messages)
+                val messagesToSummarize = _uiState.value.messages.dropLast(_uiState.value.keepLastMessagesCount)
+                
+                if (messagesToSummarize.isEmpty()) return@launch
+                
+                // Create a conversation string for summarization
+                val conversationText = messagesToSummarize.joinToString("\n\n") { message ->
+                    "${message.role.value.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}: ${message.content}"
+                }
+                
+                // Limit the conversation text to prevent exceeding token limits
+                val limitedConversationText = if (conversationText.length > 10000) {
+                    conversationText.take(10000) + "\n\n[Conversation truncated due to length]"
+                } else {
+                    conversationText
+                }
+                
+                // Create the prompt for summarization
+                val summaryPrompt = """Summarize the following conversation.
 
+Keep:
+- important user goals
+- important facts
+- decisions
+- preferences
+- unresolved questions
+- current task
 
+Remove:
+- greetings
+- repetitions
+- small talk
+
+Return concise structured text.
+
+Conversation:
+$limitedConversationText""".trimIndent()
+                
+                // Create a message for summarization
+                val summaryMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    content = summaryPrompt,
+                    role = MessageRole.USER
+                )
+                
+                // Generate summary using OpenAI GPT-4o Mini
+                val result = llmClient.sendChat(
+                    messages = listOf(summaryMessage),
+                    maxTokens = 500, // Limit summary to 500 tokens
+                    model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for summaries
+                )
+                
+                result
+                    .onSuccess { response ->
+                        // Update the UI state with the new summary
+                        _uiState.value = _uiState.value.copy(
+                            conversationSummary = response.message,
+                            summaryMessageCount = messagesToSummarize.size
+                        )
+                        
+                        // Update token estimates
+                        updateTokenEstimates()
+                        
+                        // Log summary generation info
+                        android.util.Log.d("ChatViewModel", "Generated summary for ${messagesToSummarize.size} messages. Summary length: ${response.message.length}")
+                    }
+                    .onFailure { throwable ->
+                        // Handle error silently or show user-friendly error
+                        android.util.Log.e("ChatViewModel", "Failed to generate conversation summary: ${throwable.message}")
+                        _uiState.value = _uiState.value.copy(
+                            error = "Failed to update conversation summary."
+                        )
+                    }
+                
+            } catch (e: Exception) {
+                // Handle error silently or show user-friendly error
+                android.util.Log.e("ChatViewModel", "Failed to generate conversation summary", e)
+                _uiState.value = _uiState.value.copy(
+                    error = "Failed to update conversation summary."
+                )
+            }
+        }
+    }
+    
+    private fun updateTokenEstimates() {
+        val messages = _uiState.value.messages
+        val fullHistoryTokens = messages.sumOf { TokenCounter.countTokens(it.content) }
+        
+        val compressedTokens = if (_uiState.value.useContextCompression && _uiState.value.conversationSummary.isNotEmpty()) {
+            // Estimate tokens for summary + last N messages
+            val summaryTokens = TokenCounter.countTokens("Conversation Summary: ${_uiState.value.conversationSummary}")
+            val lastMessagesTokens = messages.takeLast(_uiState.value.keepLastMessagesCount)
+                .sumOf { TokenCounter.countTokens(it.content) }
+            summaryTokens + lastMessagesTokens
+        } else {
+            // If compression is not enabled or no summary, use full history
+            fullHistoryTokens
+        }
+        
+        val savedTokens = fullHistoryTokens - compressedTokens
+        
+        _uiState.value = _uiState.value.copy(
+            fullHistoryTokensEstimate = fullHistoryTokens,
+            compressedHistoryTokensEstimate = compressedTokens,
+            savedTokensEstimate = savedTokens
+        )
+    }
 }

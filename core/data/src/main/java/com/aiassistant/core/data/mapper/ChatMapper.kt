@@ -22,13 +22,44 @@ class ChatMapper @Inject constructor() {
             )
         }
         
-        // Add user message
-        messages.add(
-            MessageDto(
-                role = MessageRole.USER.value,
-                content = chatRequest.message
+        // Add conversation summary if context compression is enabled
+        if (chatRequest.history.isNotEmpty() && chatRequest.history.firstOrNull()?.content?.startsWith("Conversation Summary:") == true) {
+            // Add the summary message
+            messages.add(
+                MessageDto(
+                    role = MessageRole.SYSTEM.value,
+                    content = chatRequest.history.first().content
+                )
             )
-        )
+            
+            // Add the rest of the messages (last N messages + current user message)
+            chatRequest.history.drop(1).forEach { message ->
+                messages.add(
+                    MessageDto(
+                        role = message.role.value,
+                        content = message.content
+                    )
+                )
+            }
+        } else {
+            // Add history messages
+            chatRequest.history.forEach { message ->
+                messages.add(
+                    MessageDto(
+                        role = message.role.value,
+                        content = message.content
+                    )
+                )
+            }
+            
+            // Add user message
+            messages.add(
+                MessageDto(
+                    role = MessageRole.USER.value,
+                    content = chatRequest.message
+                )
+            )
+        }
         
         return ChatRequestDto(
             model = chatRequest.model.modelName,

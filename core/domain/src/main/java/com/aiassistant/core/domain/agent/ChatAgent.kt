@@ -28,6 +28,18 @@ class ChatAgent @Inject constructor(
             // Get current chat history from repository
             val history = chatRepository.getMessages().toMutableList()
             
+            // Check if we should apply context compression
+            val isUsingCompressedHistory = chatRequest.history.isNotEmpty() && 
+                chatRequest.history.firstOrNull()?.content?.startsWith("Conversation Summary:") == true
+            
+            val effectiveHistory = if (isUsingCompressedHistory) {
+                // Use the compressed history provided in the request
+                chatRequest.history.toMutableList()
+            } else {
+                // Use the full history from the repository
+                history
+            }
+            
             // Create user message
             val userMessage = Message(
                 id = UUID.randomUUID().toString(),
@@ -35,19 +47,22 @@ class ChatAgent @Inject constructor(
                 role = MessageRole.USER
             )
             
-            // Add user message to history
-            history.add(userMessage)
+            // For compressed history, we don't add the user message as it's already included
+            if (!isUsingCompressedHistory) {
+                // Add user message to history only if we're not using compressed history
+                effectiveHistory.add(userMessage)
+            }
             
             // Log the history size for debugging
-            Log.d("ChatAgent", "Sending history size: ${history.size}")
+            Log.d("ChatAgent", "Sending history size: ${effectiveHistory.size}")
             
             // Calculate token metrics before sending to LLM
             val currentRequestTokens = TokenCounter.countTokens(chatRequest.message)
-            val historyTokens = history.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+            val historyTokens = effectiveHistory.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
                 .sumOf { TokenCounter.countTokens(it.content) }
             
             // Send to LLM with full history and proper maxTokens
-            val result = llmClient.sendChat(history, chatRequest.maxTokens)
+            val result = llmClient.sendChat(effectiveHistory, chatRequest.maxTokens, chatRequest.model.modelName)
             
             result.map { chatResponse ->
                 // Create token metrics
@@ -91,6 +106,18 @@ class ChatAgent @Inject constructor(
             // Get current chat history from repository
             val history = chatRepository.getMessages().toMutableList()
             
+            // Check if we should apply context compression
+            val isUsingCompressedHistory = chatRequest.history.isNotEmpty() && 
+                chatRequest.history.firstOrNull()?.content?.startsWith("Conversation Summary:") == true
+            
+            val effectiveHistory = if (isUsingCompressedHistory) {
+                // Use the compressed history provided in the request
+                chatRequest.history.toMutableList()
+            } else {
+                // Use the full history from the repository
+                history
+            }
+            
             // Create user message with restrictions
             val userMessageContent = buildUserMessageWithRestrictions(
                 originalMessage = chatRequest.message,
@@ -104,19 +131,22 @@ class ChatAgent @Inject constructor(
                 role = MessageRole.USER
             )
             
-            // Add user message to history
-            history.add(userMessage)
+            // For compressed history, we don't add the user message as it's already included
+            if (!isUsingCompressedHistory) {
+                // Add user message to history only if we're not using compressed history
+                effectiveHistory.add(userMessage)
+            }
             
             // Log the history size for debugging
-            Log.d("ChatAgent", "Sending history size with restrictions: ${history.size}")
+            Log.d("ChatAgent", "Sending history size with restrictions: ${effectiveHistory.size}")
             
             // Calculate token metrics before sending to LLM
             val currentRequestTokens = TokenCounter.countTokens(chatRequest.message)
-            val historyTokens = history.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+            val historyTokens = effectiveHistory.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
                 .sumOf { TokenCounter.countTokens(it.content) }
             
             // Send to LLM with full history and proper maxTokens
-            val result = llmClient.sendChat(history, chatRequest.maxTokens)
+            val result = llmClient.sendChat(effectiveHistory, chatRequest.maxTokens, chatRequest.model.modelName)
             
             result.map { chatResponse ->
                 // Create token metrics

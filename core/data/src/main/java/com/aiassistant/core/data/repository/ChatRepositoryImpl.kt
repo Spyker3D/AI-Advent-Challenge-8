@@ -48,9 +48,13 @@ class ChatRepositoryImpl @Inject constructor(
                 if (apiKey.isBlank()) {
                     return@withContext Result.failure(Exception("OpenRouter API key is not configured. Please add OPENROUTER_API_KEY to local.properties"))
                 }
-                // Pass history to the ChatRequest for token calculation
-                val chatRequestWithHistory = chatRequest.copy(history = getMessages())
-                val requestDto = chatMapper.mapToChatRequestDto(chatRequestWithHistory)
+                // Use the history already provided in the chatRequest (for compression) or get all messages
+                val effectiveChatRequest = if (chatRequest.history.isNotEmpty()) {
+                    chatRequest
+                } else {
+                    chatRequest.copy(history = getMessages())
+                }
+                val requestDto = chatMapper.mapToChatRequestDto(effectiveChatRequest)
                 val startTime = System.currentTimeMillis()
                 val response = openRouterApi.sendChatMessage(
                     authorization = BEARER_PREFIX + apiKey,

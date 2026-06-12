@@ -22,7 +22,7 @@ class LlmClientImpl @Inject constructor(
         private const val BEARER_PREFIX = "Bearer "
     }
 
-    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?): Result<ChatResponse> = withContext(Dispatchers.IO) {
+    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> = withContext(Dispatchers.IO) {
         try {
             // Check if API key is configured
             val apiKey = apiConfig.openRouterApiKey
@@ -38,12 +38,12 @@ class LlmClientImpl @Inject constructor(
                 )
             }
             
-            // Determine model from the last user message or use default
-            val model = "gpt-4o-mini" // Default model for now
+            // Determine model - use provided model or default to gpt-4o-mini
+            val modelName = model ?: "gpt-4o-mini"
             
             // Create request DTO with proper parameters
             val requestDto = com.aiassistant.core.network.dto.ChatRequestDto(
-                model = model,
+                model = modelName,
                 messages = messageDtos,
                 temperature = 0.7f,
                 maxTokens = maxTokens // Use the passed maxTokens parameter

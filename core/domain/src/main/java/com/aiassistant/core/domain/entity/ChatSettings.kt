@@ -9,7 +9,10 @@ data class ChatSettings(
     val useJsonFormat: Boolean = false,
     val limitLength: Boolean = false,
     val useStopSequence: Boolean = false,
-    val stopSequenceText: String = ""
+    val stopSequenceText: String = "",
+    // Context compression fields
+    val useContextCompression: Boolean = false,
+    val keepLastMessagesCount: Int = 6
 ) {
     companion object {
         const val MIN_TEMPERATURE = 0.0f

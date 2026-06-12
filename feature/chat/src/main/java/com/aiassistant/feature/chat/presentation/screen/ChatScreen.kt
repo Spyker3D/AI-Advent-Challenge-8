@@ -1,21 +1,20 @@
 package com.aiassistant.feature.chat.presentation.screen
 
-import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
-import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,13 +24,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -58,15 +57,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
+import androidx.compose.ui.unit.sp
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Message
@@ -76,7 +73,9 @@ import com.aiassistant.core.ui.components.LoadingIndicator
 import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
-import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // Sealed class for different item types in the chat
 sealed class ChatItem {
@@ -337,10 +336,34 @@ fun ChatScreen(
                                                     }
                                                 }
                                             }
+                                            // Show compression info for JSON formatted responses
+                                            val tokenMetrics = message.tokenMetrics
+                                            if (tokenMetrics != null) {
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp),
+                                                    elevation = CardDefaults.cardElevation(
+                                                        defaultElevation = 4.dp
+                                                    )
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = buildCompressionInfoText(
+                                                                tokenMetrics,
+                                                                uiState.useContextCompression
+                                                            ),
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         } else {
                                             // Show message bubble if JSON parsing failed but JSON format was requested
-                                            MessageBubble(
+                                            EnhancedMessageBubble(
                                                 message = message,
+                                                useContextCompression = uiState.useContextCompression,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                             
@@ -362,10 +385,19 @@ fun ChatScreen(
                                         }
                                     } else {
                                         // Show message bubble for all other messages (user messages or non-JSON assistant messages)
-                                        MessageBubble(
-                                            message = message,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                                        if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                                            // Show enhanced message bubble with compression info for assistant messages
+                                            EnhancedMessageBubble(
+                                                message = message,
+                                                useContextCompression = uiState.useContextCompression,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        } else {
+                                            MessageBubble(
+                                                message = message,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                                 is ChatItem.TokenMetricsItem -> {
@@ -432,6 +464,225 @@ fun ChatScreen(
                 }
             }
 
+
+            // Context Compression Section
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Context Compression",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Use Context Compression Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Use Context Compression",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Switch(
+                            checked = uiState.useContextCompression,
+                            onCheckedChange = { checked ->
+                                viewModel.handleEvent(
+                                    ChatUiEvent.UseContextCompressionChanged(
+                                        checked
+                                    )
+                                )
+                            }
+                        )
+                    }
+
+                    // Keep Last Messages Dropdown
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Keep Last Messages",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        var keepLastExpanded by remember { mutableStateOf(false) }
+                        val keepLastOptions = listOf(4, 6, 8, 10)
+
+                        ExposedDropdownMenuBox(
+                            expanded = keepLastExpanded,
+                            onExpandedChange = { keepLastExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                modifier = Modifier.menuAnchor(),
+                                value = uiState.keepLastMessagesCount.toString(),
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepLastExpanded) },
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                                label = { Text("Messages") }
+                            )
+                            ExposedDropdownMenu(
+                                expanded = keepLastExpanded,
+                                onDismissRequest = { keepLastExpanded = false }
+                            ) {
+                                keepLastOptions.forEach { count ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                count.toString(),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.handleEvent(
+                                                ChatUiEvent.KeepLastMessagesCountChanged(
+                                                    count
+                                                )
+                                            )
+                                            keepLastExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Clear Summary Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Clear Summary",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Button(
+                            onClick = { viewModel.handleEvent(ChatUiEvent.ClearSummary) },
+                            enabled = uiState.conversationSummary.isNotEmpty()
+                        ) {
+                            Text("Clear")
+                        }
+                    }
+
+                    // Compression Status
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Compression Status:",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = if (uiState.useContextCompression) "Active" else "Disabled",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (uiState.useContextCompression) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Summary Status
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Summary Status:",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = if (uiState.conversationSummary.isEmpty()) "Empty" else "Available",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (uiState.conversationSummary.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Token Metrics
+                    if (uiState.useContextCompression) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Token Metrics:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Full History Tokens:",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = uiState.fullHistoryTokensEstimate.toString(),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Compressed Tokens:",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = uiState.compressedHistoryTokensEstimate.toString(),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Saved Tokens:",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = uiState.savedTokensEstimate.toString(),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            val compressionRatio = if (uiState.fullHistoryTokensEstimate > 0) {
+                                (100 - (uiState.compressedHistoryTokensEstimate.toFloat() / uiState.fullHistoryTokensEstimate.toFloat() * 100)).toInt()
+                            } else 0
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Compression Ratio:",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "${compressionRatio}%",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // File attachment section
             if (uiState.attachedFileName != null) {
@@ -634,4 +885,119 @@ fun getFileName(context: android.content.Context, uri: Uri): String {
     }
     
     return result ?: "Unknown file"
+}
+
+@Composable
+fun EnhancedMessageBubble(
+    message: Message,
+    useContextCompression: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val isUserMessage = message.role == MessageRole.USER
+    val backgroundColor = if (isUserMessage) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = if (isUserMessage) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUserMessage) Arrangement.End else Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 16.dp,
+                        topEnd = 16.dp,
+                        bottomStart = if (isUserMessage) 16.dp else 4.dp,
+                        bottomEnd = if (isUserMessage) 4.dp else 16.dp
+                    )
+                )
+                .background(backgroundColor)
+                .padding(12.dp)
+                .let {
+                    if (isUserMessage) it else it.fillMaxWidth(0.85f)
+                }
+        ) {
+            val context = LocalContext.current
+            Column {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = message.content,
+                        color = contentColor,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Show compression info for assistant messages
+                    val tokenMetrics = message.tokenMetrics
+                    if (!isUserMessage && tokenMetrics != null) {
+                        Text(
+                            text = buildCompressionInfoText(
+                                tokenMetrics,
+                                useContextCompression
+                            ),
+                            color = contentColor.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
+                    }
+
+                    // Copy button for assistant messages
+                    if (!isUserMessage) {
+                        IconButton(
+                            onClick = {
+                                val clipboard =
+                                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Message", message.content)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT)
+                                    .show()
+                            },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy message",
+                                tint = contentColor.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = formatTimestamp(message.timestamp),
+                    color = contentColor.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Light,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun buildCompressionInfoText(
+    tokenMetrics: TokenMetrics,
+    useContextCompression: Boolean
+): String {
+    val completionTokens = tokenMetrics.completionTokens?.toString() ?: "unavailable"
+    val compressionStatus = if (useContextCompression) "ON" else "OFF"
+    return "Compression: $compressionStatus | History Tokens: ${tokenMetrics.historyTokens} | Completion Tokens: $completionTokens"
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    return formatter.format(Date(timestamp))
 }

@@ -81,6 +81,19 @@ fun MessageBubble(
                         modifier = Modifier.fillMaxWidth()
                     )
                     
+                    // Show compression info for assistant messages
+                    val tokenMetrics = message.tokenMetrics
+                    if (!isUserMessage && tokenMetrics != null) {
+                        Text(
+                            text = buildCompressionInfoText(tokenMetrics),
+                            color = contentColor.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
+                    }
+                    
                     // Copy button for assistant messages
                     if (!isUserMessage) {
                         IconButton(
@@ -117,4 +130,11 @@ fun MessageBubble(
 private fun formatTimestamp(timestamp: Long): String {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     return formatter.format(Date(timestamp))
+}
+
+private fun buildCompressionInfoText(tokenMetrics: com.aiassistant.core.domain.entity.TokenMetrics): String {
+    // This function will be called from the context where we have access to the compression info
+    // For now, we'll just show basic token metrics
+    val completionTokens = tokenMetrics.completionTokens?.toString() ?: "unavailable"
+    return "Compression: OFF | History Tokens: ${tokenMetrics.historyTokens} | Completion Tokens: $completionTokens"
 }

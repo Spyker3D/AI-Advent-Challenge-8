@@ -19,5 +19,13 @@ data class ChatUiState(
     val stopSequenceText: String = "",
     // File attachment fields
     val attachedFileName: String? = null,
-    val attachedFileText: String? = null
+    val attachedFileText: String? = null,
+    // Context compression fields
+    val useContextCompression: Boolean = false,
+    val keepLastMessagesCount: Int = 6,
+    val conversationSummary: String = "",
+    val summaryMessageCount: Int = 0,
+    val fullHistoryTokensEstimate: Int = 0,
+    val compressedHistoryTokensEstimate: Int = 0,
+    val savedTokensEstimate: Int = 0
 )
