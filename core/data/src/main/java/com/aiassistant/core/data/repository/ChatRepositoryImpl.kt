@@ -11,6 +11,9 @@ import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.ChatRequest
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
+import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.TokenMetrics
+import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +48,9 @@ class ChatRepositoryImpl @Inject constructor(
                 if (apiKey.isBlank()) {
                     return@withContext Result.failure(Exception("OpenRouter API key is not configured. Please add OPENROUTER_API_KEY to local.properties"))
                 }
-                val requestDto = chatMapper.mapToChatRequestDto(chatRequest)
+                // Pass history to the ChatRequest for token calculation
+                val chatRequestWithHistory = chatRequest.copy(history = getMessages())
+                val requestDto = chatMapper.mapToChatRequestDto(chatRequestWithHistory)
                 val startTime = System.currentTimeMillis()
                 val response = openRouterApi.sendChatMessage(
                     authorization = BEARER_PREFIX + apiKey,

@@ -5,6 +5,8 @@ import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.ChatRequest
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.TokenMetrics
+import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.core.domain.repository.ChatRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -39,23 +41,36 @@ class ChatAgent @Inject constructor(
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size: ${history.size}")
             
-            // Send to LLM with full history
-            val result = llmClient.sendChat(history)
+            // Calculate token metrics before sending to LLM
+            val currentRequestTokens = TokenCounter.countTokens(chatRequest.message)
+            val historyTokens = history.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+                .sumOf { TokenCounter.countTokens(it.content) }
             
-            result.map { assistantMessageContent ->
-                // Create assistant message
+            // Send to LLM with full history and proper maxTokens
+            val result = llmClient.sendChat(history, chatRequest.maxTokens)
+            
+            result.map { chatResponse ->
+                // Create token metrics
+                val tokenMetrics = TokenMetrics(
+                    currentRequestTokens = currentRequestTokens,
+                    historyTokens = historyTokens,
+                    completionTokens = chatResponse.completionTokens
+                )
+                
+                // Create assistant message with token metrics
                 val assistantMessage = Message(
                     id = UUID.randomUUID().toString(),
-                    content = assistantMessageContent,
-                    role = MessageRole.ASSISTANT
+                    content = chatResponse.message,
+                    role = MessageRole.ASSISTANT,
+                    tokenMetrics = tokenMetrics
                 )
                 
                 // Save both messages to repository
                 chatRepository.saveMessage(userMessage)
                 chatRepository.saveMessage(assistantMessage)
                 
-                // Return the response with null metadata (will be populated by the client)
-                AiChatResponse(assistantMessageContent, null)
+                // Return the response with token metrics
+                AiChatResponse(chatResponse.message, null, tokenMetrics)
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -95,23 +110,36 @@ class ChatAgent @Inject constructor(
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size with restrictions: ${history.size}")
             
-            // Send to LLM with full history
-            val result = llmClient.sendChat(history)
+            // Calculate token metrics before sending to LLM
+            val currentRequestTokens = TokenCounter.countTokens(chatRequest.message)
+            val historyTokens = history.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+                .sumOf { TokenCounter.countTokens(it.content) }
             
-            result.map { assistantMessageContent ->
-                // Create assistant message
+            // Send to LLM with full history and proper maxTokens
+            val result = llmClient.sendChat(history, chatRequest.maxTokens)
+            
+            result.map { chatResponse ->
+                // Create token metrics
+                val tokenMetrics = TokenMetrics(
+                    currentRequestTokens = currentRequestTokens,
+                    historyTokens = historyTokens,
+                    completionTokens = chatResponse.completionTokens
+                )
+                
+                // Create assistant message with token metrics
                 val assistantMessage = Message(
                     id = UUID.randomUUID().toString(),
-                    content = assistantMessageContent,
-                    role = MessageRole.ASSISTANT
+                    content = chatResponse.message,
+                    role = MessageRole.ASSISTANT,
+                    tokenMetrics = tokenMetrics
                 )
                 
                 // Save both messages to repository
                 chatRepository.saveMessage(userMessage)
                 chatRepository.saveMessage(assistantMessage)
                 
-                // Return the response with null metadata (will be populated by the client)
-                AiChatResponse(assistantMessageContent, null)
+                // Return the response with token metrics
+                AiChatResponse(chatResponse.message, null, tokenMetrics)
             }
         } catch (e: Exception) {
             Result.failure(e)

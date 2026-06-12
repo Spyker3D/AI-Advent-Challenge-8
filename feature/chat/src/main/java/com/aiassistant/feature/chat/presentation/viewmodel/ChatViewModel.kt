@@ -9,6 +9,7 @@ import com.aiassistant.core.domain.entity.ChatRequest
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.TokenMetrics
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
@@ -103,12 +104,41 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.ModelSelected -> {
                 _uiState.value = _uiState.value.copy(selectedModel = event.model)
             }
+            is ChatUiEvent.FileAttached -> {
+                _uiState.value = _uiState.value.copy(
+                    attachedFileName = event.fileName,
+                    attachedFileText = event.fileContent
+                )
+            }
+            is ChatUiEvent.ClearAttachedFile -> {
+                _uiState.value = _uiState.value.copy(
+                    attachedFileName = null,
+                    attachedFileText = null
+                )
+            }
         }
     }
 
     private fun sendMessage() {
         val currentMessage = _uiState.value.currentMessage.trim()
         if (currentMessage.isBlank() || _uiState.value.isLoading) return
+
+        // Combine message with attached file content if present
+        val finalMessage = if (_uiState.value.attachedFileText != null) {
+            "User question:\n$currentMessage\n\nAttached file content:\n${_uiState.value.attachedFileText}"
+        } else {
+            currentMessage
+        }
+        
+        // Debug logging
+        if (_uiState.value.attachedFileText != null) {
+            android.util.Log.d("ChatViewModel", "File attached: true")
+            android.util.Log.d("ChatViewModel", "File name: ${_uiState.value.attachedFileName}")
+            android.util.Log.d("ChatViewModel", "Attached file characters: ${_uiState.value.attachedFileText?.length ?: 0}")
+            android.util.Log.d("ChatViewModel", "Final prompt characters: ${finalMessage.length}")
+        } else {
+            android.util.Log.d("ChatViewModel", "File attached: false")
+        }
 
         // Note: With the new ChatAgent, the user message will be handled internally
         // We still update the UI state immediately for responsiveness
@@ -121,14 +151,14 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val chatRequest = ChatRequest(
-                    message = currentMessage,
+                    message = finalMessage,
                     model = _uiState.value.selectedModel,
                     temperature = _uiState.value.temperature,
-                    maxTokens = if (_uiState.value.limitLength) 250 else _uiState.value.maxTokens,
+                    maxTokens = _uiState.value.maxTokens,
                     systemPrompt = _uiState.value.systemPrompt
                 )
 
-                // Send message with restrictions if any are enabled
+                // Send message using ChatAgent for both cases
                 val result = if (_uiState.value.useJsonFormat || _uiState.value.limitLength || _uiState.value.useStopSequence) {
                     chatAgent.sendMessageWithRestrictions(
                         chatRequest = chatRequest,
@@ -138,7 +168,7 @@ class ChatViewModel @Inject constructor(
                         stopSequenceText = _uiState.value.stopSequenceText
                     )
                 } else {
-                    sendMessageUseCase(chatRequest)
+                    chatAgent.sendMessage(chatRequest)
                 }
 
                 result
@@ -147,7 +177,10 @@ class ChatViewModel @Inject constructor(
                         val updatedMessages = chatRepository.getMessages()
                         _uiState.value = _uiState.value.copy(
                             messages = updatedMessages,
-                            isLoading = false
+                            isLoading = false,
+                            // Clear attached file after sending
+                            attachedFileName = null,
+                            attachedFileText = null
                         )
                     }
                     .onFailure { throwable ->

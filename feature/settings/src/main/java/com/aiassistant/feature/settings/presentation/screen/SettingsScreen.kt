@@ -191,7 +191,7 @@ fun SettingsScreen(
                             viewModel.handleEvent(SettingsUiEvent.MaxTokensChanged(it.toInt()))
                         },
                         valueRange = ChatSettings.MIN_MAX_TOKENS.toFloat()..ChatSettings.MAX_MAX_TOKENS.toFloat(),
-                        steps = 39, // (4000-10)/100 = 39.9, rounded down
+                        steps = 99, // (10000-10)/100 = 99.9, rounded down
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

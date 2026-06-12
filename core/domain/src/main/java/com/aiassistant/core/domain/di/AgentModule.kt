@@ -1,6 +1,8 @@
 package com.aiassistant.core.domain.di
 
 import com.aiassistant.core.domain.agent.ChatAgent
+import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.repository.ChatRepository
 import dagger.Module
 import dagger.Provides
 import kotlinx.coroutines.CoroutineDispatcher
@@ -13,8 +15,8 @@ class AgentModule {
     @Provides
     @Singleton
     fun provideChatAgent(
-        chatRepository: com.aiassistant.core.domain.repository.ChatRepository,
-        llmClient: com.aiassistant.core.domain.agent.LlmClient,
+        chatRepository: ChatRepository,
+        llmClient: LlmClient,
         ioDispatcher: CoroutineDispatcher
     ): ChatAgent {
         return ChatAgent(chatRepository, llmClient, ioDispatcher)

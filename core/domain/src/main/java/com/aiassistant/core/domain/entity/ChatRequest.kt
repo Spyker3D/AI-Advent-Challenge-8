@@ -5,5 +5,6 @@ data class ChatRequest(
     val model: AiModel,
     val temperature: Float,
     val maxTokens: Int,
-    val systemPrompt: String? = null
+    val systemPrompt: String? = null,
+    val history: List<Message> = emptyList()
 )

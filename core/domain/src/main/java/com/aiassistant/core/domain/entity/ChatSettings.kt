@@ -15,6 +15,6 @@ data class ChatSettings(
         const val MIN_TEMPERATURE = 0.0f
         const val MAX_TEMPERATURE = 2.0f
         const val MIN_MAX_TOKENS = 10
-        const val MAX_MAX_TOKENS = 4000
+        const val MAX_MAX_TOKENS = 10000
     }
 }

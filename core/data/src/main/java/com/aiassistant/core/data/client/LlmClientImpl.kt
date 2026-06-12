@@ -1,7 +1,9 @@
 package com.aiassistant.core.data.client
 
+import com.aiassistant.core.domain.agent.ChatResponse
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.entity.Message
+import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.network.api.OpenRouterApi
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.mapper.ChatMapper
@@ -20,7 +22,7 @@ class LlmClientImpl @Inject constructor(
         private const val BEARER_PREFIX = "Bearer "
     }
 
-    override suspend fun sendChat(messages: List<Message>): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?): Result<ChatResponse> = withContext(Dispatchers.IO) {
         try {
             // Check if API key is configured
             val apiKey = apiConfig.openRouterApiKey
@@ -36,13 +38,15 @@ class LlmClientImpl @Inject constructor(
                 )
             }
             
-            // Create request DTO with default parameters
-            // In a full implementation, these would come from settings
+            // Determine model from the last user message or use default
+            val model = "gpt-4o-mini" // Default model for now
+            
+            // Create request DTO with proper parameters
             val requestDto = com.aiassistant.core.network.dto.ChatRequestDto(
-                model = "gpt-4o-mini", // Default model
+                model = model,
                 messages = messageDtos,
                 temperature = 0.7f,
-                maxTokens = 1000
+                maxTokens = maxTokens // Use the passed maxTokens parameter
             )
             
             val response = openRouterApi.sendChatMessage(
@@ -60,7 +64,9 @@ class LlmClientImpl @Inject constructor(
                     body?.choices?.isNotEmpty() == true -> {
                         val assistantMessage = body.choices.first().message.content
                         if (assistantMessage.isNotBlank()) {
-                            Result.success(assistantMessage)
+                            // Extract completion tokens from the response
+                            val completionTokens = body.usage?.completionTokens
+                            Result.success(ChatResponse(assistantMessage, completionTokens))
                         } else {
                             Result.failure(Exception("Empty response from AI model"))
                         }

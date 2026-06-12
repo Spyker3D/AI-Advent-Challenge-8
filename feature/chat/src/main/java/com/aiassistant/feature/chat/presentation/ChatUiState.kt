@@ -16,5 +16,8 @@ data class ChatUiState(
     val useJsonFormat: Boolean = false,
     val limitLength: Boolean = false,
     val useStopSequence: Boolean = false,
-    val stopSequenceText: String = ""
+    val stopSequenceText: String = "",
+    // File attachment fields
+    val attachedFileName: String? = null,
+    val attachedFileText: String? = null
 )

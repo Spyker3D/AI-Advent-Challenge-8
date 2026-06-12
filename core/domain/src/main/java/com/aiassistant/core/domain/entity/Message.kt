@@ -5,7 +5,8 @@ data class Message(
     val content: String,
     val role: MessageRole,
     val timestamp: Long = System.currentTimeMillis(),
-    val metadata: AiResponseMetadata? = null
+    val metadata: AiResponseMetadata? = null,
+    val tokenMetrics: TokenMetrics? = null
 )
 
 enum class MessageRole(val value: String) {

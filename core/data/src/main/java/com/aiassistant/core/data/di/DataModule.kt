@@ -34,6 +34,8 @@ abstract class DataModule {
     abstract fun bindLlmClient(
         llmClientImpl: LlmClientImpl
     ): LlmClient
+    
+
 
     companion object {
         @Provides
@@ -49,7 +51,7 @@ abstract class DataModule {
                 context,
                 ChatDatabase::class.java,
                 "chat_database"
-            ).build()
+            ).addMigrations(ChatDatabase.MIGRATION_1_2).build()
         }
         
         @Provides
