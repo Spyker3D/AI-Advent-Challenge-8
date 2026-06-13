@@ -562,7 +562,7 @@ $limitedConversationText""".trimIndent()
                 // Create the prompt for fact extraction
                 val factsPrompt = """You are a memory extraction system.
 
-Update the stored facts using the latest user message.
+Update the stored facts using the latest user message and recent conversation context.
 
 Keep only important long-term information.
 
@@ -578,11 +578,15 @@ Ignore:
 - greetings
 - small talk
 - temporary messages
+- questions unless they provide new information
 
 Return valid JSON only.
 
 Existing facts:
 ${buildFactsJsonString()}
+
+Recent conversation:
+${buildRecentConversationContext()}
 
 Latest user message:
 $userMessage
@@ -644,6 +648,16 @@ Return:""".trimIndent()
   "decisions": "${_uiState.value.stickyFacts.decisions}",
   "unresolvedQuestions": "${_uiState.value.stickyFacts.unresolvedQuestions}"
 }""".trimIndent()
+    }
+    
+    private fun buildRecentConversationContext(): String {
+        // Take the last 5 messages
+        val recentMessages = _uiState.value.messages.takeLast(5)
+        
+        // Build a string with role and content for each message
+        return recentMessages.joinToString("\n") { message ->
+            "${message.role.value}: ${message.content}"
+        }
     }
     
     private fun parseFactsJson(jsonString: String): StickyFacts {
