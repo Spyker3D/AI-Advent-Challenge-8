@@ -3,7 +3,7 @@ package com.aiassistant.core.domain.agent
 import android.util.Log
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.ChatRequest
-import com.aiassistant.core.domain.entity.ContextStrategy
+
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.domain.entity.StickyFacts
@@ -38,30 +38,7 @@ class ChatAgent @Inject constructor(
         currentStickyFacts = stickyFacts
     }
     
-    /**
-     * Apply context strategy to determine effective history
-     */
-    private fun applyContextStrategy(history: List<Message>, newMessage: String, strategy: ContextStrategy): MutableList<Message> {
-        return when (strategy) {
-            ContextStrategy.SLIDING_WINDOW -> {
-                // Keep only the last 5 messages (or adjust as needed)
-                val windowSize = 5
-                if (history.size <= windowSize) {
-                    history.toMutableList()
-                } else {
-                    history.takeLast(windowSize).toMutableList()
-                }
-            }
-            ContextStrategy.STICKY_FACTS -> {
-                // For sticky facts, we include all messages but will modify the system prompt
-                history.toMutableList()
-            }
-            ContextStrategy.BRANCHING -> {
-                // For branching, we use the full history of the current branch
-                history.toMutableList()
-            }
-        }
-    }
+
     
     /**
      * Build system prompt with sticky facts
@@ -84,11 +61,8 @@ class ChatAgent @Inject constructor(
      */
     suspend fun sendMessage(chatRequest: ChatRequest, contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW): Result<AiChatResponse> = withContext(dispatcher) {
         try {
-            // Get current chat history from repository for the current branch
-            val history = chatRepository.getMessages(currentBranchId).toMutableList()
-            
-            // Apply context strategy to determine effective history
-            val effectiveHistory = applyContextStrategy(history, chatRequest.message, contextStrategy)
+            // Use the history provided in the chatRequest
+            val effectiveHistory = chatRequest.history.toMutableList()
             
             // Create user message
             val userMessage = Message(
@@ -173,11 +147,8 @@ class ChatAgent @Inject constructor(
         contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
-            // Get current chat history from repository for the current branch
-            val history = chatRepository.getMessages(currentBranchId).toMutableList()
-            
-            // Apply context strategy to determine effective history
-            val effectiveHistory = applyContextStrategy(history, chatRequest.message, contextStrategy)
+            // Use the history provided in the chatRequest
+            val effectiveHistory = chatRequest.history.toMutableList()
             
             // Create user message with restrictions
             val userMessageContent = buildUserMessageWithRestrictions(

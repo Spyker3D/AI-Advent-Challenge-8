@@ -136,6 +136,9 @@ class ChatViewModel @Inject constructor(
         // Update current branch ID
         _uiState.value = _uiState.value.copy(currentBranchId = branchId)
         
+        // Update ChatAgent with the new branch ID
+        chatAgent.setCurrentBranch(branchId)
+        
         // Update messages to match the current branch
         val currentBranch = _uiState.value.branches.find { it.id == branchId }
         if (currentBranch != null) {
@@ -230,6 +233,8 @@ class ChatViewModel @Inject constructor(
         // For Sticky Facts strategy, update facts before sending message
         if (_uiState.value.selectedContextStrategy == ContextStrategy.STICKY_FACTS) {
             updateStickyFacts(finalMessage)
+            // In a real implementation, we would wait for the facts update to complete
+            // For now, we'll proceed with the current facts and let the update happen asynchronously
         }
         
         // Check if we need to generate a new summary BEFORE adding the user message
