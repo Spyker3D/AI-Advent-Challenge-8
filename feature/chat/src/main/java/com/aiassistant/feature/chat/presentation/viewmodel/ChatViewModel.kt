@@ -668,7 +668,7 @@ Return:""".trimIndent()
     
     private fun extractJsonValue(json: String, key: String): String {
         // Simple regex to extract value for a key
-        val regex = ""\"${key}\"\s*:\s*\"([^\"\\]*(\\.[^\"\\]*)*)\""".toRegex()
+        val regex = "\"${key}\"\\s*:\\s*\"([^\"\\]*(\\.[^\"\\]*)*)\"".toRegex()
         return regex.find(json)?.groupValues?.get(1) ?: ""
     }
 }
