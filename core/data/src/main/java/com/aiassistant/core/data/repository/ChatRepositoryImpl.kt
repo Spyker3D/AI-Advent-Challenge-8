@@ -122,21 +122,21 @@ class ChatRepositoryImpl @Inject constructor(
         }
     }
     
-    override suspend fun saveMessage(message: Message) {
+    override suspend fun saveMessage(message: Message, branchId: String) {
         withContext(Dispatchers.IO) {
-            chatMessageDao.insertMessage(chatMessageMapper.toEntity(message))
+            chatMessageDao.insertMessage(chatMessageMapper.toEntity(message, branchId))
         }
     }
     
-    override suspend fun getMessages(): List<Message> {
+    override suspend fun getMessages(branchId: String): List<Message> {
         return withContext(Dispatchers.IO) {
-            chatMessageDao.getMessages().map { chatMessageMapper.toDomain(it) }
+            chatMessageDao.getMessages(branchId).map { chatMessageMapper.toDomain(it) }
         }
     }
     
-    override suspend fun clearMessages() {
+    override suspend fun clearMessages(branchId: String) {
         withContext(Dispatchers.IO) {
-            chatMessageDao.clearMessages()
+            chatMessageDao.clearMessages(branchId)
         }
     }
 }

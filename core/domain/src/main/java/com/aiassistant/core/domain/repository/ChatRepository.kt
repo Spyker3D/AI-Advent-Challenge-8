@@ -22,7 +22,7 @@ interface ChatRepository {
     fun parseFormattedResponse(response: String): Result<FormattedAiResponse>
     
     // Methods for chat history management
-    suspend fun saveMessage(message: Message): Unit
-    suspend fun getMessages(): List<Message>
-    suspend fun clearMessages(): Unit
+    suspend fun saveMessage(message: Message, branchId: String = "main"): Unit
+    suspend fun getMessages(branchId: String = "main"): List<Message>
+    suspend fun clearMessages(branchId: String = "main"): Unit
 }

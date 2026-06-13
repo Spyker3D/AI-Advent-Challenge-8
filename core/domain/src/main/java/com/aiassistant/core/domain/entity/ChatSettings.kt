@@ -12,7 +12,9 @@ data class ChatSettings(
     val stopSequenceText: String = "",
     // Context compression fields
     val useContextCompression: Boolean = false,
-    val keepLastMessagesCount: Int = 6
+    val keepLastMessagesCount: Int = 6,
+    // Context strategy field
+    val contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW
 ) {
     companion object {
         const val MIN_TEMPERATURE = 0.0f

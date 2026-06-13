@@ -1,6 +1,7 @@
 package com.aiassistant.feature.chat.presentation
 
 import android.net.Uri
+import com.aiassistant.core.domain.entity.ContextStrategy
 
 sealed class ChatUiEvent {
     data class MessageChanged(val message: String) : ChatUiEvent()
@@ -14,4 +15,9 @@ sealed class ChatUiEvent {
     
     // Context compression events (handled through settings)
     object ClearSummary : ChatUiEvent()
+    
+    // Context strategy events
+    data class ContextStrategySelected(val strategy: ContextStrategy) : ChatUiEvent()
+    data class CreateBranch(val branchName: String) : ChatUiEvent()
+    data class SwitchBranch(val branchId: String) : ChatUiEvent()
 }

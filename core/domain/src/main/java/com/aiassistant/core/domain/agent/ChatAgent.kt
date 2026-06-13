@@ -3,8 +3,10 @@ package com.aiassistant.core.domain.agent
 import android.util.Log
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.ChatRequest
+import com.aiassistant.core.domain.entity.ContextStrategy
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.TokenMetrics
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.core.domain.repository.ChatRepository
@@ -20,25 +22,73 @@ class ChatAgent @Inject constructor(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     
+    // Current branch ID - default to "main"
+    private var currentBranchId: String = "main"
+    
+    // Current sticky facts
+    private var currentStickyFacts: StickyFacts = StickyFacts()
+    
+    // Set the current branch
+    fun setCurrentBranch(branchId: String) {
+        currentBranchId = branchId
+    }
+    
+    // Set the current sticky facts
+    fun setCurrentStickyFacts(stickyFacts: StickyFacts) {
+        currentStickyFacts = stickyFacts
+    }
+    
+    /**
+     * Apply context strategy to determine effective history
+     */
+    private fun applyContextStrategy(history: List<Message>, newMessage: String, strategy: ContextStrategy): MutableList<Message> {
+        return when (strategy) {
+            ContextStrategy.SLIDING_WINDOW -> {
+                // Keep only the last 5 messages (or adjust as needed)
+                val windowSize = 5
+                if (history.size <= windowSize) {
+                    history.toMutableList()
+                } else {
+                    history.takeLast(windowSize).toMutableList()
+                }
+            }
+            ContextStrategy.STICKY_FACTS -> {
+                // For sticky facts, we include all messages but will modify the system prompt
+                history.toMutableList()
+            }
+            ContextStrategy.BRANCHING -> {
+                // For branching, we use the full history of the current branch
+                history.toMutableList()
+            }
+        }
+    }
+    
+    /**
+     * Build system prompt with sticky facts
+     */
+    private fun buildSystemPromptWithFacts(originalPrompt: String?): String {
+        return buildString {
+            append(originalPrompt ?: "")
+            append("\n\nImportant facts:\n\n")
+            append("Goal:\n${currentStickyFacts.goal}\n\n")
+            append("Stack:\n${currentStickyFacts.stack}\n\n")
+            append("Constraints:\n${currentStickyFacts.constraints}\n\n")
+            append("Preferences:\n${currentStickyFacts.preferences}\n\n")
+            append("Decisions:\n${currentStickyFacts.decisions}\n\n")
+            append("Unresolved Questions:\n${currentStickyFacts.unresolvedQuestions}\n\n")
+        }
+    }
+    
     /**
      * Sends a message to the LLM and manages the chat history
      */
-    suspend fun sendMessage(chatRequest: ChatRequest): Result<AiChatResponse> = withContext(dispatcher) {
+    suspend fun sendMessage(chatRequest: ChatRequest, contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW): Result<AiChatResponse> = withContext(dispatcher) {
         try {
-            // Get current chat history from repository
-            val history = chatRepository.getMessages().toMutableList()
+            // Get current chat history from repository for the current branch
+            val history = chatRepository.getMessages(currentBranchId).toMutableList()
             
-            // Check if we should apply context compression
-            val isUsingCompressedHistory = chatRequest.history.isNotEmpty() && 
-                chatRequest.history.firstOrNull()?.content?.startsWith("Conversation Summary:") == true
-            
-            val effectiveHistory = if (isUsingCompressedHistory) {
-                // Use the compressed history provided in the request
-                chatRequest.history.toMutableList()
-            } else {
-                // Use the full history from the repository
-                history
-            }
+            // Apply context strategy to determine effective history
+            val effectiveHistory = applyContextStrategy(history, chatRequest.message, contextStrategy)
             
             // Create user message
             val userMessage = Message(
@@ -47,11 +97,8 @@ class ChatAgent @Inject constructor(
                 role = MessageRole.USER
             )
             
-            // For compressed history, we don't add the user message as it's already included
-            if (!isUsingCompressedHistory) {
-                // Add user message to history only if we're not using compressed history
-                effectiveHistory.add(userMessage)
-            }
+            // Add user message to history
+            effectiveHistory.add(userMessage)
             
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size: ${effectiveHistory.size}")
@@ -61,8 +108,30 @@ class ChatAgent @Inject constructor(
             val historyTokens = effectiveHistory.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
                 .sumOf { TokenCounter.countTokens(it.content) }
             
+            // For sticky facts strategy, modify the system prompt
+            val effectiveSystemPrompt = if (contextStrategy == ContextStrategy.STICKY_FACTS) {
+                buildSystemPromptWithFacts(chatRequest.systemPrompt)
+            } else {
+                chatRequest.systemPrompt
+            }
+            
             // Send to LLM with full history and proper maxTokens
-            val result = llmClient.sendChat(effectiveHistory, chatRequest.maxTokens, chatRequest.model.modelName)
+            // Note: We need to update the system prompt in the first message if it exists
+            val messagesToSend = if (effectiveHistory.isNotEmpty() && effectiveHistory.first().role == MessageRole.SYSTEM) {
+                // Replace the system prompt in the first message
+                val updatedFirstMessage = effectiveHistory.first().copy(content = effectiveSystemPrompt.toString())
+                listOf(updatedFirstMessage) + effectiveHistory.drop(1)
+            } else {
+                // Add system prompt as first message if not present
+                val systemMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    content = effectiveSystemPrompt.toString(),
+                    role = MessageRole.SYSTEM
+                )
+                listOf(systemMessage) + effectiveHistory
+            }
+            
+            val result = llmClient.sendChat(messagesToSend, chatRequest.maxTokens, chatRequest.model.modelName)
             
             result.map { chatResponse ->
                 // Create token metrics
@@ -80,9 +149,9 @@ class ChatAgent @Inject constructor(
                     tokenMetrics = tokenMetrics
                 )
                 
-                // Save both messages to repository
-                chatRepository.saveMessage(userMessage)
-                chatRepository.saveMessage(assistantMessage)
+                // Save both messages to repository with current branch
+                chatRepository.saveMessage(userMessage, currentBranchId)
+                chatRepository.saveMessage(assistantMessage, currentBranchId)
                 
                 // Return the response with token metrics
                 AiChatResponse(chatResponse.message, null, tokenMetrics)
@@ -100,23 +169,15 @@ class ChatAgent @Inject constructor(
         useJsonFormat: Boolean,
         limitLength: Boolean,
         useStopSequence: Boolean,
-        stopSequenceText: String
+        stopSequenceText: String,
+        contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
-            // Get current chat history from repository
-            val history = chatRepository.getMessages().toMutableList()
+            // Get current chat history from repository for the current branch
+            val history = chatRepository.getMessages(currentBranchId).toMutableList()
             
-            // Check if we should apply context compression
-            val isUsingCompressedHistory = chatRequest.history.isNotEmpty() && 
-                chatRequest.history.firstOrNull()?.content?.startsWith("Conversation Summary:") == true
-            
-            val effectiveHistory = if (isUsingCompressedHistory) {
-                // Use the compressed history provided in the request
-                chatRequest.history.toMutableList()
-            } else {
-                // Use the full history from the repository
-                history
-            }
+            // Apply context strategy to determine effective history
+            val effectiveHistory = applyContextStrategy(history, chatRequest.message, contextStrategy)
             
             // Create user message with restrictions
             val userMessageContent = buildUserMessageWithRestrictions(
@@ -131,11 +192,8 @@ class ChatAgent @Inject constructor(
                 role = MessageRole.USER
             )
             
-            // For compressed history, we don't add the user message as it's already included
-            if (!isUsingCompressedHistory) {
-                // Add user message to history only if we're not using compressed history
-                effectiveHistory.add(userMessage)
-            }
+            // Add user message to history
+            effectiveHistory.add(userMessage)
             
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size with restrictions: ${effectiveHistory.size}")
@@ -145,8 +203,30 @@ class ChatAgent @Inject constructor(
             val historyTokens = effectiveHistory.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
                 .sumOf { TokenCounter.countTokens(it.content) }
             
+            // For sticky facts strategy, modify the system prompt
+            val effectiveSystemPrompt = if (contextStrategy == ContextStrategy.STICKY_FACTS) {
+                buildSystemPromptWithFacts(chatRequest.systemPrompt)
+            } else {
+                chatRequest.systemPrompt
+            }
+            
             // Send to LLM with full history and proper maxTokens
-            val result = llmClient.sendChat(effectiveHistory, chatRequest.maxTokens, chatRequest.model.modelName)
+            // Note: We need to update the system prompt in the first message if it exists
+            val messagesToSend = if (effectiveHistory.isNotEmpty() && effectiveHistory.first().role == MessageRole.SYSTEM) {
+                // Replace the system prompt in the first message
+                val updatedFirstMessage = effectiveHistory.first().copy(content = effectiveSystemPrompt.toString())
+                listOf(updatedFirstMessage) + effectiveHistory.drop(1)
+            } else {
+                // Add system prompt as first message if not present
+                val systemMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    content = effectiveSystemPrompt.toString(),
+                    role = MessageRole.SYSTEM
+                )
+                listOf(systemMessage) + effectiveHistory
+            }
+            
+            val result = llmClient.sendChat(messagesToSend, chatRequest.maxTokens, chatRequest.model.modelName)
             
             result.map { chatResponse ->
                 // Create token metrics
@@ -164,9 +244,9 @@ class ChatAgent @Inject constructor(
                     tokenMetrics = tokenMetrics
                 )
                 
-                // Save both messages to repository
-                chatRepository.saveMessage(userMessage)
-                chatRepository.saveMessage(assistantMessage)
+                // Save both messages to repository with current branch
+                chatRepository.saveMessage(userMessage, currentBranchId)
+                chatRepository.saveMessage(assistantMessage, currentBranchId)
                 
                 // Return the response with token metrics
                 AiChatResponse(chatResponse.message, null, tokenMetrics)

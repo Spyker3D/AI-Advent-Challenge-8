@@ -61,6 +61,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.minOf
 
 import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Message
@@ -180,6 +181,43 @@ fun ChatScreen(
                 // .imePadding()
                 // .navigationBarsPadding()
         ) {
+            // Context Strategy Selector
+            ContextStrategySelector(
+                selectedStrategy = uiState.selectedContextStrategy,
+                onStrategySelected = { strategy ->
+                    viewModel.handleEvent(ChatUiEvent.ContextStrategySelected(strategy))
+                }
+            )
+            
+            // Branching Strategy UI
+            if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING) {
+                BranchingControls(
+                    branches = uiState.branches,
+                    currentBranchId = uiState.currentBranchId,
+                    onCreateBranch = { branchName ->
+                        viewModel.handleEvent(ChatUiEvent.CreateBranch(branchName))
+                    },
+                    onSwitchBranch = { branchId ->
+                        viewModel.handleEvent(ChatUiEvent.SwitchBranch(branchId))
+                    }
+                )
+            }
+            
+            // Sticky Facts Strategy UI
+            if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS) {
+                StickyFactsDisplay(
+                    stickyFacts = uiState.stickyFacts,
+                    factsStatus = uiState.factsStatus
+                )
+            }
+            
+            // Sliding Window Strategy UI
+            if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW) {
+                SlidingWindowMetrics(
+                    totalMessages = uiState.messages.size
+                )
+            }
+            
             // Messages list (existing chat functionality)
             Box(
                 modifier = Modifier
@@ -405,6 +443,7 @@ fun ChatScreen(
                                     // Show token metrics as a separate message
                                     TokenMetricsMessage(
                                         tokenMetrics = item.tokenMetrics,
+                                        contextStrategy = uiState.selectedContextStrategy,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -548,6 +587,7 @@ private fun buildCostText(metadata: AiResponseMetadata): String {
 @Composable
 fun TokenMetricsMessage(
     tokenMetrics: TokenMetrics,
+    contextStrategy: com.aiassistant.core.domain.entity.ContextStrategy?,
     modifier: Modifier = Modifier
 ) {
     val backgroundColor = MaterialTheme.colorScheme.secondaryContainer
@@ -564,12 +604,29 @@ fun TokenMetricsMessage(
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxWidth(0.85f)
         ) {
-            Text(
-                text = buildTokenMetricsText(tokenMetrics),
-                color = contentColor,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column {
+                // Context Strategy
+                contextStrategy?.let { strategy ->
+                    Text(
+                        text = "Context Strategy: ${when (strategy) {
+                            com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
+                            com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
+                            com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
+                        }}",
+                        color = contentColor,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // Token metrics
+                Text(
+                    text = buildTokenMetricsText(tokenMetrics),
+                    color = contentColor,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
@@ -672,6 +729,269 @@ fun getFileName(context: android.content.Context, uri: Uri): String {
     
     return result ?: "Unknown file"
 }
+
+@Composable
+fun ContextStrategySelector(
+    selectedStrategy: com.aiassistant.core.domain.entity.ContextStrategy,
+    onStrategySelected: (com.aiassistant.core.domain.entity.ContextStrategy) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Context Strategy",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                com.aiassistant.core.domain.entity.ContextStrategy.values().forEach { strategy ->
+                    OutlinedButton(
+                        onClick = { onStrategySelected(strategy) },
+                        modifier = Modifier.weight(1f),
+                        enabled = selectedStrategy != strategy
+                    ) {
+                        Text(
+                            text = when (strategy) {
+                                com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
+                                com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
+                                com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SlidingWindowMetrics(
+    totalMessages: Int
+) {
+    val SLIDING_WINDOW_SIZE = 5
+    val messagesSent = minOf(totalMessages, SLIDING_WINDOW_SIZE)
+    val messagesOmitted = if (totalMessages > SLIDING_WINDOW_SIZE) totalMessages - SLIDING_WINDOW_SIZE else 0
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Sliding Window Strategy",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Messages sent: $messagesSent",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    text = "Messages omitted: $messagesOmitted",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StickyFactsDisplay(
+    stickyFacts: com.aiassistant.core.domain.entity.StickyFacts,
+    factsStatus: String
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Sticky Facts",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Status: $factsStatus",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (factsStatus) {
+                        "Updating" -> MaterialTheme.colorScheme.primary
+                        "Updated" -> MaterialTheme.colorScheme.tertiary
+                        "Failed" -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
+                )
+            }
+            
+            Text(
+                text = "Goal: ${stickyFacts.goal}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = "Stack: ${stickyFacts.stack}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = "Constraints: ${stickyFacts.constraints}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = "Preferences: ${stickyFacts.preferences}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = "Decisions: ${stickyFacts.decisions}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = "Unresolved Questions: ${stickyFacts.unresolvedQuestions}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun BranchingControls(
+    branches: List<com.aiassistant.core.domain.entity.ChatBranch>,
+    currentBranchId: String,
+    onCreateBranch: (String) -> Unit,
+    onSwitchBranch: (String) -> Unit
+) {
+    var showCreateBranchDialog by remember { mutableStateOf(false) }
+    var newBranchName by remember { mutableStateOf("") }
+    
+    val currentBranch = branches.find { it.id == currentBranchId }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Branching Strategy",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Current Branch: ${currentBranch?.name ?: "Unknown"}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                
+                Button(onClick = { showCreateBranchDialog = true }) {
+                    Text("Create Branch")
+                }
+            }
+            
+            if (branches.size > 1) {
+                Text(
+                    text = "Available Branches:",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                
+                branches.forEach { branch ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = branch.name,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        
+                        if (branch.id != currentBranchId) {
+                            Button(
+                                onClick = { onSwitchBranch(branch.id) },
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Text("Switch")
+                            }
+                        } else {
+                            Text(
+                                text = "(current)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if (showCreateBranchDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showCreateBranchDialog = false },
+            title = { Text("Create New Branch") },
+            text = {
+                OutlinedTextField(
+                    value = newBranchName,
+                    onValueChange = { newBranchName = it },
+                    label = { Text("Branch Name") }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newBranchName.isNotBlank()) {
+                            onCreateBranch(newBranchName)
+                            newBranchName = ""
+                            showCreateBranchDialog = false
+                        }
+                    },
+                    enabled = newBranchName.isNotBlank()
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showCreateBranchDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+
 
 @Composable
 fun EnhancedMessageBubble(

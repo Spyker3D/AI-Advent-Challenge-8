@@ -2,6 +2,9 @@ package com.aiassistant.feature.chat.presentation
 
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.Message
+import com.aiassistant.core.domain.entity.ContextStrategy
+import com.aiassistant.core.domain.entity.StickyFacts
+import com.aiassistant.core.domain.entity.ChatBranch
 
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
@@ -29,5 +32,11 @@ data class ChatUiState(
     val compressedHistoryTokensEstimate: Int = 0,
     val savedTokensEstimate: Int = 0,
     val compressionRatioPercent: Int = 0,
-    val lastSummaryMessageCount: Int = 0
+    val lastSummaryMessageCount: Int = 0,
+    // Context strategy fields
+    val selectedContextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW,
+    val stickyFacts: StickyFacts = StickyFacts(),
+    val branches: List<ChatBranch> = emptyList(),
+    val currentBranchId: String = "main",
+    val factsStatus: String = "" // "Updating", "Updated", "Failed"
 )
