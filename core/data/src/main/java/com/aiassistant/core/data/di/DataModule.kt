@@ -51,7 +51,7 @@ abstract class DataModule {
                 context,
                 ChatDatabase::class.java,
                 "chat_database"
-            ).addMigrations(ChatDatabase.MIGRATION_1_2).build()
+            ).addMigrations(ChatDatabase.MIGRATION_1_2, ChatDatabase.MIGRATION_2_3).build()
         }
         
         @Provides

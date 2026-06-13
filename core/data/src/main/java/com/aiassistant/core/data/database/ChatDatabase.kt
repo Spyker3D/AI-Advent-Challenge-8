@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ChatMessageEntity::class],
-    version = 2
+    version = 3
 )
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
@@ -18,6 +18,12 @@ abstract class ChatDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE chat_messages ADD COLUMN currentRequestTokens INTEGER")
                 database.execSQL("ALTER TABLE chat_messages ADD COLUMN historyTokens INTEGER")
                 database.execSQL("ALTER TABLE chat_messages ADD COLUMN completionTokens INTEGER")
+            }
+        }
+        
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE chat_messages ADD COLUMN branchId TEXT DEFAULT 'main' NOT NULL")
             }
         }
     }
