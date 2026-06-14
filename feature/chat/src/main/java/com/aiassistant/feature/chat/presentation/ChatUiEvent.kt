@@ -20,4 +20,5 @@ sealed class ChatUiEvent {
     data class ContextStrategySelected(val strategy: ContextStrategy) : ChatUiEvent()
     data class CreateBranch(val branchName: String) : ChatUiEvent()
     data class SwitchBranch(val branchId: String) : ChatUiEvent()
+    data class DeleteBranch(val branchId: String) : ChatUiEvent()
 }

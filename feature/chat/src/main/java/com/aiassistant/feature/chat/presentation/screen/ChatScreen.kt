@@ -186,7 +186,7 @@ fun ChatScreen(
                 }
             )
             
-            // Branching Strategy UI
+                        // Branching Strategy UI
             if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING) {
                 BranchingControls(
                     branches = uiState.branches,
@@ -196,6 +196,9 @@ fun ChatScreen(
                     },
                     onSwitchBranch = { branchId ->
                         viewModel.handleEvent(ChatUiEvent.SwitchBranch(branchId))
+                    },
+                    onDeleteBranch = { branchId ->
+                        viewModel.handleEvent(ChatUiEvent.DeleteBranch(branchId))
                     }
                 )
             }
@@ -879,7 +882,8 @@ fun BranchingControls(
     branches: List<com.aiassistant.core.domain.entity.ChatBranch>,
     currentBranchId: String,
     onCreateBranch: (String) -> Unit,
-    onSwitchBranch: (String) -> Unit
+    onSwitchBranch: (String) -> Unit,
+    onDeleteBranch: (String) -> Unit
 ) {
     var showCreateBranchDialog by remember { mutableStateOf(false) }
     var newBranchName by remember { mutableStateOf("") }
@@ -909,8 +913,20 @@ fun BranchingControls(
                     style = MaterialTheme.typography.bodySmall
                 )
                 
-                Button(onClick = { showCreateBranchDialog = true }) {
-                    Text("Create Branch")
+                Row {
+                    Button(onClick = { showCreateBranchDialog = true }) {
+                        Text("Create Branch")
+                    }
+                    
+                    if (currentBranchId != "main") {
+                        Button(
+                            onClick = { onDeleteBranch(currentBranchId) },
+                            modifier = Modifier.padding(start = 8.dp),
+                            enabled = currentBranchId != "main"
+                        ) {
+                            Text("Delete Branch")
+                        }
+                    }
                 }
             }
             
@@ -934,19 +950,31 @@ fun BranchingControls(
                             style = MaterialTheme.typography.bodySmall
                         )
                         
-                        if (branch.id != currentBranchId) {
-                            Button(
-                                onClick = { onSwitchBranch(branch.id) },
-                                modifier = Modifier.padding(start = 8.dp)
-                            ) {
-                                Text("Switch")
+                        Row {
+                            if (branch.id != currentBranchId) {
+                                Button(
+                                    onClick = { onSwitchBranch(branch.id) },
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    Text("Switch")
+                                }
+                            } else {
+                                Text(
+                                    text = "(current)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
-                        } else {
-                            Text(
-                                text = "(current)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            
+                            if (branch.id != "main") {
+                                Button(
+                                    onClick = { onDeleteBranch(branch.id) },
+                                    modifier = Modifier.padding(start = 8.dp),
+                                    enabled = branch.id != "main"
+                                ) {
+                                    Text("Delete")
+                                }
+                            }
                         }
                     }
                 }

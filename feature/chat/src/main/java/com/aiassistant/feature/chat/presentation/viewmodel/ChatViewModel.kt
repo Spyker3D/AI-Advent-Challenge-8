@@ -53,7 +53,7 @@ class ChatViewModel @Inject constructor(
     init {
         observeChatSettings()
         loadChatHistory()
-        initializeBranches()
+        // initializeBranches() - moved inside loadChatHistory()
     }
 
     private fun observeChatSettings() {
@@ -83,7 +83,20 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val messages = getChatHistoryUseCase()
-                _uiState.value = _uiState.value.copy(messages = messages)
+
+                val mainBranch = ChatBranch(
+                    id = "main",
+                    name = "main",
+                    messages = messages
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    messages = messages,
+                    branches = listOf(mainBranch),
+                    currentBranchId = "main"
+                )
+
+                chatAgent.setCurrentBranch("main")
             } catch (e: Exception) {
                 // Handle error silently or log it
             }
@@ -98,55 +111,61 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 clearChatHistoryUseCase()
+                
+                _uiState.value = _uiState.value.copy(
+                    messages = emptyList(),
+                    branches = listOf(
+                        ChatBranch(
+                            id = "main",
+                            name = "main",
+                            messages = emptyList()
+                        )
+                    ),
+                    currentBranchId = "main"
+                )
+                
+                chatAgent.setCurrentBranch("main")
             } catch (e: Exception) {
                 // Handle error silently or log it
             }
         }
     }
     
-    private fun initializeBranches() {
-        // Create default "main" branch with existing messages
-        val mainBranch = ChatBranch(
-            id = "main",
-            name = "main",
-            messages = _uiState.value.messages
-        )
-        
-        _uiState.value = _uiState.value.copy(
-            branches = listOf(mainBranch),
-            currentBranchId = "main"
-        )
-    }
+    // initializeBranches() removed - functionality moved to loadChatHistory()
     
     private fun createBranch(branchName: String) {
         val newBranchId = UUID.randomUUID().toString()
-        
-        // Copy current branch messages to new branch
-        val currentBranch = _uiState.value.branches.find { it.id == _uiState.value.currentBranchId }
+
+        val currentBranch = _uiState.value.branches
+            .find { it.id == _uiState.value.currentBranchId }
+
+        val baseMessages = currentBranch?.messages ?: _uiState.value.messages
+
         val newBranch = ChatBranch(
             id = newBranchId,
             name = branchName,
-            messages = currentBranch?.messages ?: emptyList()
+            messages = baseMessages
         )
-        
+
         _uiState.value = _uiState.value.copy(
             branches = _uiState.value.branches + newBranch,
-            currentBranchId = newBranchId
+            currentBranchId = newBranchId,
+            messages = newBranch.messages
         )
+
+        chatAgent.setCurrentBranch(newBranchId)
     }
     
     private fun switchBranch(branchId: String) {
-        // Update current branch ID
-        _uiState.value = _uiState.value.copy(currentBranchId = branchId)
-        
-        // Update ChatAgent with the new branch ID
+        val branch = _uiState.value.branches.find { it.id == branchId }
+            ?: return
+
+        _uiState.value = _uiState.value.copy(
+            currentBranchId = branchId,
+            messages = branch.messages
+        )
+
         chatAgent.setCurrentBranch(branchId)
-        
-        // Update messages to match the current branch
-        val currentBranch = _uiState.value.branches.find { it.id == branchId }
-        if (currentBranch != null) {
-            _uiState.value = _uiState.value.copy(messages = currentBranch.messages)
-        }
     }
     
     private fun updateBranchWithMessage(branchId: String, message: Message): List<ChatBranch> {
@@ -156,6 +175,36 @@ class ChatViewModel @Inject constructor(
             } else {
                 branch
             }
+        }
+    }
+    
+    private fun deleteBranch(branchId: String) {
+        if (branchId == "main") return
+
+        val updatedBranches = _uiState.value.branches
+            .filterNot { it.id == branchId }
+
+        val shouldSwitchToMain = _uiState.value.currentBranchId == branchId
+
+        val newCurrentBranchId = if (shouldSwitchToMain) {
+            "main"
+        } else {
+            _uiState.value.currentBranchId
+        }
+
+        val newMessages = updatedBranches
+            .find { it.id == newCurrentBranchId }
+            ?.messages
+            ?: emptyList()
+
+        _uiState.value = _uiState.value.copy(
+            branches = updatedBranches,
+            currentBranchId = newCurrentBranchId,
+            messages = newMessages
+        )
+
+        if (shouldSwitchToMain) {
+            chatAgent.setCurrentBranch("main")
         }
     }
 
@@ -198,9 +247,12 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.CreateBranch -> {
                 createBranch(event.branchName)
             }
-            is ChatUiEvent.SwitchBranch -> {
-                switchBranch(event.branchId)
-            }
+                            is ChatUiEvent.SwitchBranch -> {
+                    switchBranch(event.branchId)
+                }
+                is ChatUiEvent.DeleteBranch -> {
+                    deleteBranch(event.branchId)
+                }
         }
     }
 
@@ -546,14 +598,20 @@ $limitedConversationText""".trimIndent()
     }
     
     private fun buildBranchingHistory(finalMessage: String, requestTokens: Int): Pair<List<Message>, Int> {
-        // Get messages from current branch only
-        val currentBranch = _uiState.value.branches.find { it.id == _uiState.value.currentBranchId }
+        val currentBranch = _uiState.value.branches
+            .find { it.id == _uiState.value.currentBranchId }
+
         val branchMessages = currentBranch?.messages ?: emptyList()
-        
-        // Calculate history tokens
-        val historyTokens = branchMessages.sumOf { TokenCounter.countTokens(it.content) }
-        
-        return Pair(branchMessages, historyTokens)
+
+        // Exclude the latest user message to avoid duplication
+        // since ChatRequest.message already contains the current user message
+        val previousBranchMessages = branchMessages.dropLast(1)
+
+        val historyTokens = previousBranchMessages.sumOf {
+            TokenCounter.countTokens(it.content)
+        }
+
+        return Pair(previousBranchMessages, historyTokens)
     }
     
     private suspend fun updateStickyFacts(userMessage: String): StickyFacts {
