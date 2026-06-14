@@ -893,13 +893,13 @@ fun BranchingControls(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(8.dp)) {
             Text(
                 text = "Branching Strategy",
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold
             )
             
@@ -909,22 +909,27 @@ fun BranchingControls(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Current Branch: ${currentBranch?.name ?: "Unknown"}",
+                    text = "Current: ${currentBranch?.name ?: "Unknown"}",
                     style = MaterialTheme.typography.bodySmall
                 )
                 
                 Row {
-                    Button(onClick = { showCreateBranchDialog = true }) {
-                        Text("Create Branch")
+                    OutlinedButton(
+                        onClick = { showCreateBranchDialog = true },
+                        modifier = Modifier.padding(start = 4.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Create", style = MaterialTheme.typography.bodySmall)
                     }
                     
                     if (currentBranchId != "main") {
-                        Button(
+                        OutlinedButton(
                             onClick = { onDeleteBranch(currentBranchId) },
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier.padding(start = 4.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             enabled = currentBranchId != "main"
                         ) {
-                            Text("Delete Branch")
+                            Text("Delete", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -932,31 +937,33 @@ fun BranchingControls(
             
             if (branches.size > 1) {
                 Text(
-                    text = "Available Branches:",
+                    text = "Branches:",
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 4.dp)
                 )
                 
                 branches.forEach { branch ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = branch.name,
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
                         )
                         
                         Row {
                             if (branch.id != currentBranchId) {
-                                Button(
+                                OutlinedButton(
                                     onClick = { onSwitchBranch(branch.id) },
-                                    modifier = Modifier.padding(start = 8.dp)
+                                    modifier = Modifier.padding(start = 4.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
-                                    Text("Switch")
+                                    Text("Switch", style = MaterialTheme.typography.bodySmall)
                                 }
                             } else {
                                 Text(
@@ -967,12 +974,13 @@ fun BranchingControls(
                             }
                             
                             if (branch.id != "main") {
-                                Button(
+                                OutlinedButton(
                                     onClick = { onDeleteBranch(branch.id) },
-                                    modifier = Modifier.padding(start = 8.dp),
+                                    modifier = Modifier.padding(start = 4.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                     enabled = branch.id != "main"
                                 ) {
-                                    Text("Delete")
+                                    Text("Del", style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }

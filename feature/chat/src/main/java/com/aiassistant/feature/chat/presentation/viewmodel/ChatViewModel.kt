@@ -267,7 +267,7 @@ class ChatViewModel @Inject constructor(
             currentMessage
         }
         
-        // Debug logging
+                // Debug logging
         if (_uiState.value.attachedFileText != null) {
             android.util.Log.d("ChatViewModel", "File attached: true")
             android.util.Log.d("ChatViewModel", "File name: ${_uiState.value.attachedFileName}")
@@ -276,8 +276,15 @@ class ChatViewModel @Inject constructor(
         } else {
             android.util.Log.d("ChatViewModel", "File attached: false")
         }
+        
+        // Debug logging for BRANCHING strategy
+        if (_uiState.value.selectedContextStrategy == ContextStrategy.BRANCHING) {
+            android.util.Log.d("ChatViewModel", "BRANCHING: Sending message: $finalMessage")
+            val currentBranch = _uiState.value.branches.find { it.id == _uiState.value.currentBranchId }
+            android.util.Log.d("ChatViewModel", "BRANCHING: Current branch messages count: ${currentBranch?.messages?.size ?: 0}")
+        }
 
-        // Add user message immediately to UI for responsiveness
+                // Add user message immediately to UI for responsiveness
         val userMessage = Message(
             id = UUID.randomUUID().toString(),
             content = finalMessage,
@@ -355,7 +362,7 @@ class ChatViewModel @Inject constructor(
                     chatAgent.sendMessage(chatRequest, _uiState.value.selectedContextStrategy)
                 }
 
-                result
+                                result
                     .onSuccess { response ->
                         // Create token metrics with the calculated values
                         val tokenMetrics = TokenMetrics(
@@ -391,7 +398,7 @@ class ChatViewModel @Inject constructor(
                         // Update token estimates after sending message
                         updateTokenEstimates()
                     }
-                    .onFailure { throwable ->
+                                        .onFailure { throwable ->
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             error = throwable.message ?: "An unknown error occurred"
@@ -605,6 +612,7 @@ $limitedConversationText""".trimIndent()
 
         // Exclude the latest user message to avoid duplication
         // since ChatRequest.message already contains the current user message
+        // But ChatAgent will add it back, so we need to account for its tokens
         val previousBranchMessages = branchMessages.dropLast(1)
 
         val historyTokens = previousBranchMessages.sumOf {

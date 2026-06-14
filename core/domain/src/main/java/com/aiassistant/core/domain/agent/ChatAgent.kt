@@ -63,18 +63,29 @@ class ChatAgent @Inject constructor(
     suspend fun sendMessage(chatRequest: ChatRequest, contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW): Result<AiChatResponse> = withContext(dispatcher) {
         try {
             // Use the history provided in the chatRequest
-            // The history already includes the user message from ViewModel, so we don't need to add it again
             val effectiveHistory = chatRequest.history.toMutableList()
             
-            // Get the user message from the history (it should be the last message)
-            val userMessage = effectiveHistory.lastOrNull { it.role == MessageRole.USER } ?: Message(
+            // Create the current user message from chatRequest.message
+            val userMessage = Message(
                 id = UUID.randomUUID().toString(),
                 content = chatRequest.message,
                 role = MessageRole.USER
             )
             
+            // Add the current user message to the history
+            effectiveHistory.add(userMessage)
+            
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size: ${effectiveHistory.size}")
+            
+            // Debug logging for BRANCHING strategy
+            if (contextStrategy == ContextStrategy.BRANCHING) {
+                Log.d("BRANCHING_FINAL_REQUEST", "History messages:")
+                effectiveHistory.forEachIndexed { index, message ->
+                    Log.d("BRANCHING_FINAL_REQUEST", "index=$index role=${message.role} content=${message.content.take(50)}...")
+                }
+                Log.d("BRANCHING_FINAL_REQUEST", "currentMessage=${chatRequest.message}")
+            }
             
             // Calculate token metrics before sending to LLM
             val currentRequestTokens = TokenCounter.countTokens(chatRequest.message)
@@ -145,24 +156,10 @@ class ChatAgent @Inject constructor(
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
             // Use the history provided in the chatRequest
-            // The history already includes the user message from ViewModel, so we don't need to add it again
             val effectiveHistory = chatRequest.history.toMutableList()
             
-            // Get the user message from the history (it should be the last message)
-            // If not found, create a new one with restrictions
-            val userMessage = effectiveHistory.lastOrNull { it.role == MessageRole.USER }?.let { existingMessage ->
-                // Apply restrictions to existing message if needed
-                val restrictedContent = buildUserMessageWithRestrictions(
-                    originalMessage = existingMessage.content,
-                    useJsonFormat = useJsonFormat,
-                    limitLength = limitLength
-                )
-                if (restrictedContent != existingMessage.content) {
-                    existingMessage.copy(content = restrictedContent)
-                } else {
-                    existingMessage
-                }
-            } ?: Message(
+            // Create the current user message with restrictions
+            val userMessage = Message(
                 id = UUID.randomUUID().toString(),
                 content = buildUserMessageWithRestrictions(
                     originalMessage = chatRequest.message,
@@ -172,8 +169,20 @@ class ChatAgent @Inject constructor(
                 role = MessageRole.USER
             )
             
+            // Add the current user message to the history
+            effectiveHistory.add(userMessage)
+            
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size with restrictions: ${effectiveHistory.size}")
+            
+            // Debug logging for BRANCHING strategy
+            if (contextStrategy == ContextStrategy.BRANCHING) {
+                Log.d("BRANCHING_FINAL_REQUEST", "History messages (with restrictions):")
+                effectiveHistory.forEachIndexed { index, message ->
+                    Log.d("BRANCHING_FINAL_REQUEST", "index=$index role=${message.role} content=${message.content.take(50)}...")
+                }
+                Log.d("BRANCHING_FINAL_REQUEST", "currentMessage=${chatRequest.message}")
+            }
             
             // Calculate token metrics before sending to LLM
             val currentRequestTokens = TokenCounter.countTokens(chatRequest.message)
