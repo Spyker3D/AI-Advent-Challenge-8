@@ -63,17 +63,15 @@ class ChatAgent @Inject constructor(
     suspend fun sendMessage(chatRequest: ChatRequest, contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW): Result<AiChatResponse> = withContext(dispatcher) {
         try {
             // Use the history provided in the chatRequest
+            // The history already includes the user message from ViewModel, so we don't need to add it again
             val effectiveHistory = chatRequest.history.toMutableList()
             
-            // Create user message
-            val userMessage = Message(
+            // Get the user message from the history (it should be the last message)
+            val userMessage = effectiveHistory.lastOrNull { it.role == MessageRole.USER } ?: Message(
                 id = UUID.randomUUID().toString(),
                 content = chatRequest.message,
                 role = MessageRole.USER
             )
-            
-            // Add user message to history
-            effectiveHistory.add(userMessage)
             
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size: ${effectiveHistory.size}")
@@ -83,19 +81,17 @@ class ChatAgent @Inject constructor(
             val historyTokens = effectiveHistory.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
                 .sumOf { TokenCounter.countTokens(it.content) }
             
-            // For sticky facts strategy, modify the system prompt
-            val effectiveSystemPrompt = if (contextStrategy == ContextStrategy.STICKY_FACTS) {
-                buildSystemPromptWithFacts(chatRequest.systemPrompt)
-            } else {
-                chatRequest.systemPrompt
-            }
+            // For sticky facts strategy, do not modify the system prompt as it's already handled by ViewModel
+            // The system prompt with facts is already in the first message of effectiveHistory
+            val effectiveSystemPrompt = chatRequest.systemPrompt
             
             // Send to LLM with full history and proper maxTokens
-            // Note: We need to update the system prompt in the first message if it exists
+            // For STICKY_FACTS, the system message with facts is already in the history
+            // For other strategies, we may need to update or add the system prompt
             val messagesToSend = if (effectiveHistory.isNotEmpty() && effectiveHistory.first().role == MessageRole.SYSTEM) {
-                // Replace the system prompt in the first message
-                val updatedFirstMessage = effectiveHistory.first().copy(content = effectiveSystemPrompt.toString())
-                listOf(updatedFirstMessage) + effectiveHistory.drop(1)
+                // If there's already a system message (e.g., from STICKY_FACTS), use it as-is
+                // Otherwise, update the system prompt in the first message
+                effectiveHistory
             } else {
                 // Add system prompt as first message if not present
                 val systemMessage = Message(
@@ -124,8 +120,8 @@ class ChatAgent @Inject constructor(
                     tokenMetrics = tokenMetrics
                 )
                 
-                // Save both messages to repository with current branch
-                chatRepository.saveMessage(userMessage, currentBranchId)
+                // Save only the assistant message to repository with current branch
+                // The user message is already saved by the ViewModel
                 chatRepository.saveMessage(assistantMessage, currentBranchId)
                 
                 // Return the response with token metrics
@@ -149,23 +145,32 @@ class ChatAgent @Inject constructor(
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
             // Use the history provided in the chatRequest
+            // The history already includes the user message from ViewModel, so we don't need to add it again
             val effectiveHistory = chatRequest.history.toMutableList()
             
-            // Create user message with restrictions
-            val userMessageContent = buildUserMessageWithRestrictions(
-                originalMessage = chatRequest.message,
-                useJsonFormat = useJsonFormat,
-                limitLength = limitLength
-            )
-            
-            val userMessage = Message(
+            // Get the user message from the history (it should be the last message)
+            // If not found, create a new one with restrictions
+            val userMessage = effectiveHistory.lastOrNull { it.role == MessageRole.USER }?.let { existingMessage ->
+                // Apply restrictions to existing message if needed
+                val restrictedContent = buildUserMessageWithRestrictions(
+                    originalMessage = existingMessage.content,
+                    useJsonFormat = useJsonFormat,
+                    limitLength = limitLength
+                )
+                if (restrictedContent != existingMessage.content) {
+                    existingMessage.copy(content = restrictedContent)
+                } else {
+                    existingMessage
+                }
+            } ?: Message(
                 id = UUID.randomUUID().toString(),
-                content = userMessageContent,
+                content = buildUserMessageWithRestrictions(
+                    originalMessage = chatRequest.message,
+                    useJsonFormat = useJsonFormat,
+                    limitLength = limitLength
+                ),
                 role = MessageRole.USER
             )
-            
-            // Add user message to history
-            effectiveHistory.add(userMessage)
             
             // Log the history size for debugging
             Log.d("ChatAgent", "Sending history size with restrictions: ${effectiveHistory.size}")
@@ -175,19 +180,17 @@ class ChatAgent @Inject constructor(
             val historyTokens = effectiveHistory.filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
                 .sumOf { TokenCounter.countTokens(it.content) }
             
-            // For sticky facts strategy, modify the system prompt
-            val effectiveSystemPrompt = if (contextStrategy == ContextStrategy.STICKY_FACTS) {
-                buildSystemPromptWithFacts(chatRequest.systemPrompt)
-            } else {
-                chatRequest.systemPrompt
-            }
+            // For sticky facts strategy, do not modify the system prompt as it's already handled by ViewModel
+            // The system prompt with facts is already in the first message of effectiveHistory
+            val effectiveSystemPrompt = chatRequest.systemPrompt
             
             // Send to LLM with full history and proper maxTokens
-            // Note: We need to update the system prompt in the first message if it exists
+            // For STICKY_FACTS, the system message with facts is already in the history
+            // For other strategies, we may need to update or add the system prompt
             val messagesToSend = if (effectiveHistory.isNotEmpty() && effectiveHistory.first().role == MessageRole.SYSTEM) {
-                // Replace the system prompt in the first message
-                val updatedFirstMessage = effectiveHistory.first().copy(content = effectiveSystemPrompt.toString())
-                listOf(updatedFirstMessage) + effectiveHistory.drop(1)
+                // If there's already a system message (e.g., from STICKY_FACTS), use it as-is
+                // Otherwise, update the system prompt in the first message
+                effectiveHistory
             } else {
                 // Add system prompt as first message if not present
                 val systemMessage = Message(
@@ -216,8 +219,8 @@ class ChatAgent @Inject constructor(
                     tokenMetrics = tokenMetrics
                 )
                 
-                // Save both messages to repository with current branch
-                chatRepository.saveMessage(userMessage, currentBranchId)
+                // Save only the assistant message to repository with current branch
+                // The user message is already saved by the ViewModel
                 chatRepository.saveMessage(assistantMessage, currentBranchId)
                 
                 // Return the response with token metrics

@@ -23,6 +23,9 @@ import com.aiassistant.core.domain.usecase.SendMessageUseCase
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.ChatUiState
+import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -230,13 +233,6 @@ class ChatViewModel @Inject constructor(
             timestamp = System.currentTimeMillis()
         )
         
-        // For Sticky Facts strategy, update facts before sending message
-        if (_uiState.value.selectedContextStrategy == ContextStrategy.STICKY_FACTS) {
-            updateStickyFacts(finalMessage)
-            // In a real implementation, we would wait for the facts update to complete
-            // For now, we'll proceed with the current facts and let the update happen asynchronously
-        }
-        
         // Check if we need to generate a new summary BEFORE adding the user message
         // Generate summary only when: numberOfNewMessagesSinceLastSummary >= 10
         val shouldGenerateSummary = _uiState.value.useContextCompression && 
@@ -262,6 +258,12 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // For Sticky Facts strategy, update facts before sending message
+                var updatedFacts = _uiState.value.stickyFacts
+                if (_uiState.value.selectedContextStrategy == ContextStrategy.STICKY_FACTS) {
+                    updatedFacts = updateStickyFacts(finalMessage)
+                }
+                
                 // Calculate token metrics before building the request
                 val requestTokens = TokenCounter.countTokens(finalMessage)
                 
@@ -271,7 +273,7 @@ class ChatViewModel @Inject constructor(
                         buildSlidingWindowHistory(finalMessage, requestTokens)
                     }
                     ContextStrategy.STICKY_FACTS -> {
-                        buildStickyFactsHistory(finalMessage, requestTokens)
+                        buildStickyFactsHistory(finalMessage, requestTokens, updatedFacts)
                     }
                     ContextStrategy.BRANCHING -> {
                         buildBranchingHistory(finalMessage, requestTokens)
@@ -508,37 +510,38 @@ $limitedConversationText""".trimIndent()
         return Pair(lastMessages, historyTokens)
     }
     
-    private fun buildStickyFactsHistory(finalMessage: String, requestTokens: Int): Pair<List<Message>, Int> {
+    private fun buildStickyFactsHistory(finalMessage: String, requestTokens: Int, updatedFacts: StickyFacts): Pair<List<Message>, Int> {
         val SLIDING_WINDOW_SIZE = 5
-        
-        // Create system message with sticky facts
+
         val factsContent = buildString {
             append("Important facts:\n\n")
-            append("Goal:\n${_uiState.value.stickyFacts.goal}\n\n")
-            append("Stack:\n${_uiState.value.stickyFacts.stack}\n\n")
-            append("Constraints:\n${_uiState.value.stickyFacts.constraints}\n\n")
-            append("Preferences:\n${_uiState.value.stickyFacts.preferences}\n\n")
-            append("Decisions:\n${_uiState.value.stickyFacts.decisions}\n\n")
-            append("Unresolved Questions:\n${_uiState.value.stickyFacts.unresolvedQuestions}\n\n")
+            append("Goal:\n${updatedFacts.goal}\n\n")
+            append("Stack:\n${updatedFacts.stack}\n\n")
+            append("Constraints:\n${updatedFacts.constraints}\n\n")
+            append("Preferences:\n${updatedFacts.preferences}\n\n")
+            append("Decisions:\n${updatedFacts.decisions}\n\n")
+            append("Unresolved Questions:\n${updatedFacts.unresolvedQuestions}\n\n")
         }
-        
+
         val factsMessage = Message(
             id = UUID.randomUUID().toString(),
             content = factsContent,
             role = MessageRole.SYSTEM
         )
-        
-        // Take the last SLIDING_WINDOW_SIZE messages
-        val lastMessages = _uiState.value.messages.takeLast(SLIDING_WINDOW_SIZE)
-        
-        // Combine facts message with last messages
+
+        // _uiState.value.messages already contains the latest user message.
+        // Exclude it from history to avoid duplication.
+        val previousMessages = _uiState.value.messages.dropLast(1)
+
+        // Send only previous last 5 messages with facts.
+        val lastMessages = previousMessages.takeLast(SLIDING_WINDOW_SIZE)
+
         val effectiveHistory = listOf(factsMessage) + lastMessages
-        
-        // Calculate history tokens (facts + last messages)
-        val factsTokens = TokenCounter.countTokens(factsContent)
-        val lastMessagesTokens = lastMessages.sumOf { TokenCounter.countTokens(it.content) }
-        val historyTokens = factsTokens + lastMessagesTokens
-        
+
+        val historyTokens =
+            TokenCounter.countTokens(factsContent) +
+            lastMessages.sumOf { TokenCounter.countTokens(it.content) }
+
         return Pair(effectiveHistory, historyTokens)
     }
     
@@ -553,14 +556,13 @@ $limitedConversationText""".trimIndent()
         return Pair(branchMessages, historyTokens)
     }
     
-    private fun updateStickyFacts(userMessage: String) {
-        viewModelScope.launch {
-            try {
-                // Update UI to show facts are updating
-                _uiState.value = _uiState.value.copy(factsStatus = "Updating")
-                
-                // Create the prompt for fact extraction
-                val factsPrompt = """You are a memory extraction system.
+    private suspend fun updateStickyFacts(userMessage: String): StickyFacts {
+        try {
+            // Update UI to show facts are updating
+            _uiState.value = _uiState.value.copy(factsStatus = "Updating")
+            
+            // Create the prompt for fact extraction
+            val factsPrompt = """You are a memory extraction system.
 
 Update the stored facts using the latest user message and recent conversation context.
 
@@ -592,50 +594,54 @@ Latest user message:
 $userMessage
 
 Return:""".trimIndent()
-                
-                // Create a message for fact extraction
-                val factsMessage = Message(
-                    id = UUID.randomUUID().toString(),
-                    content = factsPrompt,
-                    role = MessageRole.USER
-                )
-                
-                // Extract facts using GPT-4o Mini
-                val result = llmClient.sendChat(
-                    messages = listOf(factsMessage),
-                    maxTokens = 500,
-                    model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for fact extraction
-                )
-                
-                result
-                    .onSuccess { response ->
-                        try {
-                            // Parse the JSON response
-                            val factsJson = response.message.trim()
-                            val facts = parseFactsJson(factsJson)
-                            
-                            // Update sticky facts in UI
-                            _uiState.value = _uiState.value.copy(
-                                stickyFacts = facts,
-                                factsStatus = "Updated"
-                            )
-                        } catch (e: Exception) {
-                            // Keep previous facts and show failure
-                            _uiState.value = _uiState.value.copy(factsStatus = "Failed")
-                            android.util.Log.e("ChatViewModel", "Failed to parse facts JSON", e)
-                        }
-                    }
-                    .onFailure { throwable ->
+            
+            // Create a message for fact extraction
+            val factsMessage = Message(
+                id = UUID.randomUUID().toString(),
+                content = factsPrompt,
+                role = MessageRole.USER
+            )
+            
+            // Extract facts using GPT-4o Mini
+            val result = llmClient.sendChat(
+                messages = listOf(factsMessage),
+                maxTokens = 500,
+                model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for fact extraction
+            )
+            
+            return result
+                .map { response ->
+                    try {
+                        // Parse the JSON response
+                        val factsJson = response.message.trim()
+                        val facts = parseFactsJson(factsJson)
+                        
+                        // Update sticky facts in UI
+                        _uiState.value = _uiState.value.copy(
+                            stickyFacts = facts,
+                            factsStatus = "Updated"
+                        )
+                        
+                        facts
+                    } catch (e: Exception) {
                         // Keep previous facts and show failure
                         _uiState.value = _uiState.value.copy(factsStatus = "Failed")
-                        android.util.Log.e("ChatViewModel", "Failed to extract facts: ${throwable.message}")
+                        android.util.Log.e("ChatViewModel", "Failed to parse facts JSON", e)
+                        _uiState.value.stickyFacts
                     }
-                
-            } catch (e: Exception) {
-                // Keep previous facts and show failure
-                _uiState.value = _uiState.value.copy(factsStatus = "Failed")
-                android.util.Log.e("ChatViewModel", "Failed to update sticky facts", e)
-            }
+                }
+                .getOrElse { throwable ->
+                    // Keep previous facts and show failure
+                    _uiState.value = _uiState.value.copy(factsStatus = "Failed")
+                    android.util.Log.e("ChatViewModel", "Failed to extract facts: ${throwable.message}")
+                    _uiState.value.stickyFacts
+                }
+            
+        } catch (e: Exception) {
+            // Keep previous facts and show failure
+            _uiState.value = _uiState.value.copy(factsStatus = "Failed")
+            android.util.Log.e("ChatViewModel", "Failed to update sticky facts", e)
+            return _uiState.value.stickyFacts
         }
     }
     
@@ -661,33 +667,79 @@ Return:""".trimIndent()
     }
     
     private fun parseFactsJson(jsonString: String): StickyFacts {
-        // Simple JSON parsing for the specific format
-        val cleanJson = jsonString
-            .replace(Regex("^```json"), "")
-            .replace(Regex("```$"), "")
-            .trim()
+        try {
+            // Clean the JSON response
+            val cleanJson = cleanJsonResponse(jsonString)
+            
+            android.util.Log.d("ChatViewModel", "rawFactsJson=$jsonString")
+            android.util.Log.d("ChatViewModel", "cleanFactsJson=$cleanJson")
+            
+            // Parse JSON with Gson
+            val gson = Gson()
+            val jsonObject = try {
+                gson.fromJson(cleanJson, JsonObject::class.java)
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "Failed to parse JSON string", e)
+                return _uiState.value.stickyFacts
+            }
+            
+            // Extract values with proper array handling
+            val goal = extractJsonFieldValue(jsonObject, "goal")
+            val stack = extractJsonFieldValue(jsonObject, "stack")
+            val constraints = extractJsonFieldValue(jsonObject, "constraints")
+            val preferences = extractJsonFieldValue(jsonObject, "preferences")
+            val decisions = extractJsonFieldValue(jsonObject, "decisions")
+            val unresolvedQuestions = extractJsonFieldValue(jsonObject, "unresolvedQuestions")
+                
+            val parsedFacts = StickyFacts(
+                goal = if (goal.isNotBlank()) goal else _uiState.value.stickyFacts.goal,
+                stack = if (stack.isNotBlank()) stack else _uiState.value.stickyFacts.stack,
+                constraints = if (constraints.isNotBlank()) constraints else _uiState.value.stickyFacts.constraints,
+                preferences = if (preferences.isNotBlank()) preferences else _uiState.value.stickyFacts.preferences,
+                decisions = if (decisions.isNotBlank()) decisions else _uiState.value.stickyFacts.decisions,
+                unresolvedQuestions = if (unresolvedQuestions.isNotBlank()) unresolvedQuestions else _uiState.value.stickyFacts.unresolvedQuestions
+            )
+                
+            android.util.Log.d("ChatViewModel", "parsedFacts=$parsedFacts")
+                
+            return parsedFacts
+        } catch (e: Exception) {
+            android.util.Log.e("ChatViewModel", "Failed to parse facts JSON with Gson", e)
+        }
         
-        // Extract values using regex
-        val goal = extractJsonValue(cleanJson, "goal")
-        val stack = extractJsonValue(cleanJson, "stack")
-        val constraints = extractJsonValue(cleanJson, "constraints")
-        val preferences = extractJsonValue(cleanJson, "preferences")
-        val decisions = extractJsonValue(cleanJson, "decisions")
-        val unresolvedQuestions = extractJsonValue(cleanJson, "unresolvedQuestions")
-        
-        return StickyFacts(
-            goal = goal,
-            stack = stack,
-            constraints = constraints,
-            preferences = preferences,
-            decisions = decisions,
-            unresolvedQuestions = unresolvedQuestions
-        )
+        // Return previous facts on failure
+        return _uiState.value.stickyFacts
     }
     
-    private fun extractJsonValue(json: String, key: String): String {
-        // Simple regex to extract value for a key
-        val regex = "\"${key}\"\\s*:\\s*\"([^\"\\]*(\\.[^\"\\]*)*)\"".toRegex()
-        return regex.find(json)?.groupValues?.get(1) ?: ""
+    private fun extractJsonFieldValue(jsonObject: JsonObject, key: String): String {
+        return try {
+            if (jsonObject.has(key) && !jsonObject.get(key).isJsonNull) {
+                val element: JsonElement = jsonObject.get(key)
+                when {
+                    element.isJsonArray -> {
+                        // Convert array to multiline string
+                        val array = element.asJsonArray
+                        array.map { it.toString().trim('"') }.joinToString("\n")
+                    }
+                    element.isJsonPrimitive -> {
+                        // Handle primitive values (strings, numbers, booleans)
+                        element.asString ?: ""
+                    }
+                    else -> ""
+                }
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ChatViewModel", "Failed to extract field value for key: $key", e)
+            ""
+        }
+    }
+    
+    private fun cleanJsonResponse(raw: String): String {
+        return raw
+            .replace("```json", "")
+            .replace("```", "")
+            .trim()
     }
 }

@@ -74,6 +74,9 @@ dependencies {
     implementation("com.google.dagger:dagger:2.48")
     kapt("com.google.dagger:dagger-compiler:2.48")
     
+    // Gson
+    implementation("com.google.code.gson:gson:2.10.1")
+    
     implementation("androidx.core:core-ktx:1.12.0")
     
     testImplementation("junit:junit:4.13.2")
