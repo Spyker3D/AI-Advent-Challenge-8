@@ -328,6 +328,9 @@ class ChatViewModel @Inject constructor(
                 
                 // Build the appropriate history based on the selected context strategy
                 val (effectiveHistory, historyTokens) = when (_uiState.value.selectedContextStrategy) {
+                    ContextStrategy.NO_STRATEGY -> {
+                        buildFullHistory(finalMessage, requestTokens)
+                    }
                     ContextStrategy.SLIDING_WINDOW -> {
                         buildSlidingWindowHistory(finalMessage, requestTokens)
                     }
@@ -620,6 +623,18 @@ $limitedConversationText""".trimIndent()
         }
 
         return Pair(previousBranchMessages, historyTokens)
+    }
+    
+    private fun buildFullHistory(finalMessage: String, requestTokens: Int): Pair<List<Message>, Int> {
+        // For NO_STRATEGY, send the full conversation history
+        // Exclude the latest user message to avoid duplication
+        val previousMessages = _uiState.value.messages.dropLast(1)
+
+        val historyTokens = previousMessages.sumOf {
+            TokenCounter.countTokens(it.content)
+        }
+
+        return Pair(previousMessages, historyTokens)
     }
     
     private suspend fun updateStickyFacts(userMessage: String): StickyFacts {

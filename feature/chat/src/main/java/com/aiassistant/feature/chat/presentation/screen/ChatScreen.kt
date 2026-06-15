@@ -608,7 +608,8 @@ fun TokenMetricsMessage(
                 // Context Strategy
                 contextStrategy?.let { strategy ->
                     Text(
-                        text = "Context Strategy: ${when (strategy) {
+                                                text = "Context Strategy: ${when (strategy) {
+                            com.aiassistant.core.domain.entity.ContextStrategy.NO_STRATEGY -> "Full History"
                             com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
                             com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
                             com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
@@ -738,34 +739,37 @@ fun ContextStrategySelector(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(8.dp)) {
             Text(
                 text = "Context Strategy",
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold
             )
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 com.aiassistant.core.domain.entity.ContextStrategy.values().forEach { strategy ->
-                    OutlinedButton(
+                    androidx.compose.material3.AssistChip(
                         onClick = { onStrategySelected(strategy) },
+                        label = {
+                            Text(
+                                text = when (strategy) {
+                                    com.aiassistant.core.domain.entity.ContextStrategy.NO_STRATEGY -> "Full History"
+                                    com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
+                                    com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
+                                    com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
+                                },
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        },
                         modifier = Modifier.weight(1f),
                         enabled = selectedStrategy != strategy
-                    ) {
-                        Text(
-                            text = when (strategy) {
-                                com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
-                                com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
-                                com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
-                            }
-                        )
-                    }
+                    )
                 }
             }
         }
