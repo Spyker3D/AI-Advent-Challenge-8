@@ -84,6 +84,7 @@ private fun com.aiassistant.feature.chat.presentation.memory.MemoryUiState.conte
 ): String {
     return when (type) {
         MemoryFileType.PROFILE -> longTermMemory.profile
+        MemoryFileType.PREFERENCES -> longTermMemory.preferences
         MemoryFileType.GLOBAL_RULES -> longTermMemory.globalRules
         MemoryFileType.PROJECT_KNOWLEDGE -> longTermMemory.projectKnowledge
         MemoryFileType.DECISIONS -> longTermMemory.decisions

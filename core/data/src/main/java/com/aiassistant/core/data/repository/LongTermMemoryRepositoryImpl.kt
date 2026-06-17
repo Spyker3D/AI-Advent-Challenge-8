@@ -19,13 +19,20 @@ class LongTermMemoryRepositoryImpl @Inject constructor(
         ensureFiles()
         LongTermMemory(
             profile = file(PROFILE).readText(),
+            preferences = file(PREFERENCES).readText(),
             globalRules = file(GLOBAL_RULES).readText(),
             projectKnowledge = file(PROJECT_KNOWLEDGE).readText(),
             decisions = file(DECISIONS).readText()
         )
     }
 
+    override suspend fun getPreferences(): String = withContext(Dispatchers.IO) {
+        ensureFiles()
+        file(PREFERENCES).readText()
+    }
+
     override suspend fun saveProfile(content: String) = write(PROFILE, content)
+    override suspend fun savePreferences(content: String) = write(PREFERENCES, content)
     override suspend fun saveGlobalRules(content: String) = write(GLOBAL_RULES, content)
     override suspend fun saveProjectKnowledge(content: String) = write(PROJECT_KNOWLEDGE, content)
     override suspend fun saveDecisions(content: String) = write(DECISIONS, content)
@@ -38,6 +45,21 @@ class LongTermMemoryRepositoryImpl @Inject constructor(
     private fun ensureFiles() {
         longTermDir.mkdirs()
         ensureFile(PROFILE, "# Profile\n")
+        ensureFile(
+            PREFERENCES,
+            """
+            # Preferences
+            
+            Language:
+            - Russian
+            
+            Answer style:
+            - concise
+            
+            Code style:
+            - prefer Kotlin
+            """.trimIndent() + "\n"
+        )
         ensureFile(GLOBAL_RULES, "# Global Rules\n")
         ensureFile(PROJECT_KNOWLEDGE, "# Project Knowledge\n")
         ensureFile(DECISIONS, "# Decisions\n")
@@ -54,6 +76,7 @@ class LongTermMemoryRepositoryImpl @Inject constructor(
 
     private companion object {
         const val PROFILE = "profile.md"
+        const val PREFERENCES = "preferences.md"
         const val GLOBAL_RULES = "global_rules.md"
         const val PROJECT_KNOWLEDGE = "project_knowledge.md"
         const val DECISIONS = "decisions.md"

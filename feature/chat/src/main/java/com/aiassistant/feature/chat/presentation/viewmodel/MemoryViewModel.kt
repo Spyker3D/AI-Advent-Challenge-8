@@ -72,6 +72,7 @@ class MemoryViewModel @Inject constructor(
             runCatching {
                 when (type) {
                     MemoryFileType.PROFILE -> longTermMemoryRepository.saveProfile(content)
+                    MemoryFileType.PREFERENCES -> longTermMemoryRepository.savePreferences(content)
                     MemoryFileType.GLOBAL_RULES -> longTermMemoryRepository.saveGlobalRules(content)
                     MemoryFileType.PROJECT_KNOWLEDGE -> longTermMemoryRepository.saveProjectKnowledge(content)
                     MemoryFileType.DECISIONS -> longTermMemoryRepository.saveDecisions(content)
