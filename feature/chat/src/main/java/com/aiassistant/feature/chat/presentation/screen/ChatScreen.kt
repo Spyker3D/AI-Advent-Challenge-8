@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,17 +26,26 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -43,6 +53,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -68,6 +79,7 @@ import com.aiassistant.core.ui.components.LoadingIndicator
 import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -85,6 +97,7 @@ sealed class ChatItem {
 fun ChatScreen(
     viewModel: ChatViewModel,
     onNavigateToSettings: () -> Unit,
+    onNavigateToMemory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -93,12 +106,14 @@ fun ChatScreen(
     // val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var isOverflowMenuOpen by remember { mutableStateOf(false) }
+
     // Refresh settings when returning from settings screen
     LaunchedEffect(Unit) {
         viewModel.refreshSettings()
     }
-    
+
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -122,13 +137,14 @@ fun ChatScreen(
                 }
             }
             // Add loading indicator only after the last user message when loading
-            if (message.role == com.aiassistant.core.domain.entity.MessageRole.USER && 
-                uiState.isLoading && 
-                message == uiState.messages.lastOrNull { it.role == com.aiassistant.core.domain.entity.MessageRole.USER }) {
+            if (message.role == com.aiassistant.core.domain.entity.MessageRole.USER &&
+                uiState.isLoading &&
+                message == uiState.messages.lastOrNull { it.role == com.aiassistant.core.domain.entity.MessageRole.USER }
+            ) {
                 chatItems.add(ChatItem.LoadingIndicatorItem)
             }
         }
-        
+
         // Scroll to the last item
         if (chatItems.isNotEmpty()) {
             listState.animateScrollToItem(chatItems.size - 1)
@@ -143,241 +159,215 @@ fun ChatScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "AI Assistant",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.handleEvent(ChatUiEvent.ClearChat) }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Clear,
-                            contentDescription = "Clear Chat"
-                        )
-                    }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings"
-                        )
-                    }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text("AI Assistant", modifier = Modifier.padding(16.dp))
+
+                Button(
+                    onClick = {
+                        viewModel.handleEvent(ChatUiEvent.NewChatClicked)
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text("+ New chat")
                 }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+
+                Text("Chats:", modifier = Modifier.padding(16.dp, 0.dp))
+
+                uiState.chats.forEach { chat ->
+                    NavigationDrawerItem(
+                        label = { Text(chat.title) },
+                        selected = chat.id == uiState.currentChatId,
+                        onClick = {
+                            viewModel.handleEvent(ChatUiEvent.ChatSelected(chat.id))
+                            scope.launch { drawerState.close() }
+                        },
+                        badge = {
+                            IconButton(
+                                onClick = {
+                                    viewModel.handleEvent(ChatUiEvent.DeleteChatClicked(chat.id))
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Delete chat"
+                                )
+                            }
+                        },
+                        modifier = Modifier.padding(8.dp, 0.dp)
+                    )
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "AI Assistant",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            scope.launch { drawerState.open() }
+                        }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open chats")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.handleEvent(ChatUiEvent.ClearChat) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Clear,
+                                contentDescription = "Clear Chat"
+                            )
+                        }
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings"
+                            )
+                        }
+                        IconButton(onClick = { isOverflowMenuOpen = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = isOverflowMenuOpen,
+                            onDismissRequest = { isOverflowMenuOpen = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Memory") },
+                                onClick = {
+                                    isOverflowMenuOpen = false
+                                    onNavigateToMemory()
+                                }
+                            )
+                        }
+                    }
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
                 // .imePadding()
                 // .navigationBarsPadding()
-        ) {
-            // Context Strategy Selector
-            ContextStrategySelector(
-                selectedStrategy = uiState.selectedContextStrategy,
-                onStrategySelected = { strategy ->
-                    viewModel.handleEvent(ChatUiEvent.ContextStrategySelected(strategy))
-                }
-            )
-            
-                        // Branching Strategy UI
-            if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING) {
-                BranchingControls(
-                    branches = uiState.branches,
-                    currentBranchId = uiState.currentBranchId,
-                    onCreateBranch = { branchName ->
-                        viewModel.handleEvent(ChatUiEvent.CreateBranch(branchName))
-                    },
-                    onSwitchBranch = { branchId ->
-                        viewModel.handleEvent(ChatUiEvent.SwitchBranch(branchId))
-                    },
-                    onDeleteBranch = { branchId ->
-                        viewModel.handleEvent(ChatUiEvent.DeleteBranch(branchId))
-                    }
-                )
-            }
-            
-            // Sticky Facts Strategy UI
-            if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS) {
-                StickyFactsDisplay(
-                    stickyFacts = uiState.stickyFacts,
-                    factsStatus = uiState.factsStatus
-                )
-            }
-            
-            // Sliding Window Strategy UI
-            if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW) {
-                SlidingWindowMetrics(
-                    totalMessages = uiState.messages.size
-                )
-            }
-            
-            // Messages list (existing chat functionality)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
             ) {
-                if (uiState.messages.isEmpty()) {
-                    // Empty state
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Start a conversation with AI",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
+                // Context Strategy Selector
+                ContextStrategySelector(
+                    selectedStrategy = uiState.selectedContextStrategy,
+                    onStrategySelected = { strategy ->
+                        viewModel.handleEvent(ChatUiEvent.ContextStrategySelected(strategy))
                     }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        // Create a list that includes messages, token metrics, and loading indicators
-                        val chatItems = mutableListOf<ChatItem>()
-                        uiState.messages.forEach { message ->
-                            chatItems.add(ChatItem.MessageItem(message))
-                            // Add token metrics as separate items for assistant messages
-                            message.tokenMetrics?.let { tokenMetrics ->
-                                if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
-                                    chatItems.add(ChatItem.TokenMetricsItem(tokenMetrics))
+                )
+
+                // Branching Strategy UI
+                if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING) {
+                    BranchingControls(
+                        branches = uiState.branches,
+                        currentBranchId = uiState.currentBranchId,
+                        onCreateBranch = { branchName ->
+                            viewModel.handleEvent(ChatUiEvent.CreateBranch(branchName))
+                        },
+                        onSwitchBranch = { branchId ->
+                            viewModel.handleEvent(ChatUiEvent.SwitchBranch(branchId))
+                        },
+                        onDeleteBranch = { branchId ->
+                            viewModel.handleEvent(ChatUiEvent.DeleteBranch(branchId))
+                        }
+                    )
+                }
+
+                // Sticky Facts Strategy UI
+                if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS) {
+                    StickyFactsDisplay(
+                        stickyFacts = uiState.stickyFacts,
+                        factsStatus = uiState.factsStatus
+                    )
+                }
+
+                // Sliding Window Strategy UI
+                if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW) {
+                    SlidingWindowMetrics(
+                        totalMessages = uiState.messages.size
+                    )
+                }
+
+                // Messages list (existing chat functionality)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    if (uiState.messages.isEmpty()) {
+                        // Empty state
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Start a conversation with AI",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                horizontal = 16.dp,
+                                vertical = 8.dp
+                            )
+                        ) {
+                            // Create a list that includes messages, token metrics, and loading indicators
+                            val chatItems = mutableListOf<ChatItem>()
+                            uiState.messages.forEach { message ->
+                                chatItems.add(ChatItem.MessageItem(message))
+                                // Add token metrics as separate items for assistant messages
+                                message.tokenMetrics?.let { tokenMetrics ->
+                                    if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                                        chatItems.add(ChatItem.TokenMetricsItem(tokenMetrics))
+                                    }
+                                }
+                                // Add loading indicator only after the last user message when loading
+                                if (message.role == com.aiassistant.core.domain.entity.MessageRole.USER &&
+                                    uiState.isLoading &&
+                                    message == uiState.messages.lastOrNull { it.role == com.aiassistant.core.domain.entity.MessageRole.USER }
+                                ) {
+                                    chatItems.add(ChatItem.LoadingIndicatorItem)
                                 }
                             }
-                            // Add loading indicator only after the last user message when loading
-                            if (message.role == com.aiassistant.core.domain.entity.MessageRole.USER && 
-                                uiState.isLoading && 
-                                message == uiState.messages.lastOrNull { it.role == com.aiassistant.core.domain.entity.MessageRole.USER }) {
-                                chatItems.add(ChatItem.LoadingIndicatorItem)
-                            }
-                        }
-                        
-                        items(chatItems) { item ->
-                            when (item) {
-                                is ChatItem.MessageItem -> {
-                                    val message = item.message
-                                    // Show structured cards if JSON parsing succeeded for assistant messages
-                                    if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT && uiState.useJsonFormat) {
-                                        // Try to parse the message content as FormattedAiResponse
-                                        val formattedResponse = viewModel.parseFormattedResponse(message.content)
-                                        if (formattedResponse != null) {
-                                            // Don't show the message bubble for successful JSON parsing
-                                            // Show structured cards only
-                                            
-                                            // Topic
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = "Topic",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(text = formattedResponse.topic, style = MaterialTheme.typography.bodyMedium)
-                                                }
-                                            }
-                                            
-                                            // Date
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = "Date",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(text = formattedResponse.date, style = MaterialTheme.typography.bodyMedium)
-                                                }
-                                            }
-                                            
-                                            // Time
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = "Time",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(text = formattedResponse.time, style = MaterialTheme.typography.bodyMedium)
-                                                }
-                                            }
-                                            
-                                            // Answer
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = "Answer",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(text = formattedResponse.answer, style = MaterialTheme.typography.bodyMedium)
-                                                }
-                                            }
-                                            
-                                            // Tags
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = "Tags",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.Start
-                                                    ) {
-                                                        formattedResponse.tags.forEach { tag ->
-                                                            Card(
-                                                                modifier = Modifier.padding(end = 4.dp),
-                                                                shape = RoundedCornerShape(16.dp),
-                                                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = tag,
-                                                                    style = MaterialTheme.typography.bodySmall,
-                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            // Show compression info for JSON formatted responses
-                                            val tokenMetrics = message.tokenMetrics
-                                            if (tokenMetrics != null) {
+
+                            items(chatItems) { item ->
+                                when (item) {
+                                    is ChatItem.MessageItem -> {
+                                        val message = item.message
+                                        // Show structured cards if JSON parsing succeeded for assistant messages
+                                        if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT && uiState.useJsonFormat) {
+                                            // Try to parse the message content as FormattedAiResponse
+                                            val formattedResponse =
+                                                viewModel.parseFormattedResponse(message.content)
+                                            if (formattedResponse != null) {
+                                                // Don't show the message bubble for successful JSON parsing
+                                                // Show structured cards only
+
+                                                // Topic
                                                 Card(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -388,184 +378,324 @@ fun ChatScreen(
                                                 ) {
                                                     Column(modifier = Modifier.padding(12.dp)) {
                                                         Text(
-                                                            text = buildCompressionInfoText(
-                                                                tokenMetrics,
-                                                                uiState.useContextCompression
-                                                            ),
+                                                            text = "Topic",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            text = formattedResponse.topic,
+                                                            style = MaterialTheme.typography.bodyMedium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Date
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp),
+                                                    elevation = CardDefaults.cardElevation(
+                                                        defaultElevation = 4.dp
+                                                    )
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = "Date",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            text = formattedResponse.date,
+                                                            style = MaterialTheme.typography.bodyMedium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Time
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp),
+                                                    elevation = CardDefaults.cardElevation(
+                                                        defaultElevation = 4.dp
+                                                    )
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = "Time",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            text = formattedResponse.time,
+                                                            style = MaterialTheme.typography.bodyMedium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Answer
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp),
+                                                    elevation = CardDefaults.cardElevation(
+                                                        defaultElevation = 4.dp
+                                                    )
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = "Answer",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            text = formattedResponse.answer,
+                                                            style = MaterialTheme.typography.bodyMedium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Tags
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp),
+                                                    elevation = CardDefaults.cardElevation(
+                                                        defaultElevation = 4.dp
+                                                    )
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = "Tags",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.Start
+                                                        ) {
+                                                            formattedResponse.tags.forEach { tag ->
+                                                                Card(
+                                                                    modifier = Modifier.padding(end = 4.dp),
+                                                                    shape = RoundedCornerShape(16.dp),
+                                                                    elevation = CardDefaults.cardElevation(
+                                                                        defaultElevation = 2.dp
+                                                                    )
+                                                                ) {
+                                                                    Text(
+                                                                        text = tag,
+                                                                        style = MaterialTheme.typography.bodySmall,
+                                                                        modifier = Modifier.padding(
+                                                                            horizontal = 6.dp,
+                                                                            vertical = 2.dp
+                                                                        )
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                // Show compression info for JSON formatted responses
+                                                val tokenMetrics = message.tokenMetrics
+                                                if (tokenMetrics != null) {
+                                                    Card(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(top = 4.dp),
+                                                        elevation = CardDefaults.cardElevation(
+                                                            defaultElevation = 4.dp
+                                                        )
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(12.dp)) {
+                                                            Text(
+                                                                text = buildCompressionInfoText(
+                                                                    tokenMetrics,
+                                                                    uiState.useContextCompression
+                                                                ),
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                // Show message bubble if JSON parsing failed but JSON format was requested
+                                                EnhancedMessageBubble(
+                                                    message = message,
+                                                    useContextCompression = uiState.useContextCompression,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+
+                                                // Show raw response card
+                                                Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp),
+                                                    elevation = CardDefaults.cardElevation(
+                                                        defaultElevation = 4.dp
+                                                    )
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = "Invalid JSON format, showing raw response",
                                                             style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            color = MaterialTheme.colorScheme.error
                                                         )
                                                     }
                                                 }
                                             }
                                         } else {
-                                            // Show message bubble if JSON parsing failed but JSON format was requested
-                                            EnhancedMessageBubble(
-                                                message = message,
-                                                useContextCompression = uiState.useContextCompression,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                            
-                                            // Show raw response card
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = "Invalid JSON format, showing raw response",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.error
-                                                    )
-                                                }
+                                            // Show message bubble for all other messages (user messages or non-JSON assistant messages)
+                                            if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                                                // Show enhanced message bubble with compression info for assistant messages
+                                                EnhancedMessageBubble(
+                                                    message = message,
+                                                    useContextCompression = uiState.useContextCompression,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            } else {
+                                                MessageBubble(
+                                                    message = message,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
                                             }
                                         }
-                                    } else {
-                                        // Show message bubble for all other messages (user messages or non-JSON assistant messages)
-                                        if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
-                                            // Show enhanced message bubble with compression info for assistant messages
-                                            EnhancedMessageBubble(
-                                                message = message,
-                                                useContextCompression = uiState.useContextCompression,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        } else {
-                                            MessageBubble(
-                                                message = message,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
+                                    }
+
+                                    is ChatItem.TokenMetricsItem -> {
+                                        // Show token metrics as a separate message
+                                        TokenMetricsMessage(
+                                            tokenMetrics = item.tokenMetrics,
+                                            contextStrategy = uiState.selectedContextStrategy,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+
+                                    is ChatItem.LoadingIndicatorItem -> {
+                                        LoadingIndicator(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp)
+                                        )
                                     }
                                 }
-                                is ChatItem.TokenMetricsItem -> {
-                                    // Show token metrics as a separate message
-                                    TokenMetricsMessage(
-                                        tokenMetrics = item.tokenMetrics,
-                                        contextStrategy = uiState.selectedContextStrategy,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                                is ChatItem.LoadingIndicatorItem -> {
-                                    LoadingIndicator(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp)
-                                    )
-                                }
                             }
-                        }
 
-                        // Loading indicator is now shown after user messages
-                        // This ensures it appears in the right place in the conversation flow
+                            // Loading indicator is now shown after user messages
+                            // This ensures it appears in the right place in the conversation flow
+                        }
                     }
                 }
-            }
 
-            // File attachment section
-            if (uiState.attachedFileName != null) {
-                AttachedFileSection(
-                    fileName = uiState.attachedFileName!!,
-                    fileText = uiState.attachedFileText ?: "",
-                    onClear = { viewModel.handleEvent(ChatUiEvent.ClearAttachedFile) }
-                )
-            }
-            
-            // Context Compression Section
-            if (uiState.useContextCompression) {
-                Card(
+                // File attachment section
+                if (uiState.attachedFileName != null) {
+                    AttachedFileSection(
+                        fileName = uiState.attachedFileName!!,
+                        fileText = uiState.attachedFileText ?: "",
+                        onClear = { viewModel.handleEvent(ChatUiEvent.ClearAttachedFile) }
+                    )
+                }
+
+                // Context Compression Section
+                if (uiState.useContextCompression) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text(
+                                text = "Context Compression Metrics",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Full History Tokens: ${uiState.fullHistoryTokensEstimate}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "Compressed Tokens: ${uiState.compressedHistoryTokensEstimate}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Saved Tokens: ${uiState.savedTokensEstimate}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "Compression Ratio: ${uiState.compressionRatioPercent}%",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Input section (existing chat input)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
+                    // Attach file button
+                    OutlinedButton(
+                        onClick = {
+                            filePickerLauncher.launch("text/plain")
+                        },
+                        enabled = !uiState.isLoading
                     ) {
-                        Text(
-                            text = "Context Compression Metrics",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Full History Tokens: ${uiState.fullHistoryTokensEstimate}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "Compressed Tokens: ${uiState.compressedHistoryTokensEstimate}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Saved Tokens: ${uiState.savedTokensEstimate}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "Compression Ratio: ${uiState.compressionRatioPercent}%",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
+                        Icon(Icons.Default.Add, contentDescription = "Attach file")
                     }
-                }
-            }
-            
-            // Input section (existing chat input)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Attach file button
-                OutlinedButton(
-                    onClick = {
-                        filePickerLauncher.launch("text/plain")
-                    },
-                    enabled = !uiState.isLoading
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Attach file")
-                }
-                
-                OutlinedTextField(
-                    value = uiState.currentMessage,
-                    onValueChange = { viewModel.handleEvent(ChatUiEvent.MessageChanged(it)) },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type your message...", style = MaterialTheme.typography.bodyMedium) },
-                    enabled = !uiState.isLoading,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
+
+                    OutlinedTextField(
+                        value = uiState.currentMessage,
+                        onValueChange = { viewModel.handleEvent(ChatUiEvent.MessageChanged(it)) },
+                        modifier = Modifier.weight(1f),
+                        placeholder = {
+                            Text(
+                                "Type your message...",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        },
+                        enabled = !uiState.isLoading,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                viewModel.handleEvent(ChatUiEvent.SendMessage)
+                                // keyboardController?.hide()
+                            }
+                        ),
+                        shape = RoundedCornerShape(24.dp),
+                        maxLines = 3,
+                        textStyle = MaterialTheme.typography.bodyMedium
+                    )
+
+                    FloatingActionButton(
+                        onClick = {
                             viewModel.handleEvent(ChatUiEvent.SendMessage)
                             // keyboardController?.hide()
-                        }
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    maxLines = 3,
-                    textStyle = MaterialTheme.typography.bodyMedium
-                )
-
-                FloatingActionButton(
-                    onClick = {
-                        viewModel.handleEvent(ChatUiEvent.SendMessage)
-                        // keyboardController?.hide()
-                    },
-                    modifier = Modifier.padding(bottom = 4.dp),
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Send message"
-                    )
+                        },
+                        modifier = Modifier.padding(bottom = 4.dp),
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send message"
+                        )
+                    }
                 }
             }
         }
@@ -1131,7 +1261,7 @@ fun EnhancedMessageBubble(
     }
 }
 
-private fun buildCompressionInfoText(
+fun buildCompressionInfoText(
     tokenMetrics: TokenMetrics,
     useContextCompression: Boolean
 ): String {
@@ -1140,7 +1270,7 @@ private fun buildCompressionInfoText(
     return "Compression: $compressionStatus | History Tokens: ${tokenMetrics.historyTokens} | Completion Tokens: $completionTokens"
 }
 
-private fun formatTimestamp(timestamp: Long): String {
+fun formatTimestamp(timestamp: Long): String {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     return formatter.format(Date(timestamp))
 }

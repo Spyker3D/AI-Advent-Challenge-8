@@ -9,8 +9,10 @@ import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.TokenMetrics
+import com.aiassistant.core.domain.memory.MemoryContext
+import com.aiassistant.core.domain.memory.MemoryOrchestrator
+import com.aiassistant.core.domain.memory.PromptBuilder
 import com.aiassistant.core.domain.util.TokenCounter
-import com.aiassistant.core.domain.repository.ChatRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,8 +20,9 @@ import java.util.UUID
 import javax.inject.Inject
 
 class ChatAgent @Inject constructor(
-    private val chatRepository: ChatRepository,
     private val llmClient: LlmClient,
+    private val memoryOrchestrator: MemoryOrchestrator,
+    private val promptBuilder: PromptBuilder,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     
@@ -60,10 +63,23 @@ class ChatAgent @Inject constructor(
     /**
      * Sends a message to the LLM and manages the chat history
      */
-    suspend fun sendMessage(chatRequest: ChatRequest, contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW): Result<AiChatResponse> = withContext(dispatcher) {
+    suspend fun sendMessage(
+        chatRequest: ChatRequest,
+        contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW,
+        chatId: String? = null,
+        taskContextId: String? = null
+    ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
+            val memoryContext = buildMemoryContext(chatId, taskContextId, contextStrategy)
+            val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext)
+            logMemoryLayers(chatId, memoryContext)
+
             // Use the history provided in the chatRequest
-            val effectiveHistory = chatRequest.history.toMutableList()
+            val effectiveHistory = buildEffectiveHistory(
+                chatRequest = chatRequest,
+                contextStrategy = contextStrategy,
+                memoryContext = memoryContext
+            )
             
             // Create the current user message from chatRequest.message
             val userMessage = Message(
@@ -94,7 +110,7 @@ class ChatAgent @Inject constructor(
             
             // For sticky facts strategy, do not modify the system prompt as it's already handled by ViewModel
             // The system prompt with facts is already in the first message of effectiveHistory
-            val effectiveSystemPrompt = chatRequest.systemPrompt
+            val effectiveSystemPrompt = enrichedSystemPrompt
             
             // Send to LLM with full history and proper maxTokens
             // For STICKY_FACTS, the system message with facts is already in the history
@@ -107,7 +123,7 @@ class ChatAgent @Inject constructor(
                 // Add system prompt as first message if not present
                 val systemMessage = Message(
                     id = UUID.randomUUID().toString(),
-                    content = effectiveSystemPrompt.toString(),
+                    content = effectiveSystemPrompt,
                     role = MessageRole.SYSTEM
                 )
                 listOf(systemMessage) + effectiveHistory
@@ -122,18 +138,6 @@ class ChatAgent @Inject constructor(
                     historyTokens = historyTokens,
                     completionTokens = chatResponse.completionTokens
                 )
-                
-                // Create assistant message with token metrics
-                val assistantMessage = Message(
-                    id = UUID.randomUUID().toString(),
-                    content = chatResponse.message,
-                    role = MessageRole.ASSISTANT,
-                    tokenMetrics = tokenMetrics
-                )
-                
-                // Save only the assistant message to repository with current branch
-                // The user message is already saved by the ViewModel
-                chatRepository.saveMessage(assistantMessage, currentBranchId)
                 
                 // Return the response with token metrics
                 AiChatResponse(chatResponse.message, null, tokenMetrics)
@@ -152,11 +156,21 @@ class ChatAgent @Inject constructor(
         limitLength: Boolean,
         useStopSequence: Boolean,
         stopSequenceText: String,
-        contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW
+        contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW,
+        chatId: String? = null,
+        taskContextId: String? = null
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
+            val memoryContext = buildMemoryContext(chatId, taskContextId, contextStrategy)
+            val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext)
+            logMemoryLayers(chatId, memoryContext)
+
             // Use the history provided in the chatRequest
-            val effectiveHistory = chatRequest.history.toMutableList()
+            val effectiveHistory = buildEffectiveHistory(
+                chatRequest = chatRequest,
+                contextStrategy = contextStrategy,
+                memoryContext = memoryContext
+            )
             
             // Create the current user message with restrictions
             val userMessage = Message(
@@ -191,7 +205,7 @@ class ChatAgent @Inject constructor(
             
             // For sticky facts strategy, do not modify the system prompt as it's already handled by ViewModel
             // The system prompt with facts is already in the first message of effectiveHistory
-            val effectiveSystemPrompt = chatRequest.systemPrompt
+            val effectiveSystemPrompt = enrichedSystemPrompt
             
             // Send to LLM with full history and proper maxTokens
             // For STICKY_FACTS, the system message with facts is already in the history
@@ -204,7 +218,7 @@ class ChatAgent @Inject constructor(
                 // Add system prompt as first message if not present
                 val systemMessage = Message(
                     id = UUID.randomUUID().toString(),
-                    content = effectiveSystemPrompt.toString(),
+                    content = effectiveSystemPrompt,
                     role = MessageRole.SYSTEM
                 )
                 listOf(systemMessage) + effectiveHistory
@@ -219,18 +233,6 @@ class ChatAgent @Inject constructor(
                     historyTokens = historyTokens,
                     completionTokens = chatResponse.completionTokens
                 )
-                
-                // Create assistant message with token metrics
-                val assistantMessage = Message(
-                    id = UUID.randomUUID().toString(),
-                    content = chatResponse.message,
-                    role = MessageRole.ASSISTANT,
-                    tokenMetrics = tokenMetrics
-                )
-                
-                // Save only the assistant message to repository with current branch
-                // The user message is already saved by the ViewModel
-                chatRepository.saveMessage(assistantMessage, currentBranchId)
                 
                 // Return the response with token metrics
                 AiChatResponse(chatResponse.message, null, tokenMetrics)
@@ -256,5 +258,72 @@ class ChatAgent @Inject constructor(
         }
         
         return stringBuilder.toString()
+    }
+
+    private suspend fun buildMemoryContext(
+        chatId: String?,
+        taskContextId: String?,
+        contextStrategy: ContextStrategy
+    ): MemoryContext? {
+        if (chatId == null) return null
+
+        val shortTermLimit = when (contextStrategy) {
+            ContextStrategy.NO_STRATEGY -> Int.MAX_VALUE
+            else -> 5
+        }
+
+        return memoryOrchestrator.buildMemoryContext(
+            chatId = chatId,
+            taskContextId = taskContextId,
+            shortTermLimit = shortTermLimit
+        )
+    }
+
+    private fun buildEnrichedSystemPrompt(
+        chatRequest: ChatRequest,
+        memoryContext: MemoryContext?
+    ): String {
+        val baseSystemPrompt = chatRequest.systemPrompt.orEmpty()
+        return memoryContext?.let {
+            promptBuilder.buildSystemPrompt(baseSystemPrompt, it)
+        } ?: baseSystemPrompt
+    }
+
+    private fun buildEffectiveHistory(
+        chatRequest: ChatRequest,
+        contextStrategy: ContextStrategy,
+        memoryContext: MemoryContext?
+    ): MutableList<Message> {
+        val memoryShortTermMessages = memoryContext
+            ?.shortTermMessages
+            ?.withoutCurrentUserMessage(chatRequest.message)
+            .orEmpty()
+
+        val baseHistory = when {
+            memoryContext == null -> chatRequest.history
+            contextStrategy == ContextStrategy.STICKY_FACTS -> chatRequest.history
+            contextStrategy == ContextStrategy.BRANCHING -> chatRequest.history
+            else -> memoryShortTermMessages
+        }
+
+        return baseHistory.toMutableList()
+    }
+
+    private fun logMemoryLayers(chatId: String?, memoryContext: MemoryContext?) {
+        Log.d("MEMORY_LAYERS", "chatId=$chatId")
+        Log.d("MEMORY_LAYERS", "taskContextId=${memoryContext?.taskContext?.id}")
+        Log.d("MEMORY_LAYERS", "shortTermMessages=${memoryContext?.shortTermMessages?.size ?: 0}")
+        Log.d("MEMORY_LAYERS", "workingMemory=${memoryContext?.taskContext != null}")
+        Log.d("MEMORY_LAYERS", "longTermMemory=${memoryContext != null}")
+    }
+
+    private fun List<Message>.withoutCurrentUserMessage(currentMessage: String): List<Message> {
+        if (isEmpty()) return this
+        val lastMessage = last()
+        return if (lastMessage.role == MessageRole.USER && lastMessage.content == currentMessage) {
+            dropLast(1)
+        } else {
+            this
+        }
     }
 }

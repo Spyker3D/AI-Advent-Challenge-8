@@ -2,7 +2,8 @@ package com.aiassistant.core.domain.di
 
 import com.aiassistant.core.domain.agent.ChatAgent
 import com.aiassistant.core.domain.agent.LlmClient
-import com.aiassistant.core.domain.repository.ChatRepository
+import com.aiassistant.core.domain.memory.MemoryOrchestrator
+import com.aiassistant.core.domain.memory.PromptBuilder
 import dagger.Module
 import dagger.Provides
 import kotlinx.coroutines.CoroutineDispatcher
@@ -15,11 +16,12 @@ class AgentModule {
     @Provides
     @Singleton
     fun provideChatAgent(
-        chatRepository: ChatRepository,
         llmClient: LlmClient,
+        memoryOrchestrator: MemoryOrchestrator,
+        promptBuilder: PromptBuilder,
         ioDispatcher: CoroutineDispatcher
     ): ChatAgent {
-        return ChatAgent(chatRepository, llmClient, ioDispatcher)
+        return ChatAgent(llmClient, memoryOrchestrator, promptBuilder, ioDispatcher)
     }
     
     @Provides

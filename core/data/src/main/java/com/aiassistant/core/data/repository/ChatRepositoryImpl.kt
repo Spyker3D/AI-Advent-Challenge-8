@@ -4,10 +4,13 @@ import com.aiassistant.core.network.api.OpenRouterApi
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.database.ChatDatabase
 import com.aiassistant.core.data.database.ChatMessageDao
+import com.aiassistant.core.data.database.dao.ChatDao
+import com.aiassistant.core.data.database.entity.ChatEntity
 import com.aiassistant.core.data.mapper.ChatMapper
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiResponseMetadata
+import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.entity.ChatRequest
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
@@ -25,6 +28,7 @@ class ChatRepositoryImpl @Inject constructor(
     private val chatMapper: ChatMapper,
     private val chatMessageMapper: ChatMessageMapper,
     private val chatMessageDao: ChatMessageDao,
+    private val chatDao: ChatDao,
     private val apiConfig: ApiConfig,
     private val gson: Gson
 ) : ChatRepository {
@@ -137,6 +141,51 @@ class ChatRepositoryImpl @Inject constructor(
     override suspend fun clearMessages(branchId: String) {
         withContext(Dispatchers.IO) {
             chatMessageDao.clearMessages(branchId)
+        }
+    }
+    
+    // Chat management methods
+    override suspend fun getChats(): List<Chat> {
+        return withContext(Dispatchers.IO) {
+            chatDao.getChats().map {
+                Chat(
+                    id = it.id,
+                    title = it.title,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt,
+                    lastMessagePreview = it.lastMessagePreview,
+                    activeTaskContextId = it.activeTaskContextId
+                )
+            }
+        }
+    }
+    
+    override suspend fun createChat(title: String): Chat {
+        return withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val chatId = java.util.UUID.randomUUID().toString()
+            val chatEntity = ChatEntity(chatId, title, now, now, "")
+            chatDao.insertChat(chatEntity)
+            Chat(chatId, title, now, now, "")
+        }
+    }
+    
+    override suspend fun deleteChat(chatId: String) {
+        withContext(Dispatchers.IO) {
+            chatDao.deleteChat(chatId)
+            chatMessageDao.clearMessages(chatId)
+        }
+    }
+    
+    override suspend fun updateChatMeta(chatId: String, title: String, preview: String) {
+        withContext(Dispatchers.IO) {
+            chatDao.updateChatMeta(chatId, title, System.currentTimeMillis(), preview)
+        }
+    }
+
+    override suspend fun updateChatActiveTaskContext(chatId: String, taskContextId: String?) {
+        withContext(Dispatchers.IO) {
+            chatDao.updateChatActiveTaskContext(chatId, taskContextId, System.currentTimeMillis())
         }
     }
 }

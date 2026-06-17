@@ -21,4 +21,11 @@ sealed class ChatUiEvent {
     data class CreateBranch(val branchName: String) : ChatUiEvent()
     data class SwitchBranch(val branchId: String) : ChatUiEvent()
     data class DeleteBranch(val branchId: String) : ChatUiEvent()
+    
+    // Multi-chat events
+    object NewChatClicked : ChatUiEvent()
+    data class ChatSelected(val chatId: String) : ChatUiEvent()
+    data class DeleteChatClicked(val chatId: String) : ChatUiEvent()
+    object OpenChatDrawer : ChatUiEvent()
+    object CloseChatDrawer : ChatUiEvent()
 }

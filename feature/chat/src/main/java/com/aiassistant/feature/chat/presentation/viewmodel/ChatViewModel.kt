@@ -50,9 +50,9 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    init {
+        init {
         observeChatSettings()
-        loadChatHistory()
+        loadChats()
         // initializeBranches() - moved inside loadChatHistory()
     }
 
@@ -79,10 +79,10 @@ class ChatViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
     
-    private fun loadChatHistory() {
+        private fun loadChatHistory() {
         viewModelScope.launch {
             try {
-                val messages = getChatHistoryUseCase()
+                val messages = getChatHistoryUseCase(_uiState.value.currentChatId)
 
                 val mainBranch = ChatBranch(
                     id = "main",
@@ -96,7 +96,37 @@ class ChatViewModel @Inject constructor(
                     currentBranchId = "main"
                 )
 
-                chatAgent.setCurrentBranch("main")
+                chatAgent.setCurrentBranch(_uiState.value.currentChatId)
+            } catch (e: Exception) {
+                // Handle error silently or log it
+            }
+        }
+    }
+    
+    private fun loadChats() {
+        viewModelScope.launch {
+            try {
+                // Load existing chats
+                val chats = chatRepository.getChats()
+                
+                // If no chats exist, create the initial "main" chat
+                val effectiveChats = if (chats.isEmpty()) {
+                    val mainChat = chatRepository.createChat("New chat")
+                    listOf(mainChat)
+                } else {
+                    chats
+                }
+                
+                val currentChatId = effectiveChats.first().id
+                
+                _uiState.value = _uiState.value.copy(
+                    chats = effectiveChats,
+                    currentChatId = currentChatId,
+                    currentBranchId = currentChatId
+                )
+                
+                // Load messages for the current chat
+                loadChatHistory()
             } catch (e: Exception) {
                 // Handle error silently or log it
             }
@@ -107,10 +137,10 @@ class ChatViewModel @Inject constructor(
         observeChatSettings()
     }
     
-    private fun clearChatHistory() {
+        private fun clearChatHistory() {
         viewModelScope.launch {
             try {
-                clearChatHistoryUseCase()
+                clearChatHistoryUseCase(_uiState.value.currentChatId)
                 
                 _uiState.value = _uiState.value.copy(
                     messages = emptyList(),
@@ -124,7 +154,7 @@ class ChatViewModel @Inject constructor(
                     currentBranchId = "main"
                 )
                 
-                chatAgent.setCurrentBranch("main")
+                chatAgent.setCurrentBranch(_uiState.value.currentChatId)
             } catch (e: Exception) {
                 // Handle error silently or log it
             }
@@ -178,7 +208,7 @@ class ChatViewModel @Inject constructor(
         }
     }
     
-    private fun deleteBranch(branchId: String) {
+        private fun deleteBranch(branchId: String) {
         if (branchId == "main") return
 
         val updatedBranches = _uiState.value.branches
@@ -207,8 +237,92 @@ class ChatViewModel @Inject constructor(
             chatAgent.setCurrentBranch("main")
         }
     }
+    
+    // Multi-chat methods
+    private fun createNewChat() {
+        viewModelScope.launch {
+            try {
+                val chat = chatRepository.createChat("New chat")
+                
+                _uiState.value = _uiState.value.copy(
+                    chats = _uiState.value.chats + chat,
+                    currentChatId = chat.id,
+                    currentBranchId = chat.id,
+                    messages = emptyList(),
+                    isLoading = false
+                )
+                
+                chatAgent.setCurrentBranch(chat.id)
+            } catch (e: Exception) {
+                // Handle error silently or log it
+            }
+        }
+    }
+    
+    private fun selectChat(chatId: String) {
+        viewModelScope.launch {
+            try {
+                val messages = getChatHistoryUseCase(chatId)
+                
+                // Create a main branch with the loaded messages
+                val mainBranch = ChatBranch(
+                    id = "main",
+                    name = "main",
+                    messages = messages
+                )
+                
+                _uiState.value = _uiState.value.copy(
+                    currentChatId = chatId,
+                    currentBranchId = chatId,
+                    messages = messages,
+                    branches = listOf(mainBranch),
+                    isLoading = false
+                )
+                
+                chatAgent.setCurrentBranch(chatId)
+            } catch (e: Exception) {
+                // Handle error silently or log it
+            }
+        }
+    }
+    
+    private fun deleteChat(chatId: String) {
+        viewModelScope.launch {
+            try {
+                chatRepository.deleteChat(chatId)
+                
+                var updatedChats = _uiState.value.chats.filterNot { it.id == chatId }
+                if (updatedChats.isEmpty()) {
+                    updatedChats = listOf(chatRepository.createChat("New chat"))
+                }
+                
+                // If we deleted the current chat, switch to the first available chat
+                val shouldSwitchToFirst = _uiState.value.currentChatId == chatId
+                val newCurrentChatId = if (shouldSwitchToFirst) {
+                    updatedChats.first().id
+                } else {
+                    _uiState.value.currentChatId
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    chats = updatedChats,
+                    currentChatId = newCurrentChatId,
+                    currentBranchId = newCurrentChatId
+                )
+                
+                // Reload messages for the current chat
+                loadChatHistory()
+                
+                if (shouldSwitchToFirst) {
+                    chatAgent.setCurrentBranch(newCurrentChatId)
+                }
+            } catch (e: Exception) {
+                // Handle error silently or log it
+            }
+        }
+    }
 
-    fun handleEvent(event: ChatUiEvent) {
+        fun handleEvent(event: ChatUiEvent) {
         when (event) {
             is ChatUiEvent.MessageChanged -> {
                 _uiState.value = _uiState.value.copy(currentMessage = event.message)
@@ -247,12 +361,29 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.CreateBranch -> {
                 createBranch(event.branchName)
             }
-                            is ChatUiEvent.SwitchBranch -> {
-                    switchBranch(event.branchId)
-                }
-                is ChatUiEvent.DeleteBranch -> {
-                    deleteBranch(event.branchId)
-                }
+            is ChatUiEvent.SwitchBranch -> {
+                switchBranch(event.branchId)
+            }
+            is ChatUiEvent.DeleteBranch -> {
+                deleteBranch(event.branchId)
+            }
+            
+            // Multi-chat events
+            is ChatUiEvent.NewChatClicked -> {
+                createNewChat()
+            }
+            is ChatUiEvent.ChatSelected -> {
+                selectChat(event.chatId)
+            }
+            is ChatUiEvent.DeleteChatClicked -> {
+                deleteChat(event.chatId)
+            }
+            is ChatUiEvent.OpenChatDrawer -> {
+                _uiState.value = _uiState.value.copy(isChatDrawerOpen = true)
+            }
+            is ChatUiEvent.CloseChatDrawer -> {
+                _uiState.value = _uiState.value.copy(isChatDrawerOpen = false)
+            }
         }
     }
 
@@ -266,6 +397,11 @@ class ChatViewModel @Inject constructor(
         } else {
             currentMessage
         }
+        val sendingChatId = _uiState.value.currentChatId
+        val sendingBranchId = _uiState.value.currentBranchId
+        val sendingTaskContextId = _uiState.value.chats
+            .find { it.id == sendingChatId }
+            ?.activeTaskContextId
         
                 // Debug logging
         if (_uiState.value.attachedFileText != null) {
@@ -292,6 +428,11 @@ class ChatViewModel @Inject constructor(
             timestamp = System.currentTimeMillis()
         )
         
+        // Save user message to repository with current chat ID
+        viewModelScope.launch {
+            chatRepository.saveMessage(userMessage, sendingChatId)
+        }
+        
         // Check if we need to generate a new summary BEFORE adding the user message
         // Generate summary only when: numberOfNewMessagesSinceLastSummary >= 10
         val shouldGenerateSummary = _uiState.value.useContextCompression && 
@@ -305,7 +446,7 @@ class ChatViewModel @Inject constructor(
         val updatedMessages = _uiState.value.messages + userMessage
         
         // Update current branch with the new message
-        val updatedBranches = updateBranchWithMessage(_uiState.value.currentBranchId, userMessage)
+        val updatedBranches = updateBranchWithMessage(sendingBranchId, userMessage)
         
         _uiState.value = _uiState.value.copy(
             messages = updatedMessages,
@@ -359,10 +500,17 @@ class ChatViewModel @Inject constructor(
                         limitLength = _uiState.value.limitLength,
                         useStopSequence = _uiState.value.useStopSequence,
                         stopSequenceText = _uiState.value.stopSequenceText,
-                        contextStrategy = _uiState.value.selectedContextStrategy
+                        contextStrategy = _uiState.value.selectedContextStrategy,
+                        chatId = sendingChatId,
+                        taskContextId = sendingTaskContextId
                     )
                 } else {
-                    chatAgent.sendMessage(chatRequest, _uiState.value.selectedContextStrategy)
+                    chatAgent.sendMessage(
+                        chatRequest = chatRequest,
+                        contextStrategy = _uiState.value.selectedContextStrategy,
+                        chatId = sendingChatId,
+                        taskContextId = sendingTaskContextId
+                    )
                 }
 
                                 result
@@ -383,11 +531,25 @@ class ChatViewModel @Inject constructor(
                             tokenMetrics = tokenMetrics
                         )
                         
+                        // Save assistant message to repository with current chat ID
+                        viewModelScope.launch {
+                            chatRepository.saveMessage(assistantMessage, sendingChatId)
+                            
+                            // Update chat metadata
+                            val title = generateChatTitleIfNeeded(finalMessage)
+                            val preview = response.message.take(80)
+                            chatRepository.updateChatMeta(sendingChatId, title, preview)
+                        }
+
+                        if (_uiState.value.currentChatId != sendingChatId) {
+                            return@onSuccess
+                        }
+                        
                         // Add assistant message to both the general messages list and the current branch
                         val updatedMessages = _uiState.value.messages + assistantMessage
                         
                         // Update current branch with the new message
-                        val updatedBranches = updateBranchWithMessage(_uiState.value.currentBranchId, assistantMessage)
+                        val updatedBranches = updateBranchWithMessage(sendingBranchId, assistantMessage)
                         
                         _uiState.value = _uiState.value.copy(
                             messages = updatedMessages,
@@ -822,5 +984,12 @@ Return:""".trimIndent()
             .replace("```json", "")
             .replace("```", "")
             .trim()
+    }
+    
+    // Multi-chat helper methods
+    private fun generateChatTitleIfNeeded(message: String): String {
+        return message
+            .take(30)
+            .ifBlank { "New chat" }
     }
 }

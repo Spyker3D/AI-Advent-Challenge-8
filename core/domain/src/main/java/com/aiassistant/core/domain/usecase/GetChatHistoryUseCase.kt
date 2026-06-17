@@ -7,7 +7,7 @@ import javax.inject.Inject
 class GetChatHistoryUseCase @Inject constructor(
     private val chatRepository: ChatRepository
 ) {
-    suspend operator fun invoke(branchId: String = "main"): List<Message> {
-        return chatRepository.getMessages(branchId)
+    suspend operator fun invoke(chatId: String = "main"): List<Message> {
+        return chatRepository.getMessages(chatId)
     }
 }

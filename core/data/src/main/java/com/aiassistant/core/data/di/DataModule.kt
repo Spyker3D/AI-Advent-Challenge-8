@@ -8,10 +8,14 @@ import com.aiassistant.core.data.database.ChatMessageDao
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.data.repository.ChatRepositoryImpl
+import com.aiassistant.core.data.repository.LongTermMemoryRepositoryImpl
 import com.aiassistant.core.data.repository.SettingsRepositoryImpl
+import com.aiassistant.core.data.repository.WorkingMemoryRepositoryImpl
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.repository.ChatRepository
+import com.aiassistant.core.domain.repository.LongTermMemoryRepository
 import com.aiassistant.core.domain.repository.SettingsRepository
+import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -29,6 +33,16 @@ abstract class DataModule {
     abstract fun bindSettingsRepository(
         settingsRepositoryImpl: SettingsRepositoryImpl
     ): SettingsRepository
+
+    @Binds
+    abstract fun bindWorkingMemoryRepository(
+        workingMemoryRepositoryImpl: WorkingMemoryRepositoryImpl
+    ): WorkingMemoryRepository
+
+    @Binds
+    abstract fun bindLongTermMemoryRepository(
+        longTermMemoryRepositoryImpl: LongTermMemoryRepositoryImpl
+    ): LongTermMemoryRepository
     
     @Binds
     abstract fun bindLlmClient(
@@ -51,13 +65,24 @@ abstract class DataModule {
                 context,
                 ChatDatabase::class.java,
                 "chat_database"
-            ).addMigrations(ChatDatabase.MIGRATION_1_2, ChatDatabase.MIGRATION_2_3).build()
+            ).addMigrations(
+                ChatDatabase.MIGRATION_1_2,
+                ChatDatabase.MIGRATION_2_3,
+                ChatDatabase.MIGRATION_3_4,
+                ChatDatabase.MIGRATION_4_5
+            ).build()
         }
         
         @Provides
         @Singleton
         fun provideChatMessageDao(database: ChatDatabase): ChatMessageDao {
             return database.chatMessageDao()
+        }
+        
+        @Provides
+        @Singleton
+        fun provideChatDao(database: ChatDatabase): com.aiassistant.core.data.database.dao.ChatDao {
+            return database.chatDao()
         }
         
         @Provides

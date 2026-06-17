@@ -6,7 +6,7 @@ import javax.inject.Inject
 class ClearChatHistoryUseCase @Inject constructor(
     private val chatRepository: ChatRepository
 ) {
-    suspend operator fun invoke(branchId: String = "main") {
-        chatRepository.clearMessages(branchId)
+    suspend operator fun invoke(chatId: String = "main") {
+        chatRepository.clearMessages(chatId)
     }
 }

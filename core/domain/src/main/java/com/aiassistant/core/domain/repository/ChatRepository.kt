@@ -1,6 +1,7 @@
 package com.aiassistant.core.domain.repository
 
 import com.aiassistant.core.domain.entity.AiChatResponse
+import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.entity.ChatRequest
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
@@ -22,7 +23,14 @@ interface ChatRepository {
     fun parseFormattedResponse(response: String): Result<FormattedAiResponse>
     
     // Methods for chat history management
-    suspend fun saveMessage(message: Message, branchId: String = "main"): Unit
+    suspend fun saveMessage(message: Message, branchId: String = "main")
     suspend fun getMessages(branchId: String = "main"): List<Message>
-    suspend fun clearMessages(branchId: String = "main"): Unit
+    suspend fun clearMessages(branchId: String = "main")
+    
+    // Methods for chat management
+    suspend fun getChats(): List<Chat>
+    suspend fun createChat(title: String = "New chat"): Chat
+    suspend fun deleteChat(chatId: String)
+    suspend fun updateChatMeta(chatId: String, title: String, preview: String)
+    suspend fun updateChatActiveTaskContext(chatId: String, taskContextId: String?)
 }
