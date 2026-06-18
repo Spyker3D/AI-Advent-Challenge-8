@@ -85,7 +85,11 @@ fun TaskContextEditorScreen(
                     Button(
                         onClick = {
                             viewModel.saveTaskContext(
-                                TaskContext(
+                                (taskContext ?: TaskContext(
+                                    id = taskId.trim(),
+                                    title = title.trim(),
+                                    description = description.trim()
+                                )).copy(
                                     id = taskId.trim(),
                                     title = title.trim(),
                                     description = description.trim(),

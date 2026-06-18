@@ -6,6 +6,7 @@ import com.aiassistant.core.domain.entity.ContextStrategy
 import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.entity.Chat
+import com.aiassistant.core.domain.memory.TaskContext
 
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
@@ -43,5 +44,6 @@ data class ChatUiState(
     // Multi-chat fields
     val chats: List<Chat> = emptyList(),
     val currentChatId: String = "main",
-    val isChatDrawerOpen: Boolean = false
+    val isChatDrawerOpen: Boolean = false,
+    val activeTaskContext: TaskContext? = null
 )

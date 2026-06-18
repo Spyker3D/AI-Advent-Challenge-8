@@ -2,6 +2,7 @@ package com.aiassistant.core.data.repository
 
 import android.content.Context
 import com.aiassistant.core.domain.memory.TaskContext
+import com.aiassistant.core.domain.memory.TaskState
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,18 @@ class WorkingMemoryRepositoryImpl @Inject constructor(
         if (!file.exists()) return@withContext null
 
         runCatching {
-            gson.fromJson(file.readText(), TaskContext::class.java)
+            val parsed = gson.fromJson(file.readText(), TaskContext::class.java)
+            parsed.copy(
+                relatedChatIds = parsed.relatedChatIds ?: emptyList(),
+                goals = parsed.goals ?: emptyList(),
+                constraints = parsed.constraints ?: emptyList(),
+                decisions = parsed.decisions ?: emptyList(),
+                currentState = parsed.currentState.orEmpty(),
+                taskState = parsed.taskState ?: TaskState(),
+                planningResult = parsed.planningResult.orEmpty(),
+                executionResult = parsed.executionResult.orEmpty(),
+                validationResult = parsed.validationResult.orEmpty()
+            )
         }.getOrNull()
     }
 

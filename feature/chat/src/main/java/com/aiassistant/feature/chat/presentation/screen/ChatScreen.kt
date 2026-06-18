@@ -266,6 +266,15 @@ fun ChatScreen(
                 // .imePadding()
                 // .navigationBarsPadding()
             ) {
+                uiState.activeTaskContext?.let { taskContext ->
+                    TaskStateCard(
+                        taskContext = taskContext,
+                        onPause = { viewModel.handleEvent(ChatUiEvent.PauseTask) },
+                        onResume = { viewModel.handleEvent(ChatUiEvent.ResumeTask) },
+                        onContinue = { viewModel.handleEvent(ChatUiEvent.ContinueTask) }
+                    )
+                }
+
                 // Context Strategy Selector
                 ContextStrategySelector(
                     selectedStrategy = uiState.selectedContextStrategy,
@@ -696,6 +705,54 @@ fun ChatScreen(
                             contentDescription = "Send message"
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskStateCard(
+    taskContext: com.aiassistant.core.domain.memory.TaskContext,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onContinue: () -> Unit
+) {
+    val status = taskContext.taskState.status
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("Task State", fontWeight = FontWeight.Bold)
+            Text("Stage: ${taskContext.taskState.stage.name}")
+            Text("Status: ${status.name}")
+            Text("Current step: ${taskContext.taskState.currentStep}")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onPause,
+                    enabled = status != com.aiassistant.core.domain.memory.TaskRunStatus.PAUSED &&
+                        status != com.aiassistant.core.domain.memory.TaskRunStatus.COMPLETED
+                ) {
+                    Text("Pause")
+                }
+                OutlinedButton(
+                    onClick = onResume,
+                    enabled = status == com.aiassistant.core.domain.memory.TaskRunStatus.PAUSED
+                ) {
+                    Text("Resume")
+                }
+                Button(
+                    onClick = onContinue,
+                    enabled = status == com.aiassistant.core.domain.memory.TaskRunStatus.WAITING_USER
+                ) {
+                    Text("Continue")
                 }
             }
         }

@@ -9,5 +9,9 @@ data class TaskContext(
     val constraints: List<String> = emptyList(),
     val decisions: List<String> = emptyList(),
     val currentState: String = "",
+    val taskState: TaskState = TaskState(),
+    val planningResult: String = "",
+    val executionResult: String = "",
+    val validationResult: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 )

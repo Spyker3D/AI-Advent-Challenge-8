@@ -28,4 +28,8 @@ sealed class ChatUiEvent {
     data class DeleteChatClicked(val chatId: String) : ChatUiEvent()
     object OpenChatDrawer : ChatUiEvent()
     object CloseChatDrawer : ChatUiEvent()
+
+    object PauseTask : ChatUiEvent()
+    object ResumeTask : ChatUiEvent()
+    object ContinueTask : ChatUiEvent()
 }

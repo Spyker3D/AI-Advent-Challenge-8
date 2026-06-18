@@ -64,7 +64,10 @@ fun MemoryScreen(
                 .padding(16.dp)
         ) {
             WorkingMemoryCard(
-                activeTaskId = uiState.activeTaskContext?.id ?: "None",
+                taskContext = uiState.activeTaskContext,
+                onPause = viewModel::pauseTask,
+                onResume = viewModel::resumeTask,
+                onContinue = viewModel::continueTask,
                 onEdit = onEditTaskContext
             )
 
@@ -77,7 +80,10 @@ fun MemoryScreen(
 
 @Composable
 private fun WorkingMemoryCard(
-    activeTaskId: String,
+    taskContext: com.aiassistant.core.domain.memory.TaskContext?,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onContinue: () -> Unit,
     onEdit: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -93,10 +99,47 @@ private fun WorkingMemoryCard(
                 modifier = Modifier.padding(top = 8.dp)
             )
             Text(
-                text = "Active task:\n$activeTaskId",
+                text = "Active task:\n${taskContext?.id ?: "None"}",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 12.dp)
             )
+            taskContext?.let {
+                Text(
+                    text = "Stage: ${it.taskState.stage.name}\n" +
+                        "Status: ${it.taskState.status.name}\n" +
+                        "Current step: ${it.taskState.currentStep}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.padding(top = 12.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onPause,
+                        enabled = it.taskState.status !=
+                            com.aiassistant.core.domain.memory.TaskRunStatus.PAUSED &&
+                            it.taskState.status !=
+                            com.aiassistant.core.domain.memory.TaskRunStatus.COMPLETED
+                    ) {
+                        Text("Pause")
+                    }
+                    Button(
+                        onClick = onResume,
+                        enabled = it.taskState.status ==
+                            com.aiassistant.core.domain.memory.TaskRunStatus.PAUSED
+                    ) {
+                        Text("Resume")
+                    }
+                    Button(
+                        onClick = onContinue,
+                        enabled = it.taskState.status ==
+                            com.aiassistant.core.domain.memory.TaskRunStatus.WAITING_USER
+                    ) {
+                        Text("Continue")
+                    }
+                }
+            }
             Button(
                 onClick = onEdit,
                 modifier = Modifier.padding(top = 12.dp)

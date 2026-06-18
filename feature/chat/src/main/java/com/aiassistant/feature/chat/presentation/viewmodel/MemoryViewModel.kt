@@ -3,6 +3,7 @@ package com.aiassistant.feature.chat.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiassistant.core.domain.memory.TaskContext
+import com.aiassistant.core.domain.memory.TaskPipelineOrchestrator
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.repository.LongTermMemoryRepository
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
@@ -17,7 +18,8 @@ import javax.inject.Inject
 class MemoryViewModel @Inject constructor(
     private val workingMemoryRepository: WorkingMemoryRepository,
     private val longTermMemoryRepository: LongTermMemoryRepository,
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val taskPipelineOrchestrator: TaskPipelineOrchestrator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MemoryUiState())
@@ -91,5 +93,38 @@ class MemoryViewModel @Inject constructor(
 
     fun clearMessage() {
         _uiState.value = _uiState.value.copy(message = null, error = null)
+    }
+
+    fun pauseTask() = updateTask { task ->
+        taskPipelineOrchestrator.pauseTask(task.id)
+    }
+
+    fun resumeTask() = updateTask { task ->
+        taskPipelineOrchestrator.resumeTask(
+            task.relatedChatIds.firstOrNull() ?: "main",
+            task.id
+        )
+    }
+
+    fun continueTask() = updateTask { task ->
+        taskPipelineOrchestrator.confirmNextStage(
+            task.relatedChatIds.firstOrNull() ?: "main",
+            task.id
+        )
+    }
+
+    private fun updateTask(action: suspend (TaskContext) -> TaskContext) {
+        val task = _uiState.value.activeTaskContext ?: return
+        viewModelScope.launch {
+            runCatching { action(task) }
+                .onSuccess { updated ->
+                    _uiState.value = _uiState.value.copy(activeTaskContext = updated)
+                }
+                .onFailure { throwable ->
+                    _uiState.value = _uiState.value.copy(
+                        error = throwable.message ?: "Task action failed"
+                    )
+                }
+        }
     }
 }

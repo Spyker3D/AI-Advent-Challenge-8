@@ -15,6 +15,13 @@ import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.memory.TaskCommandParser
+import com.aiassistant.core.domain.memory.TaskContext
+import com.aiassistant.core.domain.memory.TaskPipelineOrchestrator
+import com.aiassistant.core.domain.memory.TaskRunStatus
+import com.aiassistant.core.domain.memory.TaskStage
+import com.aiassistant.core.domain.memory.TaskTransitionResult
+import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
@@ -44,7 +51,9 @@ class ChatViewModel @Inject constructor(
     private val clearChatHistoryUseCase: ClearChatHistoryUseCase,
     private val chatAgent: ChatAgent,
     private val chatRepository: ChatRepository,
-    private val llmClient: LlmClient
+    private val llmClient: LlmClient,
+    private val taskPipelineOrchestrator: TaskPipelineOrchestrator,
+    private val workingMemoryRepository: WorkingMemoryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -122,7 +131,10 @@ class ChatViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     chats = effectiveChats,
                     currentChatId = currentChatId,
-                    currentBranchId = currentChatId
+                    currentBranchId = currentChatId,
+                    activeTaskContext = effectiveChats.first()
+                        .activeTaskContextId
+                        ?.let { workingMemoryRepository.getTaskContext(it) }
                 )
                 
                 // Load messages for the current chat
@@ -249,6 +261,7 @@ class ChatViewModel @Inject constructor(
                     currentChatId = chat.id,
                     currentBranchId = chat.id,
                     messages = emptyList(),
+                    activeTaskContext = null,
                     isLoading = false
                 )
                 
@@ -270,12 +283,17 @@ class ChatViewModel @Inject constructor(
                     name = "main",
                     messages = messages
                 )
+                val taskContext = _uiState.value.chats
+                    .find { it.id == chatId }
+                    ?.activeTaskContextId
+                    ?.let { workingMemoryRepository.getTaskContext(it) }
                 
                 _uiState.value = _uiState.value.copy(
                     currentChatId = chatId,
                     currentBranchId = chatId,
                     messages = messages,
                     branches = listOf(mainBranch),
+                    activeTaskContext = taskContext,
                     isLoading = false
                 )
                 
@@ -384,12 +402,23 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.CloseChatDrawer -> {
                 _uiState.value = _uiState.value.copy(isChatDrawerOpen = false)
             }
+            is ChatUiEvent.PauseTask -> runTaskAction("пауза")
+            is ChatUiEvent.ResumeTask -> runTaskAction("продолжи")
+            is ChatUiEvent.ContinueTask -> runTaskAction("да, продолжай")
         }
     }
 
     private fun sendMessage() {
         val currentMessage = _uiState.value.currentMessage.trim()
         if (currentMessage.isBlank() || _uiState.value.isLoading) return
+
+        val hasActiveTask = _uiState.value.chats
+            .find { it.id == _uiState.value.currentChatId }
+            ?.activeTaskContextId != null
+        if (hasActiveTask || isTaskRequest(currentMessage)) {
+            sendTaskPipelineMessage(currentMessage)
+            return
+        }
 
         // Combine message with attached file content if present
         val finalMessage = if (_uiState.value.attachedFileText != null) {
@@ -577,6 +606,200 @@ class ChatViewModel @Inject constructor(
             }
         }
     }
+
+    private fun runTaskAction(command: String) {
+        if (_uiState.value.isLoading) return
+        _uiState.value = _uiState.value.copy(currentMessage = command)
+        sendTaskPipelineMessage(command)
+    }
+
+    private fun isTaskRequest(message: String): Boolean {
+        val normalized = message.trim().lowercase()
+        return listOf(
+            "сделай", "создай", "реализуй", "подготовь", "разработай", "напиши",
+            "create", "build", "implement", "prepare", "develop", "write"
+        ).any { marker -> normalized.startsWith(marker) }
+    }
+
+    private fun sendTaskPipelineMessage(currentMessage: String) {
+        val state = _uiState.value
+        val chatId = state.currentChatId
+        val taskContextId = state.chats
+            .find { it.id == chatId }
+            ?.activeTaskContextId
+            ?: state.activeTaskContext?.takeIf { chatId in it.relatedChatIds }?.id
+        val finalMessage = state.attachedFileText?.let {
+            "User question:\n$currentMessage\n\nAttached file content:\n$it"
+        } ?: currentMessage
+        val userMessage = Message(
+            id = UUID.randomUUID().toString(),
+            content = finalMessage,
+            role = MessageRole.USER,
+            timestamp = System.currentTimeMillis()
+        )
+
+        _uiState.value = state.copy(
+            messages = state.messages + userMessage,
+            currentMessage = "",
+            isLoading = true,
+            error = null
+        )
+
+        viewModelScope.launch {
+            chatRepository.saveMessage(userMessage, chatId)
+            runCatching {
+                val existing = if (taskContextId != null) {
+                    workingMemoryRepository.getTaskContext(taskContextId)
+                } else {
+                    null
+                }
+                handleTaskCommand(chatId, finalMessage, existing)
+            }.onSuccess { (taskContext, assistantText) ->
+                chatRepository.updateChatActiveTaskContext(chatId, taskContext.id)
+                val assistantMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    content = assistantText,
+                    role = MessageRole.ASSISTANT,
+                    timestamp = System.currentTimeMillis()
+                )
+                chatRepository.saveMessage(assistantMessage, chatId)
+                chatRepository.updateChatMeta(
+                    chatId,
+                    taskContext.title.ifBlank { "Task" },
+                    assistantText.take(80)
+                )
+
+                if (_uiState.value.currentChatId == chatId) {
+                    val updatedChats = _uiState.value.chats.map {
+                        if (it.id == chatId) {
+                            it.copy(
+                                activeTaskContextId = taskContext.id,
+                                updatedAt = System.currentTimeMillis(),
+                                lastMessagePreview = assistantText.take(80)
+                            )
+                        } else {
+                            it
+                        }
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        messages = _uiState.value.messages + assistantMessage,
+                        chats = updatedChats,
+                        activeTaskContext = taskContext,
+                        isLoading = false,
+                        attachedFileName = null,
+                        attachedFileText = null
+                    )
+                }
+            }.onFailure { throwable ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = throwable.message ?: "Task pipeline failed"
+                )
+            }
+        }
+    }
+
+    private suspend fun handleTaskCommand(
+        chatId: String,
+        message: String,
+        existing: TaskContext?
+    ): Pair<TaskContext, String> {
+        if (existing == null ||
+            (existing.taskState.stage == TaskStage.DONE &&
+                !TaskCommandParser.isStatus(message))
+        ) {
+            val started = taskPipelineOrchestrator.startTask(chatId, message)
+            return started to taskResponse(started)
+        }
+
+        if (TaskCommandParser.isStatus(message)) {
+            return existing to taskStatus(existing)
+        }
+        if (TaskCommandParser.isPause(message)) {
+            val paused = taskPipelineOrchestrator.pauseTask(existing.id)
+            return paused to taskStatus(paused)
+        }
+        if (TaskCommandParser.isResume(message)) {
+            val resumed = taskPipelineOrchestrator.resumeTask(chatId, existing.id)
+            return resumed to taskResponse(resumed)
+        }
+        if (TaskCommandParser.isConfirmation(message) &&
+            existing.taskState.status == TaskRunStatus.WAITING_USER
+        ) {
+            val continued = taskPipelineOrchestrator.confirmNextStage(chatId, existing.id)
+            return continued to taskResponse(continued)
+        }
+
+        TaskCommandParser.requestedStage(message)?.let { requested ->
+            return when (
+                val transition = taskPipelineOrchestrator.requestStageTransition(
+                    existing.id,
+                    requested
+                )
+            ) {
+                is TaskTransitionResult.Blocked ->
+                    transition.taskContext to transition.message
+
+                is TaskTransitionResult.Allowed -> {
+                    val continued = taskPipelineOrchestrator.continueTask(
+                        chatId,
+                        transition.taskContext.id
+                    )
+                    continued to taskResponse(continued)
+                }
+            }
+        }
+
+        return when (existing.taskState.status) {
+            TaskRunStatus.PAUSED ->
+                existing to "Задача на паузе. Напишите «продолжи» или нажмите Resume."
+            TaskRunStatus.WAITING_USER ->
+                existing to "Этап ${existing.taskState.stage.name} завершён. " +
+                    "Подтвердите переход к следующему этапу."
+            TaskRunStatus.RUNNING -> {
+                val continued = taskPipelineOrchestrator.continueTask(chatId, existing.id)
+                continued to taskResponse(continued)
+            }
+            TaskRunStatus.COMPLETED -> existing to taskStatus(existing)
+        }
+    }
+
+    private fun taskResponse(taskContext: TaskContext): String = when {
+        taskContext.taskState.stage == TaskStage.DONE ->
+            buildString {
+                appendLine(taskContext.validationResult)
+                appendLine()
+                append("Задача завершена.")
+            }
+        taskContext.taskState.status == TaskRunStatus.WAITING_USER -> {
+            val result = when (taskContext.taskState.stage) {
+                TaskStage.PLANNING -> taskContext.planningResult
+                TaskStage.EXECUTION -> taskContext.executionResult
+                TaskStage.VALIDATION -> taskContext.validationResult
+                TaskStage.DONE -> taskContext.validationResult
+            }
+            val next = when (taskContext.taskState.stage) {
+                TaskStage.PLANNING -> TaskStage.EXECUTION
+                TaskStage.EXECUTION -> TaskStage.VALIDATION
+                TaskStage.VALIDATION -> TaskStage.DONE
+                TaskStage.DONE -> null
+            }
+            buildString {
+                appendLine(result)
+                if (next != null) {
+                    appendLine()
+                    append("Этап ${taskContext.taskState.stage.name} завершён. " +
+                        "Перейти к ${next.name}?")
+                }
+            }
+        }
+        else -> taskStatus(taskContext)
+    }
+
+    private fun taskStatus(taskContext: TaskContext): String =
+        "Stage: ${taskContext.taskState.stage.name}\n" +
+            "Status: ${taskContext.taskState.status.name}\n" +
+            "Current step: ${taskContext.taskState.currentStep}"
 
     // Helper function to parse FormattedAiResponse
     fun parseFormattedResponse(response: String): FormattedAiResponse? {
