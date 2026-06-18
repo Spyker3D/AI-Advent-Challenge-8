@@ -1,0 +1,323 @@
+package com.aiassistant.core.domain.memory
+
+import android.util.Log
+import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.entity.Message
+import com.aiassistant.core.domain.entity.MessageRole
+import java.util.UUID
+
+class StageAgent(
+    val stage: TaskStage,
+    val systemPrompt: String,
+    private val llmClient: LlmClient
+) {
+    suspend fun run(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory
+    ): String {
+        val result = send(
+            taskContext = taskContext,
+            longTermMemory = longTermMemory,
+            operationPrompt = null,
+            userMessage = taskContext.description
+        )
+        return ensureValidationReport(taskContext, longTermMemory, result)
+    }
+
+    suspend fun applyEdit(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory,
+        feedback: String
+    ): String {
+        val result = send(
+            taskContext = taskContext,
+            longTermMemory = longTermMemory,
+            operationPrompt = editPrompt(taskContext, feedback),
+            userMessage = feedback
+        )
+        return ensureValidationReport(taskContext, longTermMemory, result)
+    }
+
+    suspend fun answerQuestion(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory,
+        question: String
+    ): String = send(
+        taskContext = taskContext,
+        longTermMemory = longTermMemory,
+        operationPrompt = """Ты отвечаешь на уточняющий вопрос о текущем этапе задачи.
+
+Важно:
+- ответь только на вопрос пользователя;
+- не переписывай полный результат этапа;
+- не обновляй результат этапа;
+- не переходи к другому этапу;
+- отвечай кратко и на русском языке.
+
+Текущий этап: ${taskContext.taskState.stage.name}
+
+Текущий результат этапа:
+${currentStageResult(taskContext)}
+
+Вопрос пользователя:
+$question""",
+        userMessage = question
+    )
+
+    private suspend fun send(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory,
+        operationPrompt: String?,
+        userMessage: String
+    ): String {
+        require(taskContext.taskState.stage == stage) {
+            "Agent $stage cannot run task at ${taskContext.taskState.stage}"
+        }
+
+        Log.d("STAGE_AGENT", "stage=$stage")
+        Log.d("STAGE_AGENT", "profileChars=${longTermMemory.profile.length}")
+        Log.d("STAGE_AGENT", "preferencesChars=${longTermMemory.preferences.length}")
+        Log.d("STAGE_AGENT", "globalRulesChars=${longTermMemory.globalRules.length}")
+        Log.d("STAGE_AGENT", "languageRule=Russian")
+
+        val messages = listOf(
+            Message(
+                id = UUID.randomUUID().toString(),
+                content = buildSystemMessage(taskContext, longTermMemory, operationPrompt),
+                role = MessageRole.SYSTEM
+            ),
+            Message(
+                id = UUID.randomUUID().toString(),
+                content = userMessage,
+                role = MessageRole.USER
+            )
+        )
+
+        return llmClient.sendChat(messages, maxTokens = null).getOrThrow().message
+    }
+
+    private fun buildSystemMessage(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory,
+        operationPrompt: String?
+    ): String = buildString {
+        appendLine("ВАЖНОЕ ПРАВИЛО ЯЗЫКА:")
+        appendLine("Всегда отвечай на русском языке, если пользователь явно не попросил другой язык.")
+        appendLine()
+        appendMemorySection("USER_PROFILE", longTermMemory.profile)
+        appendMemorySection("USER_PREFERENCES", longTermMemory.preferences)
+        appendMemorySection("GLOBAL_RULES", longTermMemory.globalRules)
+        appendMemorySection("PROJECT_KNOWLEDGE", longTermMemory.projectKnowledge)
+        appendMemorySection("DECISIONS", longTermMemory.decisions)
+        appendLine("=========================")
+        appendLine("STAGE_AGENT_PROMPT")
+        appendLine("=========================")
+        appendLine(
+            systemPrompt
+                .replace("{planningResult}", taskContext.planningResult)
+                .replace("{executionResult}", taskContext.executionResult)
+                .replace("{validationResult}", taskContext.validationResult)
+        )
+        appendLine()
+        appendLine("=========================")
+        appendLine("TASK_CONTEXT")
+        appendLine("=========================")
+        appendLine("Task ID: ${taskContext.id}")
+        appendLine("Title: ${taskContext.title}")
+        appendLine("Description: ${taskContext.description}")
+        appendLine("Goals:")
+        appendLine(taskContext.goals.joinToString("\n"))
+        appendLine("Constraints:")
+        appendLine(taskContext.constraints.joinToString("\n"))
+        appendLine("Decisions:")
+        appendLine(taskContext.decisions.joinToString("\n"))
+        appendLine("Current stage: ${taskContext.taskState.stage.name}")
+        appendLine("Current status: ${taskContext.taskState.status.name}")
+        appendLine("Planning result:")
+        appendLine(taskContext.planningResult)
+        appendLine("Execution result:")
+        appendLine(taskContext.executionResult)
+        appendLine("Validation result:")
+        appendLine(taskContext.validationResult)
+
+        if (stage == TaskStage.VALIDATION) {
+            appendLine()
+            appendLine("=========================")
+            appendLine("VALIDATION_INPUT")
+            appendLine("=========================")
+            appendLine("Task description:")
+            appendLine(taskContext.description)
+            appendLine("Goals:")
+            taskContext.goals.forEach { appendLine("- $it") }
+            appendLine("Constraints:")
+            taskContext.constraints.forEach { appendLine("- $it") }
+            appendLine("Planning result:")
+            appendLine(taskContext.planningResult)
+            appendLine("Execution result to validate:")
+            appendLine(taskContext.executionResult)
+        }
+
+        if (!operationPrompt.isNullOrBlank()) {
+            appendLine()
+            appendLine("=========================")
+            appendLine("CURRENT_OPERATION")
+            appendLine("=========================")
+            appendLine(operationPrompt)
+        }
+    }
+
+    private fun StringBuilder.appendMemorySection(title: String, content: String) {
+        appendLine("=========================")
+        appendLine(title)
+        appendLine("=========================")
+        appendLine(content)
+        appendLine()
+    }
+
+    private fun editPrompt(taskContext: TaskContext, feedback: String): String =
+        when (stage) {
+            TaskStage.PLANNING -> """Ты PlanningAgent.
+
+Пользователь запросил изменения текущего результата планирования.
+
+Текущий planningResult:
+${taskContext.planningResult}
+
+Запрос на изменение:
+$feedback
+
+Обнови planningResult согласно запросу пользователя.
+Верни только полный обновлённый planningResult.
+Отвечай на русском языке."""
+
+            TaskStage.EXECUTION -> """Ты ExecutionAgent.
+
+Пользователь запросил изменения текущего результата выполнения.
+
+Утверждённый planningResult:
+${taskContext.planningResult}
+
+Текущий executionResult:
+${taskContext.executionResult}
+
+Запрос на изменение:
+$feedback
+
+Обнови executionResult согласно запросу пользователя.
+Верни только полный обновлённый executionResult.
+Отвечай на русском языке."""
+
+            TaskStage.VALIDATION -> """Ты ValidationAgent.
+
+Пользователь запросил изменения текущего результата проверки.
+
+Execution result:
+${taskContext.executionResult}
+
+Текущий validationResult:
+${taskContext.validationResult}
+
+Запрос на изменение:
+$feedback
+
+Обнови validationResult согласно запросу пользователя.
+Сохрани обязательный формат # Validation Report со всеми секциями:
+Статус, Что выполнено хорошо, Замечания, Риски, Рекомендации, Итог.
+Не копируй executionResult и не пиши новое ТЗ.
+Верни только полный обновлённый validationResult.
+Отвечай на русском языке."""
+
+            TaskStage.DONE -> "Задача завершена. Не изменяй результаты этапов."
+        }
+
+    private fun currentStageResult(taskContext: TaskContext): String = when (stage) {
+        TaskStage.PLANNING -> taskContext.planningResult
+        TaskStage.EXECUTION -> taskContext.executionResult
+        TaskStage.VALIDATION -> taskContext.validationResult
+        TaskStage.DONE -> taskContext.currentState
+    }
+
+    private suspend fun ensureValidationReport(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory,
+        result: String
+    ): String {
+        if (stage != TaskStage.VALIDATION ||
+            ValidationReportValidator.isValid(result, taskContext.executionResult)
+        ) {
+            return result
+        }
+
+        Log.w(
+            "VALIDATION_AGENT",
+            "Validation result is invalid or looks like copied executionResult; retrying"
+        )
+        val retryResult = send(
+            taskContext = taskContext,
+            longTermMemory = longTermMemory,
+            operationPrompt = VALIDATION_RETRY_PROMPT,
+            userMessage = "Сформируй корректный отчёт проверки executionResult."
+        )
+        if (ValidationReportValidator.isValid(retryResult, taskContext.executionResult)) {
+            return retryResult
+        }
+
+        Log.w("VALIDATION_AGENT", "Validation retry still violates report requirements")
+        return VALIDATION_FALLBACK_REPORT
+    }
+
+    private companion object {
+        const val VALIDATION_RETRY_PROMPT = """Ты ошибся: предыдущий ответ скопировал executionResult или нарушил формат.
+
+Нужно сделать именно validation report.
+
+Не копируй ТЗ.
+Не переписывай ТЗ.
+Найди минимум 2 замечания или риска.
+Отвечай на русском языке.
+Верни только отчёт строго по формату:
+
+# Validation Report
+
+## Статус
+OK, OK_WITH_RECOMMENDATIONS или NEEDS_CHANGES
+
+## Что выполнено хорошо
+- ...
+
+## Замечания
+- ...
+
+## Риски
+- ...
+
+## Рекомендации
+1. ...
+
+## Итог
+Короткий вывод."""
+
+        const val VALIDATION_FALLBACK_REPORT = """# Validation Report
+
+## Статус
+NEEDS_CHANGES
+
+## Что выполнено хорошо
+- Результат этапа EXECUTION сформирован и доступен для проверки.
+
+## Замечания
+- Автоматическая проверка не смогла сформировать корректный структурированный отчёт.
+- Требуется ручная проверка покрытия planningResult и ограничений TaskContext.
+
+## Риски
+- Возможны пропущенные edge cases.
+- Возможны невыявленные противоречия или неполные критерии готовности.
+
+## Рекомендации
+1. Повторить этап VALIDATION.
+2. Вручную проверить цели, ограничения, edge cases и критерии готовности.
+
+## Итог
+Завершать задачу без дополнительной проверки не рекомендуется."""
+    }
+}
