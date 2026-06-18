@@ -15,12 +15,12 @@ import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.agent.LlmClient
-import com.aiassistant.core.domain.memory.TaskCommandParser
 import com.aiassistant.core.domain.memory.TaskContext
 import com.aiassistant.core.domain.memory.TaskPipelineOrchestrator
 import com.aiassistant.core.domain.memory.TaskRunStatus
 import com.aiassistant.core.domain.memory.TaskStage
 import com.aiassistant.core.domain.memory.TaskTransitionResult
+import com.aiassistant.core.domain.memory.TaskUserIntentParser
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
@@ -706,56 +706,69 @@ class ChatViewModel @Inject constructor(
     ): Pair<TaskContext, String> {
         if (existing == null ||
             (existing.taskState.stage == TaskStage.DONE &&
-                !TaskCommandParser.isStatus(message))
+                !TaskUserIntentParser.isTaskStatus(message))
         ) {
             val started = taskPipelineOrchestrator.startTask(chatId, message)
             return started to taskResponse(started)
         }
 
-        if (TaskCommandParser.isStatus(message)) {
+        if (TaskUserIntentParser.isTaskStatus(message)) {
             return existing to taskStatus(existing)
         }
-        if (TaskCommandParser.isPause(message)) {
+        if (TaskUserIntentParser.isPause(message)) {
             val paused = taskPipelineOrchestrator.pauseTask(existing.id)
             return paused to taskStatus(paused)
         }
-        if (TaskCommandParser.isResume(message)) {
+
+        if (existing.taskState.status == TaskRunStatus.PAUSED &&
+            TaskUserIntentParser.isResume(message)
+        ) {
             val resumed = taskPipelineOrchestrator.resumeTask(chatId, existing.id)
             return resumed to taskResponse(resumed)
         }
-        if (TaskCommandParser.isConfirmation(message) &&
-            existing.taskState.status == TaskRunStatus.WAITING_USER
-        ) {
-            val continued = taskPipelineOrchestrator.confirmNextStage(chatId, existing.id)
-            return continued to taskResponse(continued)
-        }
 
-        TaskCommandParser.requestedStage(message)?.let { requested ->
-            return when (
-                val transition = taskPipelineOrchestrator.requestStageTransition(
+        if (existing.taskState.status == TaskRunStatus.WAITING_USER) {
+            if (TaskUserIntentParser.isConfirmation(message)) {
+                val continued = taskPipelineOrchestrator.handleWaitingUserInput(
+                    chatId,
                     existing.id,
-                    requested
+                    message
                 )
-            ) {
-                is TaskTransitionResult.Blocked ->
-                    transition.taskContext to transition.message
+                return continued to taskResponse(continued)
+            }
 
-                is TaskTransitionResult.Allowed -> {
-                    val continued = taskPipelineOrchestrator.continueTask(
-                        chatId,
-                        transition.taskContext.id
+            TaskUserIntentParser.parseRequestedStage(message)?.let { requested ->
+                return when (
+                    val transition = taskPipelineOrchestrator.requestStageTransition(
+                        existing.id,
+                        requested
                     )
-                    continued to taskResponse(continued)
+                ) {
+                    is TaskTransitionResult.Blocked ->
+                        transition.taskContext to transition.message
+
+                    is TaskTransitionResult.Allowed -> {
+                        val continued = taskPipelineOrchestrator.continueTask(
+                            chatId,
+                            transition.taskContext.id
+                        )
+                        continued to taskResponse(continued)
+                    }
                 }
             }
+
+            val updated = taskPipelineOrchestrator.handleWaitingUserInput(
+                chatId,
+                existing.id,
+                message
+            )
+            return updated to feedbackResponse(updated)
         }
 
         return when (existing.taskState.status) {
             TaskRunStatus.PAUSED ->
                 existing to "Задача на паузе. Напишите «продолжи» или нажмите Resume."
-            TaskRunStatus.WAITING_USER ->
-                existing to "Этап ${existing.taskState.stage.name} завершён. " +
-                    "Подтвердите переход к следующему этапу."
+            TaskRunStatus.WAITING_USER -> existing to taskResponse(existing)
             TaskRunStatus.RUNNING -> {
                 val continued = taskPipelineOrchestrator.continueTask(chatId, existing.id)
                 continued to taskResponse(continued)
@@ -788,13 +801,46 @@ class ChatViewModel @Inject constructor(
                 appendLine(result)
                 if (next != null) {
                     appendLine()
-                    append("Этап ${taskContext.taskState.stage.name} завершён. " +
-                        "Перейти к ${next.name}?")
+                    append(waitingUserInstructions(taskContext.taskState.stage, next))
                 }
             }
         }
         else -> taskStatus(taskContext)
     }
+
+    private fun feedbackResponse(taskContext: TaskContext): String {
+        val result = when (taskContext.taskState.stage) {
+            TaskStage.PLANNING -> taskContext.planningResult
+            TaskStage.EXECUTION -> taskContext.executionResult
+            TaskStage.VALIDATION -> taskContext.validationResult
+            TaskStage.DONE -> taskContext.validationResult
+        }
+        val next = when (taskContext.taskState.stage) {
+            TaskStage.PLANNING -> TaskStage.EXECUTION
+            TaskStage.EXECUTION -> TaskStage.VALIDATION
+            TaskStage.VALIDATION -> TaskStage.DONE
+            TaskStage.DONE -> null
+        }
+        return buildString {
+            appendLine(result)
+            if (next != null) {
+                appendLine()
+                appendLine("Я обновил результат этапа ${taskContext.taskState.stage.name}.")
+                appendLine()
+                append(waitingUserInstructions(taskContext.taskState.stage, next))
+            }
+        }
+    }
+
+    private fun waitingUserInstructions(stage: TaskStage, next: TaskStage): String =
+        """Этап ${stage.name} завершён.
+
+Вы можете:
+- задать вопрос по результату;
+- попросить внести правки;
+- подтвердить переход к ${next.name}.
+
+Для перехода напишите: "да", "подтверждаю", "продолжай" или нажмите Continue."""
 
     private fun taskStatus(taskContext: TaskContext): String =
         "Stage: ${taskContext.taskState.stage.name}\n" +
