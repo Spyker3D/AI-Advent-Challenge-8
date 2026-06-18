@@ -65,6 +65,7 @@ fun MemoryScreen(
         ) {
             WorkingMemoryCard(
                 taskContext = uiState.activeTaskContext,
+                onStart = viewModel::startTask,
                 onPause = viewModel::pauseTask,
                 onResume = viewModel::resumeTask,
                 onContinue = viewModel::continueTask,
@@ -81,6 +82,7 @@ fun MemoryScreen(
 @Composable
 private fun WorkingMemoryCard(
     taskContext: com.aiassistant.core.domain.memory.TaskContext?,
+    onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onContinue: () -> Unit,
@@ -111,6 +113,12 @@ private fun WorkingMemoryCard(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp)
                 )
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.padding(top = 12.dp)
+                ) {
+                    Text("Start task")
+                }
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier.padding(top = 12.dp),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)

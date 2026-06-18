@@ -72,25 +72,6 @@ class PromptBuilder @Inject constructor() {
         }
     }
 
-    fun buildTaskStagePrompt(taskContext: TaskContext): String = buildString {
-        appendTaskState(taskContext)
-        appendLine()
-        appendLine("=========================")
-        appendLine("STAGE_INSTRUCTIONS")
-        appendLine("=========================")
-        appendLine()
-        appendLine(
-            when (taskContext.taskState.stage) {
-                TaskStage.PLANNING -> PLANNING_PROMPT
-                TaskStage.EXECUTION -> EXECUTION_PROMPT
-                    .replace("{planningResult}", taskContext.planningResult)
-                TaskStage.VALIDATION -> VALIDATION_PROMPT
-                    .replace("{executionResult}", taskContext.executionResult)
-                TaskStage.DONE -> "The task is complete. Do not produce another stage result."
-            }
-        )
-    }
-
     private fun StringBuilder.appendTaskState(taskContext: TaskContext?) {
         appendLine("=========================")
         appendLine("TASK_STATE")
@@ -115,41 +96,4 @@ class PromptBuilder @Inject constructor() {
         appendLine(taskContext?.validationResult.orEmpty())
     }
 
-    private companion object {
-        const val PLANNING_PROMPT = """You are a planning agent.
-
-Your task:
-- analyze the user request
-- define goals
-- define constraints
-- create a step-by-step plan
-- do not create the final result yet
-
-Return only the planning result."""
-
-        const val EXECUTION_PROMPT = """You are an execution agent.
-
-Your task:
-- use the approved planning result
-- follow TaskContext goals and constraints
-- produce the final result requested by the user
-
-Approved planning result:
-{planningResult}
-
-Return only the execution result."""
-
-        const val VALIDATION_PROMPT = """You are a validation agent.
-
-Your task:
-- validate the execution result
-- check if it matches goals and constraints
-- find issues and contradictions
-- suggest fixes if needed
-
-Execution result:
-{executionResult}
-
-Return only the validation result."""
-    }
 }

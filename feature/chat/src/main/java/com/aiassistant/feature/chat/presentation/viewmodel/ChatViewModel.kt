@@ -19,8 +19,8 @@ import com.aiassistant.core.domain.memory.TaskContext
 import com.aiassistant.core.domain.memory.TaskPipelineOrchestrator
 import com.aiassistant.core.domain.memory.TaskRunStatus
 import com.aiassistant.core.domain.memory.TaskStage
-import com.aiassistant.core.domain.memory.TaskTransitionResult
 import com.aiassistant.core.domain.memory.TaskUserIntentParser
+import com.aiassistant.core.domain.memory.TaskWaitingUserResult
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
@@ -728,41 +728,27 @@ class ChatViewModel @Inject constructor(
         }
 
         if (existing.taskState.status == TaskRunStatus.WAITING_USER) {
-            if (TaskUserIntentParser.isConfirmation(message)) {
-                val continued = taskPipelineOrchestrator.handleWaitingUserInput(
-                    chatId,
-                    existing.id,
-                    message
-                )
-                return continued to taskResponse(continued)
-            }
-
-            TaskUserIntentParser.parseRequestedStage(message)?.let { requested ->
-                return when (
-                    val transition = taskPipelineOrchestrator.requestStageTransition(
-                        existing.id,
-                        requested
-                    )
-                ) {
-                    is TaskTransitionResult.Blocked ->
-                        transition.taskContext to transition.message
-
-                    is TaskTransitionResult.Allowed -> {
-                        val continued = taskPipelineOrchestrator.continueTask(
-                            chatId,
-                            transition.taskContext.id
-                        )
-                        continued to taskResponse(continued)
-                    }
-                }
-            }
-
-            val updated = taskPipelineOrchestrator.handleWaitingUserInput(
+            return when (val result = taskPipelineOrchestrator.handleWaitingUserInput(
                 chatId,
                 existing.id,
                 message
-            )
-            return updated to feedbackResponse(updated)
+            )) {
+                is TaskWaitingUserResult.ContextUpdated -> {
+                    val response = if (result.resultWasEdited) {
+                        feedbackResponse(result.taskContext)
+                    } else {
+                        taskResponse(result.taskContext)
+                    }
+                    result.taskContext to response
+                }
+                is TaskWaitingUserResult.QuestionAnswered ->
+                    result.taskContext to questionResponse(
+                        result.answer,
+                        result.taskContext
+                    )
+                is TaskWaitingUserResult.Blocked ->
+                    result.taskContext to result.message
+            }
         }
 
         return when (existing.taskState.status) {
@@ -780,8 +766,10 @@ class ChatViewModel @Inject constructor(
     private fun taskResponse(taskContext: TaskContext): String = when {
         taskContext.taskState.stage == TaskStage.DONE ->
             buildString {
-                appendLine(taskContext.validationResult)
-                appendLine()
+                if (taskContext.currentState.isNotBlank()) {
+                    appendLine(taskContext.currentState)
+                    appendLine()
+                }
                 append("Задача завершена.")
             }
         taskContext.taskState.status == TaskRunStatus.WAITING_USER -> {
@@ -813,7 +801,7 @@ class ChatViewModel @Inject constructor(
             TaskStage.PLANNING -> taskContext.planningResult
             TaskStage.EXECUTION -> taskContext.executionResult
             TaskStage.VALIDATION -> taskContext.validationResult
-            TaskStage.DONE -> taskContext.validationResult
+            TaskStage.DONE -> taskContext.currentState
         }
         val next = when (taskContext.taskState.stage) {
             TaskStage.PLANNING -> TaskStage.EXECUTION
@@ -822,12 +810,35 @@ class ChatViewModel @Inject constructor(
             TaskStage.DONE -> null
         }
         return buildString {
+            appendLine("Обновил результат этапа ${taskContext.taskState.stage.name}:")
+            appendLine()
             appendLine(result)
             if (next != null) {
                 appendLine()
-                appendLine("Я обновил результат этапа ${taskContext.taskState.stage.name}.")
+                appendLine(
+                    "Этап ${taskContext.taskState.stage.name} всё ещё ожидает подтверждения."
+                )
+                append("Перейти к ${next.name}?")
+            }
+        }
+    }
+
+    private fun questionResponse(answer: String, taskContext: TaskContext): String {
+        val next = when (taskContext.taskState.stage) {
+            TaskStage.PLANNING -> TaskStage.EXECUTION
+            TaskStage.EXECUTION -> TaskStage.VALIDATION
+            TaskStage.VALIDATION -> TaskStage.DONE
+            TaskStage.DONE -> null
+        }
+        return buildString {
+            appendLine(answer.trim())
+            if (next != null) {
                 appendLine()
-                append(waitingUserInstructions(taskContext.taskState.stage, next))
+                appendLine("Этап ${taskContext.taskState.stage.name} всё ещё ожидает подтверждения.")
+                append(
+                    "Вы можете задать ещё вопрос, попросить правку или " +
+                        "подтвердить переход к ${next.name}."
+                )
             }
         }
     }

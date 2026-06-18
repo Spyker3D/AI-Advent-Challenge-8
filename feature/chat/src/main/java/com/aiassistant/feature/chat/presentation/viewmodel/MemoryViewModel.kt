@@ -99,6 +99,13 @@ class MemoryViewModel @Inject constructor(
         taskPipelineOrchestrator.pauseTask(task.id)
     }
 
+    fun startTask() = updateTask { task ->
+        taskPipelineOrchestrator.startTask(
+            task.relatedChatIds.firstOrNull() ?: "main",
+            task.id
+        )
+    }
+
     fun resumeTask() = updateTask { task ->
         taskPipelineOrchestrator.resumeTask(
             task.relatedChatIds.firstOrNull() ?: "main",
@@ -118,6 +125,9 @@ class MemoryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { action(task) }
                 .onSuccess { updated ->
+                    updated.relatedChatIds.forEach { chatId ->
+                        chatRepository.updateChatActiveTaskContext(chatId, updated.id)
+                    }
                     _uiState.value = _uiState.value.copy(activeTaskContext = updated)
                 }
                 .onFailure { throwable ->
