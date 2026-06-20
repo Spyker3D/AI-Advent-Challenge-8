@@ -12,6 +12,11 @@ data class MemoryUiState(
         projectKnowledge = "",
         decisions = ""
     ),
+    val allowedStack: String = "",
+    val bannedStack: String = "",
+    val architecture: String = "",
+    val budget: String = "",
+    val maxDependencies: String = "",
     val isLoading: Boolean = false,
     val message: String? = null,
     val error: String? = null

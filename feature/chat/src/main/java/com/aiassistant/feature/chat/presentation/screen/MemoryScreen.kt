@@ -36,7 +36,8 @@ fun MemoryScreen(
     viewModel: MemoryViewModel,
     onNavigateBack: () -> Unit,
     onEditTaskContext: () -> Unit,
-    onEditMarkdownMemory: (MemoryFileType) -> Unit
+    onEditMarkdownMemory: (MemoryFileType) -> Unit,
+    onEditInvariants: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -75,6 +76,20 @@ fun MemoryScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             LongTermMemoryCard(onEditMarkdownMemory = onEditMarkdownMemory)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("Invariants") },
+                    supportingContent = { Text("Hard rules applied to all LLM responses") },
+                    trailingContent = {
+                        Button(onClick = onEditInvariants) {
+                            Text("Edit")
+                        }
+                    }
+                )
+            }
         }
     }
 }

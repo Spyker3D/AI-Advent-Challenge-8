@@ -12,6 +12,7 @@ import com.aiassistant.feature.chat.presentation.memory.MemoryFileType
 import com.aiassistant.feature.chat.presentation.screen.ChatScreen
 import com.aiassistant.feature.chat.presentation.screen.Day2Screen
 import com.aiassistant.feature.chat.presentation.screen.MarkdownMemoryEditorScreen
+import com.aiassistant.feature.chat.presentation.screen.InvariantsEditorScreen
 import com.aiassistant.feature.chat.presentation.screen.MemoryScreen
 import com.aiassistant.feature.chat.presentation.screen.TaskContextEditorScreen
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
@@ -63,7 +64,18 @@ fun AppNavigation(
                 },
                 onEditMarkdownMemory = { type ->
                     navController.navigate(Screen.MarkdownMemoryEditor.createRoute(type.routeValue))
+                },
+                onEditInvariants = {
+                    navController.navigate(Screen.InvariantsEditor.route)
                 }
+            )
+        }
+
+        composable(Screen.InvariantsEditor.route) {
+            val memoryViewModel: MemoryViewModel = viewModel(factory = viewModelFactory)
+            InvariantsEditorScreen(
+                viewModel = memoryViewModel,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

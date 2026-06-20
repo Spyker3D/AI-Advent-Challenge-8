@@ -9,9 +9,14 @@ import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.TokenMetrics
+import com.aiassistant.core.domain.invariant.Invariant
+import com.aiassistant.core.domain.invariant.InvariantResponsePolicy
+import com.aiassistant.core.domain.invariant.InvariantValidationResult
+import com.aiassistant.core.domain.invariant.InvariantValidator
 import com.aiassistant.core.domain.memory.MemoryContext
 import com.aiassistant.core.domain.memory.MemoryOrchestrator
 import com.aiassistant.core.domain.memory.PromptBuilder
+import com.aiassistant.core.domain.repository.InvariantRepository
 import com.aiassistant.core.domain.util.TokenCounter
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +28,8 @@ class ChatAgent @Inject constructor(
     private val llmClient: LlmClient,
     private val memoryOrchestrator: MemoryOrchestrator,
     private val promptBuilder: PromptBuilder,
+    private val invariantRepository: InvariantRepository,
+    private val invariantValidator: InvariantValidator,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     
@@ -70,8 +77,9 @@ class ChatAgent @Inject constructor(
         taskContextId: String? = null
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
+            val invariants = loadInvariants()
             val memoryContext = buildMemoryContext(chatId, taskContextId, contextStrategy)
-            val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext)
+            val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext, invariants)
             logMemoryLayers(chatId, memoryContext)
 
             // Use the history provided in the chatRequest
@@ -118,7 +126,7 @@ class ChatAgent @Inject constructor(
             val messagesToSend = if (effectiveHistory.isNotEmpty() && effectiveHistory.first().role == MessageRole.SYSTEM) {
                 // If there's already a system message (e.g., from STICKY_FACTS), use it as-is
                 // Otherwise, update the system prompt in the first message
-                effectiveHistory
+                effectiveHistory.withInvariants(invariants)
             } else {
                 // Add system prompt as first message if not present
                 val systemMessage = Message(
@@ -129,7 +137,12 @@ class ChatAgent @Inject constructor(
                 listOf(systemMessage) + effectiveHistory
             }
             
-            val result = llmClient.sendChat(messagesToSend, chatRequest.maxTokens, chatRequest.model.modelName)
+            val result = sendValidated(
+                messages = messagesToSend,
+                maxTokens = chatRequest.maxTokens,
+                model = chatRequest.model.modelName,
+                invariants = invariants
+            )
             
             result.map { chatResponse ->
                 // Create token metrics
@@ -161,8 +174,9 @@ class ChatAgent @Inject constructor(
         taskContextId: String? = null
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
+            val invariants = loadInvariants()
             val memoryContext = buildMemoryContext(chatId, taskContextId, contextStrategy)
-            val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext)
+            val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext, invariants)
             logMemoryLayers(chatId, memoryContext)
 
             // Use the history provided in the chatRequest
@@ -213,7 +227,7 @@ class ChatAgent @Inject constructor(
             val messagesToSend = if (effectiveHistory.isNotEmpty() && effectiveHistory.first().role == MessageRole.SYSTEM) {
                 // If there's already a system message (e.g., from STICKY_FACTS), use it as-is
                 // Otherwise, update the system prompt in the first message
-                effectiveHistory
+                effectiveHistory.withInvariants(invariants)
             } else {
                 // Add system prompt as first message if not present
                 val systemMessage = Message(
@@ -224,7 +238,12 @@ class ChatAgent @Inject constructor(
                 listOf(systemMessage) + effectiveHistory
             }
             
-            val result = llmClient.sendChat(messagesToSend, chatRequest.maxTokens, chatRequest.model.modelName)
+            val result = sendValidated(
+                messages = messagesToSend,
+                maxTokens = chatRequest.maxTokens,
+                model = chatRequest.model.modelName,
+                invariants = invariants
+            )
             
             result.map { chatResponse ->
                 // Create token metrics
@@ -281,12 +300,84 @@ class ChatAgent @Inject constructor(
 
     private fun buildEnrichedSystemPrompt(
         chatRequest: ChatRequest,
-        memoryContext: MemoryContext?
+        memoryContext: MemoryContext?,
+        invariants: List<Invariant>
     ): String {
         val baseSystemPrompt = chatRequest.systemPrompt.orEmpty()
         return memoryContext?.let {
-            promptBuilder.buildSystemPrompt(baseSystemPrompt, it)
-        } ?: baseSystemPrompt
+            promptBuilder.buildSystemPrompt(baseSystemPrompt, it, invariants)
+        } ?: promptBuilder.buildSystemPrompt(baseSystemPrompt, invariants)
+    }
+
+    private suspend fun loadInvariants(): List<Invariant> =
+        invariantRepository.getInvariants().also { invariants ->
+            Log.d("INVARIANTS", "loaded=${invariants.size}")
+            invariants.forEach { Log.d("INVARIANTS", it.description) }
+        }
+
+    private suspend fun sendValidated(
+        messages: List<Message>,
+        maxTokens: Int?,
+        model: String?,
+        invariants: List<Invariant>
+    ): Result<ChatResponse> {
+        val firstResponse = llmClient.sendChat(messages, maxTokens, model).getOrElse {
+            return Result.failure(it)
+        }
+        val firstValidation = invariantValidator.validateResponse(firstResponse.message, invariants)
+        Log.d("INVARIANTS", "validation=${firstValidation::class.simpleName}")
+        if (firstValidation is InvariantValidationResult.Pass) {
+            return Result.success(firstResponse)
+        }
+
+        firstValidation as InvariantValidationResult.Fail
+        Log.w("INVARIANTS", "violations=${firstValidation.violations.joinToString()}")
+        val retryMessages = messages + listOf(
+            Message(
+                id = UUID.randomUUID().toString(),
+                content = firstValidation.originalResponse,
+                role = MessageRole.ASSISTANT
+            ),
+            Message(
+                id = UUID.randomUUID().toString(),
+                content = InvariantResponsePolicy.retryPrompt(firstValidation),
+                role = MessageRole.USER
+            )
+        )
+        val retryResponse = llmClient.sendChat(retryMessages, maxTokens, model).getOrElse {
+            return Result.failure(it)
+        }
+        val retryValidation = invariantValidator.validateResponse(retryResponse.message, invariants)
+        Log.d("INVARIANTS", "validation=${retryValidation::class.simpleName}")
+        return when (retryValidation) {
+            is InvariantValidationResult.Pass -> Result.success(retryResponse)
+            is InvariantValidationResult.Fail -> {
+                Log.w("INVARIANTS", "violations=${retryValidation.violations.joinToString()}")
+                Result.success(
+                    ChatResponse(
+                        message = InvariantResponsePolicy.safeRefusal(
+                            retryValidation.violations,
+                            invariants
+                        ),
+                        completionTokens = retryResponse.completionTokens
+                    )
+                )
+            }
+        }
+    }
+
+    private fun List<Message>.withInvariants(invariants: List<Invariant>): List<Message> {
+        if (isEmpty() || first().role != MessageRole.SYSTEM) return this
+        val section = promptBuilder.buildInvariantSection(invariants)
+        val marker = "=========================\nINVARIANTS\n========================="
+        val currentSystemPrompt = first().content
+        val markerIndex = currentSystemPrompt.indexOf(marker)
+        val withoutOldInvariants = if (markerIndex >= 0) {
+            currentSystemPrompt.substring(0, markerIndex).trimEnd()
+        } else {
+            currentSystemPrompt
+        }
+        return listOf(first().copy(content = withoutOldInvariants + "\n\n" + section)) + drop(1)
     }
 
     private fun buildEffectiveHistory(

@@ -1,15 +1,23 @@
 package com.aiassistant.core.domain.memory
 
 import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.invariant.InvariantValidator
+import com.aiassistant.core.domain.repository.InvariantRepository
 import javax.inject.Inject
 
 class StageAgentFactory @Inject constructor(
-    private val llmClient: LlmClient
+    private val llmClient: LlmClient,
+    private val invariantRepository: InvariantRepository,
+    private val invariantValidator: InvariantValidator,
+    private val promptBuilder: PromptBuilder
 ) {
     fun create(stage: TaskStage): StageAgent = StageAgent(
         stage = stage,
         systemPrompt = promptFor(stage),
-        llmClient = llmClient
+        llmClient = llmClient,
+        invariantRepository = invariantRepository,
+        invariantValidator = invariantValidator,
+        promptBuilder = promptBuilder
     )
 
     private fun promptFor(stage: TaskStage): String = when (stage) {

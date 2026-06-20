@@ -8,11 +8,13 @@ import com.aiassistant.core.data.database.ChatMessageDao
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.data.repository.ChatRepositoryImpl
+import com.aiassistant.core.data.repository.InvariantRepositoryImpl
 import com.aiassistant.core.data.repository.LongTermMemoryRepositoryImpl
 import com.aiassistant.core.data.repository.SettingsRepositoryImpl
 import com.aiassistant.core.data.repository.WorkingMemoryRepositoryImpl
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.repository.ChatRepository
+import com.aiassistant.core.domain.repository.InvariantRepository
 import com.aiassistant.core.domain.repository.LongTermMemoryRepository
 import com.aiassistant.core.domain.repository.SettingsRepository
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
@@ -43,6 +45,11 @@ abstract class DataModule {
     abstract fun bindLongTermMemoryRepository(
         longTermMemoryRepositoryImpl: LongTermMemoryRepositoryImpl
     ): LongTermMemoryRepository
+
+    @Binds
+    abstract fun bindInvariantRepository(
+        invariantRepositoryImpl: InvariantRepositoryImpl
+    ): InvariantRepository
     
     @Binds
     abstract fun bindLlmClient(

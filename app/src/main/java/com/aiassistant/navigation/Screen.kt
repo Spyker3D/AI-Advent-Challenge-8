@@ -6,6 +6,7 @@ sealed class Screen(val route: String) {
     object Day2 : Screen("day2")
     object Memory : Screen("memory")
     object TaskContextEditor : Screen("memory/task-context")
+    object InvariantsEditor : Screen("memory/invariants")
     object MarkdownMemoryEditor : Screen("memory/markdown/{type}") {
         fun createRoute(type: String): String = "memory/markdown/$type"
     }

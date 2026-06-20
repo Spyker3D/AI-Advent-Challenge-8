@@ -4,12 +4,20 @@ import android.util.Log
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.invariant.Invariant
+import com.aiassistant.core.domain.invariant.InvariantResponsePolicy
+import com.aiassistant.core.domain.invariant.InvariantValidationResult
+import com.aiassistant.core.domain.invariant.InvariantValidator
+import com.aiassistant.core.domain.repository.InvariantRepository
 import java.util.UUID
 
 class StageAgent(
     val stage: TaskStage,
     val systemPrompt: String,
-    private val llmClient: LlmClient
+    private val llmClient: LlmClient,
+    private val invariantRepository: InvariantRepository,
+    private val invariantValidator: InvariantValidator,
+    private val promptBuilder: PromptBuilder
 ) {
     suspend fun run(
         taskContext: TaskContext,
@@ -121,11 +129,19 @@ $question""",
         Log.d("STAGE_AGENT", "preferencesChars=${longTermMemory.preferences.length}")
         Log.d("STAGE_AGENT", "globalRulesChars=${longTermMemory.globalRules.length}")
         Log.d("STAGE_AGENT", "languageRule=Russian")
+        val invariants = invariantRepository.getInvariants()
+        Log.d("INVARIANTS", "loaded=${invariants.size}")
+        invariants.forEach { Log.d("INVARIANTS", it.description) }
 
         val messages = listOf(
             Message(
                 id = UUID.randomUUID().toString(),
-                content = buildSystemMessage(taskContext, longTermMemory, operationPrompt),
+                content = buildSystemMessage(
+                    taskContext,
+                    longTermMemory,
+                    operationPrompt,
+                    invariants
+                ),
                 role = MessageRole.SYSTEM
             ),
             Message(
@@ -135,13 +151,14 @@ $question""",
             )
         )
 
-        return llmClient.sendChat(messages, maxTokens = null).getOrThrow().message
+        return sendValidated(messages, invariants)
     }
 
     private fun buildSystemMessage(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
-        operationPrompt: String?
+        operationPrompt: String?,
+        invariants: List<Invariant>
     ): String = buildString {
         appendLine("ВАЖНОЕ ПРАВИЛО ЯЗЫКА:")
         appendLine("Всегда отвечай на русском языке, если пользователь явно не попросил другой язык.")
@@ -205,6 +222,45 @@ $question""",
             appendLine("CURRENT_OPERATION")
             appendLine("=========================")
             appendLine(operationPrompt)
+        }
+        appendLine()
+        append(promptBuilder.buildInvariantSection(invariants))
+    }
+
+    private suspend fun sendValidated(
+        messages: List<Message>,
+        invariants: List<Invariant>
+    ): String {
+        val firstResponse = llmClient.sendChat(messages, maxTokens = null).getOrThrow().message
+        val firstValidation = invariantValidator.validateResponse(firstResponse, invariants)
+        Log.d("INVARIANTS", "validation=${firstValidation::class.simpleName}")
+        if (firstValidation is InvariantValidationResult.Pass) return firstValidation.response
+
+        firstValidation as InvariantValidationResult.Fail
+        Log.w("INVARIANTS", "violations=${firstValidation.violations.joinToString()}")
+        val retryMessages = messages + listOf(
+            Message(
+                id = UUID.randomUUID().toString(),
+                content = firstValidation.originalResponse,
+                role = MessageRole.ASSISTANT
+            ),
+            Message(
+                id = UUID.randomUUID().toString(),
+                content = InvariantResponsePolicy.retryPrompt(firstValidation),
+                role = MessageRole.USER
+            )
+        )
+        val retryResponse = llmClient.sendChat(retryMessages, maxTokens = null)
+            .getOrThrow()
+            .message
+        val retryValidation = invariantValidator.validateResponse(retryResponse, invariants)
+        Log.d("INVARIANTS", "validation=${retryValidation::class.simpleName}")
+        return when (retryValidation) {
+            is InvariantValidationResult.Pass -> retryValidation.response
+            is InvariantValidationResult.Fail -> {
+                Log.w("INVARIANTS", "violations=${retryValidation.violations.joinToString()}")
+                InvariantResponsePolicy.safeRefusal(retryValidation.violations, invariants)
+            }
         }
     }
 
@@ -305,7 +361,9 @@ $feedback
         }
 
         Log.w("VALIDATION_AGENT", "Validation retry still violates report requirements")
-        return VALIDATION_FALLBACK_REPORT
+        val invariants = invariantRepository.getInvariants()
+        return VALIDATION_FALLBACK_REPORT + "\n\n" +
+            InvariantResponsePolicy.complianceStatement(invariants)
     }
 
     private companion object {

@@ -4,8 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiassistant.core.domain.memory.TaskContext
 import com.aiassistant.core.domain.memory.TaskPipelineOrchestrator
+import com.aiassistant.core.domain.invariant.ArchitectureInvariant
+import com.aiassistant.core.domain.invariant.BudgetInvariant
+import com.aiassistant.core.domain.invariant.MaxDependenciesInvariant
+import com.aiassistant.core.domain.invariant.StackInvariant
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.repository.LongTermMemoryRepository
+import com.aiassistant.core.domain.repository.InvariantRepository
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.feature.chat.presentation.memory.MemoryFileType
 import com.aiassistant.feature.chat.presentation.memory.MemoryUiState
@@ -18,6 +23,7 @@ import javax.inject.Inject
 class MemoryViewModel @Inject constructor(
     private val workingMemoryRepository: WorkingMemoryRepository,
     private val longTermMemoryRepository: LongTermMemoryRepository,
+    private val invariantRepository: InvariantRepository,
     private val chatRepository: ChatRepository,
     private val taskPipelineOrchestrator: TaskPipelineOrchestrator
 ) : ViewModel() {
@@ -35,9 +41,29 @@ class MemoryViewModel @Inject constructor(
             runCatching {
                 val taskContext = workingMemoryRepository.getActiveTaskContext()
                 val longTermMemory = longTermMemoryRepository.getLongTermMemory()
+                val invariants = invariantRepository.getInvariants()
+                val stack = invariants.filterIsInstance<StackInvariant>().firstOrNull()
                 _uiState.value = _uiState.value.copy(
                     activeTaskContext = taskContext,
                     longTermMemory = longTermMemory,
+                    allowedStack = stack?.allowed?.joinToString("\n").orEmpty(),
+                    bannedStack = stack?.banned?.joinToString("\n").orEmpty(),
+                    architecture = invariants
+                        .filterIsInstance<ArchitectureInvariant>()
+                        .firstOrNull()
+                        ?.architecture
+                        .orEmpty(),
+                    budget = invariants
+                        .filterIsInstance<BudgetInvariant>()
+                        .firstOrNull()
+                        ?.rule
+                        .orEmpty(),
+                    maxDependencies = invariants
+                        .filterIsInstance<MaxDependenciesInvariant>()
+                        .firstOrNull()
+                        ?.max
+                        ?.toString()
+                        .orEmpty(),
                     isLoading = false
                 )
             }.onFailure { throwable ->
@@ -95,6 +121,58 @@ class MemoryViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(message = null, error = null)
     }
 
+    fun updateInvariantForm(
+        allowedStack: String,
+        bannedStack: String,
+        architecture: String,
+        budget: String,
+        maxDependencies: String
+    ) {
+        _uiState.value = _uiState.value.copy(
+            allowedStack = allowedStack,
+            bannedStack = bannedStack,
+            architecture = architecture,
+            budget = budget,
+            maxDependencies = maxDependencies
+        )
+    }
+
+    fun saveInvariants() {
+        val state = _uiState.value
+        val allowed = state.allowedStack.toInvariantSet()
+        val banned = state.bannedStack.toInvariantSet()
+        val max = state.maxDependencies.toIntOrNull()
+
+        if (allowed.isEmpty() || allowed.any(banned::contains) ||
+            state.architecture.isBlank() ||
+            state.budget.isBlank() || max == null || max < 0
+        ) {
+            _uiState.value = state.copy(
+                error = "Заполните поля корректно; allowed и banned stack не должны пересекаться"
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                invariantRepository.saveInvariants(
+                    listOf(
+                        StackInvariant(allowed = allowed, banned = banned),
+                        ArchitectureInvariant(architecture = state.architecture.trim()),
+                        BudgetInvariant(rule = state.budget.trim()),
+                        MaxDependenciesInvariant(max = max)
+                    )
+                )
+            }.onSuccess {
+                _uiState.value = _uiState.value.copy(message = "Invariants saved", error = null)
+            }.onFailure { throwable ->
+                _uiState.value = _uiState.value.copy(
+                    error = throwable.message ?: "Failed to save invariants"
+                )
+            }
+        }
+    }
+
     fun pauseTask() = updateTask { task ->
         taskPipelineOrchestrator.pauseTask(task.id)
     }
@@ -137,4 +215,10 @@ class MemoryViewModel @Inject constructor(
                 }
         }
     }
+
+    private fun String.toInvariantSet(): Set<String> =
+        lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toCollection(linkedSetOf())
 }

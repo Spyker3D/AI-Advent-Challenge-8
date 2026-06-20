@@ -1,11 +1,13 @@
 package com.aiassistant.core.domain.memory
 
+import com.aiassistant.core.domain.invariant.Invariant
 import javax.inject.Inject
 
 class PromptBuilder @Inject constructor() {
     fun buildSystemPrompt(
         baseSystemPrompt: String,
-        memoryContext: MemoryContext
+        memoryContext: MemoryContext,
+        invariants: List<Invariant>
     ): String {
         val taskContext = memoryContext.taskContext
 
@@ -69,7 +71,32 @@ class PromptBuilder @Inject constructor() {
             appendLine()
             appendLine("Short-term memory is passed separately")
             appendLine("as recent chat messages.")
+            appendInvariantSection(invariants)
         }
+    }
+
+    fun buildSystemPrompt(
+        baseSystemPrompt: String,
+        invariants: List<Invariant>
+    ): String = buildString {
+        appendLine(baseSystemPrompt)
+        appendInvariantSection(invariants)
+    }
+
+    fun buildInvariantSection(invariants: List<Invariant>): String = buildString {
+        appendInvariantSection(invariants)
+    }
+
+    private fun StringBuilder.appendInvariantSection(invariants: List<Invariant>) {
+        appendLine()
+        appendLine("=========================")
+        appendLine("INVARIANTS")
+        appendLine("=========================")
+        appendLine()
+        invariants.forEach { appendLine("- ${it.description}") }
+        appendLine()
+        appendLine("Нарушение любого инварианта запрещено.")
+        appendLine("Если пользователь просит решение, нарушающее инварианты, откажись и предложи допустимый вариант.")
     }
 
     private fun StringBuilder.appendTaskState(taskContext: TaskContext?) {
