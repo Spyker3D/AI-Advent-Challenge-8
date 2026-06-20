@@ -38,6 +38,47 @@ class StageAgent(
         return ensureValidationReport(taskContext, longTermMemory, result)
     }
 
+    suspend fun reviseExecutionDuringValidation(
+        taskContext: TaskContext,
+        longTermMemory: LongTermMemory,
+        feedback: String
+    ): String {
+        require(stage == TaskStage.EXECUTION) {
+            "Only ExecutionAgent can revise executionResult"
+        }
+        require(taskContext.taskState.stage == TaskStage.VALIDATION) {
+            "Execution revision is only allowed during VALIDATION"
+        }
+
+        return send(
+            taskContext = taskContext,
+            longTermMemory = longTermMemory,
+            operationPrompt = """Ты ExecutionAgent.
+
+Сейчас задача находится на этапе VALIDATION, но пользователь попросил внести правку в итоговый результат.
+
+Твоя задача:
+- взять текущий executionResult;
+- применить пользовательскую правку;
+- сохранить структуру документа;
+- не писать validation report;
+- не переходить к DONE;
+- вернуть полный обновлённый executionResult;
+- отвечать на русском языке.
+
+Текущий executionResult:
+${taskContext.executionResult}
+
+Validation report:
+${taskContext.validationResult}
+
+User edit request:
+$feedback""",
+            userMessage = feedback,
+            requiredContextStage = TaskStage.VALIDATION
+        )
+    }
+
     suspend fun answerQuestion(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
@@ -68,10 +109,11 @@ $question""",
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
         operationPrompt: String?,
-        userMessage: String
+        userMessage: String,
+        requiredContextStage: TaskStage = stage
     ): String {
-        require(taskContext.taskState.stage == stage) {
-            "Agent $stage cannot run task at ${taskContext.taskState.stage}"
+        require(taskContext.taskState.stage == requiredContextStage) {
+            "Agent $stage cannot run this operation at ${taskContext.taskState.stage}"
         }
 
         Log.d("STAGE_AGENT", "stage=$stage")

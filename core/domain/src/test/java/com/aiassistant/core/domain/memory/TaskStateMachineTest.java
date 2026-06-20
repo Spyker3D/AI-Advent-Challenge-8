@@ -143,6 +143,45 @@ public class TaskStateMachineTest {
         );
     }
 
+    @Test
+    public void revalidationKeepsUpdatedExecutionAndWaitsBeforeDone() {
+        TaskContext validationRunning = new TaskContext(
+            "id",
+            "title",
+            "request",
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            "",
+            new TaskState(
+                TaskStage.VALIDATION,
+                TaskRunStatus.RUNNING,
+                "Validation agent is rechecking updated execution result"
+            ),
+            "plan",
+            "updated execution with analytics",
+            "",
+            System.currentTimeMillis()
+        );
+
+        TaskContext revalidated = stateMachine.completeStage(
+            validationRunning,
+            "# Validation Report"
+        );
+
+        assertEquals(
+            "updated execution with analytics",
+            revalidated.getExecutionResult()
+        );
+        assertEquals("# Validation Report", revalidated.getValidationResult());
+        assertEquals(TaskStage.VALIDATION, revalidated.getTaskState().getStage());
+        assertEquals(
+            TaskRunStatus.WAITING_USER,
+            revalidated.getTaskState().getStatus()
+        );
+    }
+
     private TaskContext task(TaskStage stage, TaskRunStatus status) {
         return new TaskContext(
             "id",

@@ -734,10 +734,11 @@ class ChatViewModel @Inject constructor(
                 message
             )) {
                 is TaskWaitingUserResult.ContextUpdated -> {
-                    val response = if (result.resultWasEdited) {
-                        feedbackResponse(result.taskContext)
-                    } else {
-                        taskResponse(result.taskContext)
+                    val response = when {
+                        result.executionRevisedDuringValidation ->
+                            validationRevisionResponse(result.taskContext)
+                        result.resultWasEdited -> feedbackResponse(result.taskContext)
+                        else -> taskResponse(result.taskContext)
                     }
                     result.taskContext to response
                 }
@@ -842,6 +843,18 @@ class ChatViewModel @Inject constructor(
             }
         }
     }
+
+    private fun validationRevisionResponse(taskContext: TaskContext): String =
+        buildString {
+            appendLine(
+                "Я обновил итоговый результат с учётом правки и повторно проверил его."
+            )
+            appendLine()
+            appendLine(taskContext.validationResult)
+            appendLine()
+            appendLine("Этап VALIDATION всё ещё ожидает подтверждения.")
+            append("Перейти к DONE?")
+        }
 
     private fun waitingUserInstructions(stage: TaskStage, next: TaskStage): String =
         """Этап ${stage.name} завершён.

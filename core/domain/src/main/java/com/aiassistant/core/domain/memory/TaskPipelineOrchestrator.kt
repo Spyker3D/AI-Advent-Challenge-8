@@ -153,10 +153,26 @@ class TaskPipelineOrchestrator @Inject constructor(
 
         return when {
             TaskUserIntentParser.isEditRequest(userText) ->
-                TaskWaitingUserResult.ContextUpdated(
-                    taskContext = applyFeedbackToCurrentStage(chatId, taskContext, userText),
-                    resultWasEdited = true
-                )
+                if (taskContext.taskState.stage == TaskStage.VALIDATION) {
+                    TaskWaitingUserResult.ContextUpdated(
+                        taskContext = applyValidationEditToExecutionResult(
+                            chatId,
+                            taskContext,
+                            userText
+                        ),
+                        resultWasEdited = true,
+                        executionRevisedDuringValidation = true
+                    )
+                } else {
+                    TaskWaitingUserResult.ContextUpdated(
+                        taskContext = applyFeedbackToCurrentStage(
+                            chatId,
+                            taskContext,
+                            userText
+                        ),
+                        resultWasEdited = true
+                    )
+                }
 
             TaskUserIntentParser.isClarifyingQuestion(userText) ->
                 answerQuestionResult(chatId, taskContext, userText)
@@ -183,6 +199,54 @@ class TaskPipelineOrchestrator @Inject constructor(
             runCurrentStage(chatId, running.id, feedback)
         } catch (throwable: Throwable) {
             save(taskStateMachine.waitForUser(running))
+            throw throwable
+        }
+    }
+
+    suspend fun applyValidationEditToExecutionResult(
+        chatId: String,
+        taskContext: TaskContext,
+        feedback: String
+    ): TaskContext {
+        if (taskContext.taskState.stage != TaskStage.VALIDATION ||
+            taskContext.taskState.status != TaskRunStatus.WAITING_USER
+        ) {
+            return taskContext
+        }
+
+        val running = taskStateMachine.beginFeedback(taskContext.withChat(chatId))
+        save(running)
+
+        return try {
+            val longTermMemory = longTermMemoryRepository.getLongTermMemory()
+            val updatedExecution = executionAgent.reviseExecutionDuringValidation(
+                taskContext = running,
+                longTermMemory = longTermMemory,
+                feedback = feedback
+            )
+            val readyForRevalidation = running.copy(
+                executionResult = updatedExecution,
+                validationResult = "",
+                taskState = running.taskState.copy(
+                    status = TaskRunStatus.RUNNING,
+                    currentStep = "Validation agent is rechecking updated execution result"
+                ),
+                updatedAt = System.currentTimeMillis()
+            )
+            save(readyForRevalidation)
+
+            val validationReport = validationAgent.run(
+                taskContext = readyForRevalidation,
+                longTermMemory = longTermMemory
+            )
+            val validated = taskStateMachine.completeStage(
+                readyForRevalidation,
+                validationReport
+            )
+            save(validated)
+            validated
+        } catch (throwable: Throwable) {
+            save(taskStateMachine.waitForUser(taskContext))
             throw throwable
         }
     }
