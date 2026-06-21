@@ -124,6 +124,8 @@ public class TaskStateMachineTest {
             PlanningSwarmRole.REQUIREMENTS,
             "RequirementsPlanningAgent",
             "requirements",
+            false,
+            Collections.emptyList(),
             System.currentTimeMillis()
         );
         TaskContext withSwarm = task(TaskStage.PLANNING, TaskRunStatus.RUNNING).copy(
@@ -140,6 +142,7 @@ public class TaskStateMachineTest {
             "",
             "",
             Collections.singletonList(requirements),
+            "",
             System.currentTimeMillis()
         );
 
@@ -149,6 +152,20 @@ public class TaskStateMachineTest {
         assertEquals(requirements, planned.getPlanningSwarmResults().get(0));
         assertEquals("final plan", planned.getPlanningResult());
         assertEquals(TaskRunStatus.WAITING_USER, planned.getTaskState().getStatus());
+    }
+
+    @Test
+    public void invariantRefusalIsNotSavedAsPlanningResult() {
+        TaskContext planning = task(TaskStage.PLANNING, TaskRunStatus.RUNNING);
+        String refusal = "Safe refusal";
+
+        TaskContext blocked = stateMachine.blockByInvariants(planning, refusal);
+
+        assertEquals("", blocked.getPlanningResult());
+        assertEquals(refusal, blocked.getBlockedByInvariantsMessage());
+        assertEquals(TaskStage.PLANNING, blocked.getTaskState().getStage());
+        assertEquals(TaskRunStatus.WAITING_USER, blocked.getTaskState().getStatus());
+        assertEquals("Blocked by invariants", blocked.getTaskState().getCurrentStep());
     }
 
     @Test
@@ -196,6 +213,7 @@ public class TaskStateMachineTest {
             "updated execution with analytics",
             "",
             Collections.emptyList(),
+            "",
             System.currentTimeMillis()
         );
 
@@ -231,6 +249,7 @@ public class TaskStateMachineTest {
             "",
             "",
             Collections.emptyList(),
+            "",
             System.currentTimeMillis()
         );
     }

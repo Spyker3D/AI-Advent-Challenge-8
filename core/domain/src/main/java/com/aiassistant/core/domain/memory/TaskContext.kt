@@ -14,5 +14,6 @@ data class TaskContext(
     val executionResult: String = "",
     val validationResult: String = "",
     val planningSwarmResults: List<PlanningSwarmResult> = emptyList(),
+    val blockedByInvariantsMessage: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 )

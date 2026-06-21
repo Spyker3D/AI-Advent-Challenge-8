@@ -765,6 +765,10 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun taskResponse(taskContext: TaskContext): String = when {
+        taskContext.taskState.currentStep == "Blocked by invariants" ->
+            taskContext.blockedByInvariantsMessage.ifBlank {
+                "Этап заблокирован из-за нарушения инвариантов."
+            }
         taskContext.taskState.stage == TaskStage.DONE ->
             buildString {
                 if (taskContext.currentState.isNotBlank()) {

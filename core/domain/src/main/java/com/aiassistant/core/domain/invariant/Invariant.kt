@@ -14,20 +14,30 @@ internal object InvariantTextMatcher {
         response: String,
         banned: Set<String>
     ): Boolean {
-        val lines = response.lines()
+        val normalizedResponse = response.lowercase()
 
         return banned.any { bannedTerm ->
             val normalizedTerm = bannedTerm.lowercase()
-            lines.any { line ->
-                val normalizedLine = line.lowercase()
-                normalizedLine.contains(normalizedTerm) &&
-                    !isNegativeOrExplanatoryContext(normalizedLine)
+            normalizedResponse.indicesOf(normalizedTerm).any { termStart ->
+                val windowStart = (termStart - CONTEXT_WINDOW_CHARS).coerceAtLeast(0)
+                val windowEnd = (termStart + normalizedTerm.length + CONTEXT_WINDOW_CHARS)
+                    .coerceAtMost(normalizedResponse.length)
+                val localWindow = normalizedResponse.substring(windowStart, windowEnd)
+                !isNegativeOrExplanatoryContext(localWindow)
             }
         }
     }
 
     private fun isNegativeOrExplanatoryContext(line: String): Boolean =
         NEGATIVE_CONTEXT_MARKERS.any(line::contains)
+
+    private fun String.indicesOf(term: String): Sequence<Int> = sequence {
+        var start = indexOf(term)
+        while (start >= 0) {
+            yield(start)
+            start = indexOf(term, start + term.length)
+        }
+    }
 
     private val NEGATIVE_CONTEXT_MARKERS = listOf(
         "не использовать",
@@ -36,7 +46,18 @@ internal object InvariantTextMatcher {
         "использовать нельзя",
         "нельзя предложить",
         "не могу предложить",
+        "не применять",
+        "не применяем",
+        "не предлагать",
         "не предлагаем",
+        "исключаем",
+        "исключается",
+        "отказаться от",
+        "вместо",
+        "альтернатива",
+        "замена",
+        "не подходит",
+        "нарушает инварианты",
         "запрещено",
         "запрещён",
         "запрещена",
@@ -54,8 +75,14 @@ internal object InvariantTextMatcher {
         "banned",
         "forbidden",
         "not allowed",
-        "not permitted"
+        "not permitted",
+        "not part of allowed stack",
+        "alternative to",
+        "instead of",
+        "replace"
     )
+
+    private const val CONTEXT_WINDOW_CHARS = 96
 }
 
 data class StackInvariant(

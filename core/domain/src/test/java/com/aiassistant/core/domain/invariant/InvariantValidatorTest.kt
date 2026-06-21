@@ -131,6 +131,26 @@ class InvariantValidatorTest {
     }
 
     @Test
+    fun `stack invariant passes when allowed stack is presented as alternative`() {
+        val invariant = StackInvariant(
+            allowed = setOf("Kotlin", "Ktor"),
+            banned = setOf("Java", "Spring Boot", "RxJava")
+        )
+
+        assertTrue(invariant.check("Ktor — альтернатива Spring Boot."))
+    }
+
+    @Test
+    fun `stack invariant passes when banned stack is explicitly not applied`() {
+        val invariant = StackInvariant(
+            allowed = setOf("Kotlin", "Ktor"),
+            banned = setOf("Java", "Spring Boot", "RxJava")
+        )
+
+        assertTrue(invariant.check("Не применяем Java, Spring Boot и RxJava."))
+    }
+
+    @Test
     fun `stack invariant passes neutral response without stack mention`() {
         val invariant = StackInvariant(
             allowed = setOf("Kotlin", "Ktor"),
@@ -169,6 +189,38 @@ class InvariantValidatorTest {
         val invariant = BudgetInvariant(rule = "Only free APIs")
 
         assertTrue(invariant.check("Платные API использовать нельзя."))
+    }
+
+    @Test
+    fun `ordinary REST API planning response passes default invariants`() {
+        val response = """
+            # Итоговый план
+            Реализовать REST API для задач на Kotlin и Ktor.
+            Использовать архитектуру MVVM и только бесплатные API.
+            Добавить эндпоинты задач, пользователей и статусов, затем покрыть их тестами.
+        """.trimIndent()
+
+        assertTrue(
+            validator.validateResponse(response, defaultInvariants()) is
+                InvariantValidationResult.Pass
+        )
+    }
+
+    @Test
+    fun `safe refusal passes validation despite mentioning banned stack`() {
+        val defaults = defaultInvariants()
+        val stackViolation = defaults
+            .filterIsInstance<StackInvariant>()
+            .first()
+            .violationMessage()
+        val refusal = InvariantResponsePolicy.safeRefusal(
+            violations = listOf(stackViolation),
+            invariants = defaults
+        )
+
+        assertTrue(
+            validator.validateResponse(refusal, defaults) is InvariantValidationResult.Pass
+        )
     }
 
     @Test

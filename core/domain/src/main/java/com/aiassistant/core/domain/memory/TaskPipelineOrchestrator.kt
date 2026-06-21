@@ -36,6 +36,7 @@ class TaskPipelineOrchestrator @Inject constructor(
             executionResult = "",
             validationResult = "",
             planningSwarmResults = emptyList(),
+            blockedByInvariantsMessage = "",
             currentState = "",
             updatedAt = System.currentTimeMillis()
         )
@@ -60,20 +61,33 @@ class TaskPipelineOrchestrator @Inject constructor(
         val stage = taskContext.taskState.stage
         if (stage == TaskStage.PLANNING && userInput == null) {
             val output = planningSwarmOrchestrator.runPlanning(taskContext)
-            val withSwarmResults = taskContext.copy(
-                planningSwarmResults = output.swarmResults,
-                planningResult = output.finalPlanningResult
-            )
-            val completed = taskStateMachine.completeStage(
-                withSwarmResults,
-                output.finalPlanningResult
-            )
-            save(completed)
-            return completed
+            return when (val finalPlan = output.finalPlanningResult) {
+                is AgentRunResult.Success -> {
+                    val withSwarmResults = taskContext.copy(
+                        planningSwarmResults = output.swarmResults,
+                        planningResult = finalPlan.content,
+                        blockedByInvariantsMessage = ""
+                    )
+                    val completed = taskStateMachine.completeStage(
+                        withSwarmResults,
+                        finalPlan.content
+                    )
+                    save(completed)
+                    completed
+                }
+                is AgentRunResult.BlockedByInvariants -> {
+                    val blocked = blockByInvariants(
+                        taskContext.copy(planningSwarmResults = output.swarmResults),
+                        finalPlan
+                    )
+                    save(blocked)
+                    blocked
+                }
+            }
         }
 
         val longTermMemory = longTermMemoryRepository.getLongTermMemory()
-        val result = if (stage == TaskStage.PLANNING && userInput != null) {
+        val result: AgentRunResult = if (stage == TaskStage.PLANNING && userInput != null) {
             planningSupervisorAgent.revisePlan(
                 taskContext = taskContext,
                 longTermMemory = longTermMemory,
@@ -84,9 +98,22 @@ class TaskPipelineOrchestrator @Inject constructor(
         } else {
             agentFor(stage).applyEdit(taskContext, longTermMemory, userInput)
         }
-        val updated = saveStageResult(taskContext, stage, result)
-        save(updated)
-        return updated
+        return when (result) {
+            is AgentRunResult.Success -> {
+                val updated = saveStageResult(
+                    taskContext.copy(blockedByInvariantsMessage = ""),
+                    stage,
+                    result.content
+                )
+                save(updated)
+                updated
+            }
+            is AgentRunResult.BlockedByInvariants -> {
+                val blocked = blockByInvariants(taskContext, result)
+                save(blocked)
+                blocked
+            }
+        }
     }
 
     suspend fun pauseTask(taskContextId: String): TaskContext {
@@ -108,6 +135,7 @@ class TaskPipelineOrchestrator @Inject constructor(
     suspend fun confirmNextStage(chatId: String, taskContextId: String): TaskContext {
         val current = requireTask(taskContextId).withChat(chatId)
         if (current.taskState.status != TaskRunStatus.WAITING_USER) return current
+        if (current.taskState.currentStep == "Blocked by invariants") return current
 
         val moved = taskStateMachine.moveToNextStage(current)
         save(moved)
@@ -125,6 +153,13 @@ class TaskPipelineOrchestrator @Inject constructor(
             return TaskTransitionResult.Blocked(
                 message = "Переход недоступен: текущий статус " +
                     "${current.taskState.status.name}. Сначала завершите или возобновите этап.",
+                taskContext = current
+            )
+        }
+
+        if (current.taskState.currentStep == "Blocked by invariants") {
+            return TaskTransitionResult.Blocked(
+                message = current.blockedByInvariantsMessage,
                 taskContext = current
             )
         }
@@ -154,6 +189,12 @@ class TaskPipelineOrchestrator @Inject constructor(
         }
 
         if (TaskUserIntentParser.isConfirmation(userText)) {
+            if (taskContext.taskState.currentStep == "Blocked by invariants") {
+                return TaskWaitingUserResult.Blocked(
+                    taskContext.blockedByInvariantsMessage,
+                    taskContext
+                )
+            }
             return TaskWaitingUserResult.ContextUpdated(
                 confirmNextStage(chatId, taskContextId)
             )
@@ -177,24 +218,21 @@ class TaskPipelineOrchestrator @Inject constructor(
         return when {
             TaskUserIntentParser.isEditRequest(userText) ->
                 if (taskContext.taskState.stage == TaskStage.VALIDATION) {
-                    TaskWaitingUserResult.ContextUpdated(
-                        taskContext = applyValidationEditToExecutionResult(
-                            chatId,
-                            taskContext,
-                            userText
-                        ),
+                    applyValidationEditToExecutionResult(
+                        chatId,
+                        taskContext,
+                        userText
+                    ).toWaitingUserResult(
                         resultWasEdited = true,
                         executionRevisedDuringValidation = true
                     )
                 } else {
-                    TaskWaitingUserResult.ContextUpdated(
-                        taskContext = applyFeedbackToCurrentStage(
-                            chatId,
-                            taskContext,
-                            userText
-                        ),
-                        resultWasEdited = true
+                    val updated = applyFeedbackToCurrentStage(
+                        chatId,
+                        taskContext,
+                        userText
                     )
+                    updated.toWaitingUserResult(resultWasEdited = true)
                 }
 
             TaskUserIntentParser.isClarifyingQuestion(userText) ->
@@ -247,9 +285,15 @@ class TaskPipelineOrchestrator @Inject constructor(
                 longTermMemory = longTermMemory,
                 feedback = feedback
             )
+            if (updatedExecution is AgentRunResult.BlockedByInvariants) {
+                val blocked = blockByInvariants(running, updatedExecution)
+                save(blocked)
+                return blocked
+            }
             val readyForRevalidation = running.copy(
-                executionResult = updatedExecution,
+                executionResult = (updatedExecution as AgentRunResult.Success).content,
                 validationResult = "",
+                blockedByInvariantsMessage = "",
                 taskState = running.taskState.copy(
                     status = TaskRunStatus.RUNNING,
                     currentStep = "Validation agent is rechecking updated execution result"
@@ -262,9 +306,14 @@ class TaskPipelineOrchestrator @Inject constructor(
                 taskContext = readyForRevalidation,
                 longTermMemory = longTermMemory
             )
+            if (validationReport is AgentRunResult.BlockedByInvariants) {
+                val blocked = blockByInvariants(readyForRevalidation, validationReport)
+                save(blocked)
+                return blocked
+            }
             val validated = taskStateMachine.completeStage(
                 readyForRevalidation,
-                validationReport
+                (validationReport as AgentRunResult.Success).content
             )
             save(validated)
             validated
@@ -319,6 +368,11 @@ class TaskPipelineOrchestrator @Inject constructor(
         return taskStateMachine.completeStage(taskContext, result)
     }
 
+    private fun blockByInvariants(
+        taskContext: TaskContext,
+        result: AgentRunResult.BlockedByInvariants
+    ): TaskContext = taskStateMachine.blockByInvariants(taskContext, result.message)
+
     private suspend fun requireTask(id: String): TaskContext =
         requireNotNull(workingMemoryRepository.getTaskContext(id)) {
             "Task context not found: $id"
@@ -333,4 +387,18 @@ class TaskPipelineOrchestrator @Inject constructor(
         if (chatId in relatedChatIds) return this
         return copy(relatedChatIds = relatedChatIds + chatId)
     }
+
+    private fun TaskContext.toWaitingUserResult(
+        resultWasEdited: Boolean = false,
+        executionRevisedDuringValidation: Boolean = false
+    ): TaskWaitingUserResult =
+        if (taskState.currentStep == "Blocked by invariants") {
+            TaskWaitingUserResult.Blocked(blockedByInvariantsMessage, this)
+        } else {
+            TaskWaitingUserResult.ContextUpdated(
+                taskContext = this,
+                resultWasEdited = resultWasEdited,
+                executionRevisedDuringValidation = executionRevisedDuringValidation
+            )
+        }
 }

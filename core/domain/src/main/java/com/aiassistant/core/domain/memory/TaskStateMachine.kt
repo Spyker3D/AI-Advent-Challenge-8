@@ -52,6 +52,16 @@ class TaskStateMachine @Inject constructor() {
     fun waitForUser(taskContext: TaskContext): TaskContext =
         taskContext.withStatus(TaskRunStatus.WAITING_USER, "Waiting for user confirmation")
 
+    fun blockByInvariants(taskContext: TaskContext, message: String): TaskContext =
+        taskContext.copy(
+            taskState = taskContext.taskState.copy(
+                status = TaskRunStatus.WAITING_USER,
+                currentStep = "Blocked by invariants"
+            ),
+            blockedByInvariantsMessage = message,
+            updatedAt = System.currentTimeMillis()
+        )
+
     fun beginFeedback(taskContext: TaskContext): TaskContext {
         if (taskContext.taskState.status != TaskRunStatus.WAITING_USER) return taskContext
         return taskContext.withStatus(

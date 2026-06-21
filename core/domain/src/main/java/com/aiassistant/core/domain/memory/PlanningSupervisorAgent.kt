@@ -16,7 +16,7 @@ class PlanningSupervisorAgent @Inject constructor(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
         swarmResults: List<PlanningSwarmResult>
-    ): String {
+    ): AgentRunResult {
         Log.d("PLANNING_SWARM", "supervisor started")
         val result = runSupervisor(
             taskContext = taskContext,
@@ -25,7 +25,12 @@ class PlanningSupervisorAgent @Inject constructor(
             userContent = taskContext.description,
             swarmResults = swarmResults
         )
-        Log.d("PLANNING_SWARM", "supervisor completed chars=${result.length}")
+        when (result) {
+            is AgentRunResult.Success ->
+                Log.d("PLANNING_SWARM", "supervisor completed chars=${result.content.length}")
+            is AgentRunResult.BlockedByInvariants ->
+                Log.w("PLANNING_SWARM", "supervisor blocked by invariants")
+        }
         return result
     }
 
@@ -33,7 +38,7 @@ class PlanningSupervisorAgent @Inject constructor(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
         feedback: String
-    ): String = runSupervisor(
+    ): AgentRunResult = runSupervisor(
         taskContext = taskContext,
         longTermMemory = longTermMemory,
         operationPrompt = buildString {
@@ -62,7 +67,7 @@ class PlanningSupervisorAgent @Inject constructor(
         operationPrompt: String,
         userContent: String,
         swarmResults: List<PlanningSwarmResult>
-    ): String {
+    ): AgentRunResult {
         require(taskContext.taskState.stage == TaskStage.PLANNING) {
             "Planning supervisor cannot run at ${taskContext.taskState.stage}"
         }
@@ -74,7 +79,13 @@ class PlanningSupervisorAgent @Inject constructor(
             swarmResults.forEach { result ->
                 appendLine()
                 appendLine("## ${result.title} [${result.role}]")
-                appendLine(result.content)
+                if (result.blockedByInvariants) {
+                    appendLine("BLOCKED_BY_INVARIANTS")
+                    result.violations.forEach { appendLine("- $it") }
+                    appendLine("Не используй этот результат как обычное предложение.")
+                } else {
+                    appendLine(result.content)
+                }
             }
         }
         val messages = planningMessages(

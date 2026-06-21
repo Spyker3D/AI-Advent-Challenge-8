@@ -22,7 +22,7 @@ class StageAgent(
     suspend fun run(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory
-    ): String {
+    ): AgentRunResult {
         val result = send(
             taskContext = taskContext,
             longTermMemory = longTermMemory,
@@ -36,7 +36,7 @@ class StageAgent(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
         feedback: String
-    ): String {
+    ): AgentRunResult {
         val result = send(
             taskContext = taskContext,
             longTermMemory = longTermMemory,
@@ -50,7 +50,7 @@ class StageAgent(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
         feedback: String
-    ): String {
+    ): AgentRunResult {
         require(stage == TaskStage.EXECUTION) {
             "Only ExecutionAgent can revise executionResult"
         }
@@ -91,10 +91,11 @@ $feedback""",
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
         question: String
-    ): String = send(
-        taskContext = taskContext,
-        longTermMemory = longTermMemory,
-        operationPrompt = """Ты отвечаешь на уточняющий вопрос о текущем этапе задачи.
+    ): String {
+        val result = send(
+            taskContext = taskContext,
+            longTermMemory = longTermMemory,
+            operationPrompt = """Ты отвечаешь на уточняющий вопрос о текущем этапе задачи.
 
 Важно:
 - ответь только на вопрос пользователя;
@@ -110,8 +111,13 @@ ${currentStageResult(taskContext)}
 
 Вопрос пользователя:
 $question""",
-        userMessage = question
-    )
+            userMessage = question
+        )
+        return when (result) {
+            is AgentRunResult.Success -> result.content
+            is AgentRunResult.BlockedByInvariants -> result.message
+        }
+    }
 
     private suspend fun send(
         taskContext: TaskContext,
@@ -119,7 +125,7 @@ $question""",
         operationPrompt: String?,
         userMessage: String,
         requiredContextStage: TaskStage = stage
-    ): String {
+    ): AgentRunResult {
         require(taskContext.taskState.stage == requiredContextStage) {
             "Agent $stage cannot run this operation at ${taskContext.taskState.stage}"
         }
@@ -230,11 +236,13 @@ $question""",
     private suspend fun sendValidated(
         messages: List<Message>,
         invariants: List<Invariant>
-    ): String {
+    ): AgentRunResult {
         val firstResponse = llmClient.sendChat(messages, maxTokens = null).getOrThrow().message
         val firstValidation = invariantValidator.validateResponse(firstResponse, invariants)
         Log.d("INVARIANTS", "validation=${firstValidation::class.simpleName}")
-        if (firstValidation is InvariantValidationResult.Pass) return firstValidation.response
+        if (firstValidation is InvariantValidationResult.Pass) {
+            return AgentRunResult.Success(firstValidation.response)
+        }
 
         firstValidation as InvariantValidationResult.Fail
         Log.w("INVARIANTS", "violations=${firstValidation.violations.joinToString()}")
@@ -256,10 +264,16 @@ $question""",
         val retryValidation = invariantValidator.validateResponse(retryResponse, invariants)
         Log.d("INVARIANTS", "validation=${retryValidation::class.simpleName}")
         return when (retryValidation) {
-            is InvariantValidationResult.Pass -> retryValidation.response
+            is InvariantValidationResult.Pass -> AgentRunResult.Success(retryValidation.response)
             is InvariantValidationResult.Fail -> {
                 Log.w("INVARIANTS", "violations=${retryValidation.violations.joinToString()}")
-                InvariantResponsePolicy.safeRefusal(retryValidation.violations, invariants)
+                AgentRunResult.BlockedByInvariants(
+                    message = InvariantResponsePolicy.safeRefusal(
+                        retryValidation.violations,
+                        invariants
+                    ),
+                    violations = retryValidation.violations
+                )
             }
         }
     }
@@ -338,10 +352,12 @@ $feedback
     private suspend fun ensureValidationReport(
         taskContext: TaskContext,
         longTermMemory: LongTermMemory,
-        result: String
-    ): String {
+        result: AgentRunResult
+    ): AgentRunResult {
+        if (result is AgentRunResult.BlockedByInvariants) return result
+        val content = (result as AgentRunResult.Success).content
         if (stage != TaskStage.VALIDATION ||
-            ValidationReportValidator.isValid(result, taskContext.executionResult)
+            ValidationReportValidator.isValid(content, taskContext.executionResult)
         ) {
             return result
         }
@@ -356,14 +372,18 @@ $feedback
             operationPrompt = VALIDATION_RETRY_PROMPT,
             userMessage = "Сформируй корректный отчёт проверки executionResult."
         )
-        if (ValidationReportValidator.isValid(retryResult, taskContext.executionResult)) {
+        if (retryResult is AgentRunResult.BlockedByInvariants) return retryResult
+        val retryContent = (retryResult as AgentRunResult.Success).content
+        if (ValidationReportValidator.isValid(retryContent, taskContext.executionResult)) {
             return retryResult
         }
 
         Log.w("VALIDATION_AGENT", "Validation retry still violates report requirements")
         val invariants = invariantRepository.getInvariants()
-        return VALIDATION_FALLBACK_REPORT + "\n\n" +
-            InvariantResponsePolicy.complianceStatement(invariants)
+        return AgentRunResult.Success(
+            VALIDATION_FALLBACK_REPORT + "\n\n" +
+                InvariantResponsePolicy.complianceStatement(invariants)
+        )
     }
 
     private companion object {

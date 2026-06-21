@@ -38,18 +38,35 @@ class PlanningSwarmAgent(
             ),
             userContent = taskContext.description
         )
-        val content = sendPlanningResponse(
+        val agentResult = sendPlanningResponse(
             messages = messages,
             invariants = invariants,
             llmClient = llmClient,
             invariantValidator = invariantValidator
         )
-        Log.d("PLANNING_SWARM", "agent=$role completed chars=${content.length}")
-        return PlanningSwarmResult(
-            role = role,
-            title = titleFor(role),
-            content = content
-        )
+        return when (agentResult) {
+            is AgentRunResult.Success -> {
+                Log.d(
+                    "PLANNING_SWARM",
+                    "agent=$role completed chars=${agentResult.content.length}"
+                )
+                PlanningSwarmResult(
+                    role = role,
+                    title = titleFor(role),
+                    content = agentResult.content
+                )
+            }
+            is AgentRunResult.BlockedByInvariants -> {
+                Log.w("PLANNING_SWARM", "agent=$role blocked by invariants")
+                PlanningSwarmResult(
+                    role = role,
+                    title = titleFor(role),
+                    content = agentResult.message,
+                    blockedByInvariants = true,
+                    violations = agentResult.violations
+                )
+            }
+        }
     }
 
     private fun titleFor(role: PlanningSwarmRole): String = when (role) {
@@ -126,10 +143,12 @@ internal suspend fun sendPlanningResponse(
     invariants: List<Invariant>,
     llmClient: LlmClient,
     invariantValidator: InvariantValidator
-): String {
+): AgentRunResult {
     val first = llmClient.sendChat(messages, maxTokens = null).getOrThrow().message
     val firstValidation = invariantValidator.validateResponse(first, invariants)
-    if (firstValidation is InvariantValidationResult.Pass) return firstValidation.response
+    if (firstValidation is InvariantValidationResult.Pass) {
+        return AgentRunResult.Success(firstValidation.response)
+    }
 
     firstValidation as InvariantValidationResult.Fail
     Log.w("INVARIANTS", "violations=${firstValidation.violations.joinToString()}")
@@ -147,10 +166,16 @@ internal suspend fun sendPlanningResponse(
     )
     val retry = llmClient.sendChat(retryMessages, maxTokens = null).getOrThrow().message
     return when (val validation = invariantValidator.validateResponse(retry, invariants)) {
-        is InvariantValidationResult.Pass -> validation.response
+        is InvariantValidationResult.Pass -> AgentRunResult.Success(validation.response)
         is InvariantValidationResult.Fail -> {
             Log.w("INVARIANTS", "violations=${validation.violations.joinToString()}")
-            InvariantResponsePolicy.safeRefusal(validation.violations, invariants)
+            AgentRunResult.BlockedByInvariants(
+                message = InvariantResponsePolicy.safeRefusal(
+                    validation.violations,
+                    invariants
+                ),
+                violations = validation.violations
+            )
         }
     }
 }
