@@ -9,6 +9,8 @@ class TaskPipelineOrchestrator @Inject constructor(
     private val workingMemoryRepository: WorkingMemoryRepository,
     private val longTermMemoryRepository: LongTermMemoryRepository,
     private val taskStateMachine: TaskStateMachine,
+    private val planningSwarmOrchestrator: PlanningSwarmOrchestrator,
+    private val planningSupervisorAgent: PlanningSupervisorAgent,
     stageAgentFactory: StageAgentFactory
 ) {
     private val planningAgent = stageAgentFactory.create(TaskStage.PLANNING)
@@ -28,11 +30,12 @@ class TaskPipelineOrchestrator @Inject constructor(
             taskState = TaskState(
                 stage = TaskStage.PLANNING,
                 status = TaskRunStatus.RUNNING,
-                currentStep = "Planning agent is running"
+                currentStep = "Planning swarm is running"
             ),
             planningResult = "",
             executionResult = "",
             validationResult = "",
+            planningSwarmResults = emptyList(),
             currentState = "",
             updatedAt = System.currentTimeMillis()
         )
@@ -55,8 +58,28 @@ class TaskPipelineOrchestrator @Inject constructor(
         if (taskContext.taskState.status != TaskRunStatus.RUNNING) return taskContext
 
         val stage = taskContext.taskState.stage
+        if (stage == TaskStage.PLANNING && userInput == null) {
+            val output = planningSwarmOrchestrator.runPlanning(taskContext)
+            val withSwarmResults = taskContext.copy(
+                planningSwarmResults = output.swarmResults,
+                planningResult = output.finalPlanningResult
+            )
+            val completed = taskStateMachine.completeStage(
+                withSwarmResults,
+                output.finalPlanningResult
+            )
+            save(completed)
+            return completed
+        }
+
         val longTermMemory = longTermMemoryRepository.getLongTermMemory()
-        val result = if (userInput == null) {
+        val result = if (stage == TaskStage.PLANNING && userInput != null) {
+            planningSupervisorAgent.revisePlan(
+                taskContext = taskContext,
+                longTermMemory = longTermMemory,
+                feedback = userInput
+            )
+        } else if (userInput == null) {
             agentFor(stage).run(taskContext, longTermMemory)
         } else {
             agentFor(stage).applyEdit(taskContext, longTermMemory, userInput)

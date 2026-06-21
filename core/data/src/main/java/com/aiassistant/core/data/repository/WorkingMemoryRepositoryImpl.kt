@@ -40,7 +40,8 @@ class WorkingMemoryRepositoryImpl @Inject constructor(
                 taskState = parsed.taskState ?: TaskState(),
                 planningResult = parsed.planningResult.orEmpty(),
                 executionResult = parsed.executionResult.orEmpty(),
-                validationResult = parsed.validationResult.orEmpty()
+                validationResult = parsed.validationResult.orEmpty(),
+                planningSwarmResults = parsed.planningSwarmResults ?: emptyList()
             )
         }.getOrNull()
     }

@@ -119,6 +119,39 @@ public class TaskStateMachineTest {
     }
 
     @Test
+    public void planningCompletionPreservesSwarmResultsAndWaitsForUser() {
+        PlanningSwarmResult requirements = new PlanningSwarmResult(
+            PlanningSwarmRole.REQUIREMENTS,
+            "RequirementsPlanningAgent",
+            "requirements",
+            System.currentTimeMillis()
+        );
+        TaskContext withSwarm = task(TaskStage.PLANNING, TaskRunStatus.RUNNING).copy(
+            "id",
+            "title",
+            "request",
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            "",
+            new TaskState(TaskStage.PLANNING, TaskRunStatus.RUNNING, ""),
+            "",
+            "",
+            "",
+            Collections.singletonList(requirements),
+            System.currentTimeMillis()
+        );
+
+        TaskContext planned = stateMachine.completeStage(withSwarm, "final plan");
+
+        assertEquals(1, planned.getPlanningSwarmResults().size());
+        assertEquals(requirements, planned.getPlanningSwarmResults().get(0));
+        assertEquals("final plan", planned.getPlanningResult());
+        assertEquals(TaskRunStatus.WAITING_USER, planned.getTaskState().getStatus());
+    }
+
+    @Test
     public void validationReportValidatorRejectsMissingSectionsAndCopiedExecution() {
         String execution = String.join(
             "",
@@ -162,6 +195,7 @@ public class TaskStateMachineTest {
             "plan",
             "updated execution with analytics",
             "",
+            Collections.emptyList(),
             System.currentTimeMillis()
         );
 
@@ -196,6 +230,7 @@ public class TaskStateMachineTest {
             "",
             "",
             "",
+            Collections.emptyList(),
             System.currentTimeMillis()
         );
     }

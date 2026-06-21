@@ -13,5 +13,6 @@ data class TaskContext(
     val planningResult: String = "",
     val executionResult: String = "",
     val validationResult: String = "",
+    val planningSwarmResults: List<PlanningSwarmResult> = emptyList(),
     val updatedAt: Long = System.currentTimeMillis()
 )

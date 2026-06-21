@@ -128,6 +128,26 @@ private fun WorkingMemoryCard(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp)
                 )
+                if (it.planningSwarmResults.isNotEmpty()) {
+                    Text(
+                        text = "Planning Swarm Results",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                    it.planningSwarmResults.forEach { result ->
+                        Text(
+                            text = "${result.title}:\n${result.content}",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    Text(
+                        text = "Final planningResult:\n${it.planningResult}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
                 Button(
                     onClick = onStart,
                     modifier = Modifier.padding(top = 12.dp)
