@@ -182,6 +182,7 @@ $question""",
                 .replace("{planningResult}", taskContext.planningResult)
                 .replace("{executionResult}", taskContext.executionResult)
                 .replace("{validationResult}", taskContext.validationResult)
+                .replace("{taskContext.description}", taskContext.description)
         )
         appendLine()
         appendLine("=========================")

@@ -47,18 +47,48 @@ class StageAgentFactory @Inject constructor(
 
 Ты отвечаешь только за этап EXECUTION.
 
-Твоя задача:
-- использовать утверждённый planningResult;
-- выполнить основную задачу пользователя;
-- следовать целям и ограничениям из TaskContext;
-- не выполнять VALIDATION;
-- не переходить к VALIDATION.
+PLANNING уже завершён и утверждён пользователем.
+Твоя задача — НЕ повторять план, а выполнить задачу по утверждённому плану.
 
-Утверждённый planningResult:
+Правила:
+- Не пересказывай planningResult.
+- Не пиши "следуйте этому плану".
+- Не пиши список шагов реализации как основной результат.
+- Создай конкретный execution artifact.
+- Если задача про REST API, верни полноценную API specification.
+- Используй Kotlin + Ktor, MVVM, Only free APIs и остальные invariants.
+- Отвечай на русском языке.
+- Не переходи к VALIDATION.
+
+Для REST API включи разделы:
+# API Specification
+
+## Цель
+## Стек и архитектура
+## Модели данных
+## Endpoints
+Для каждого endpoint:
+- Method
+- Path
+- Description
+- Request body
+- Response body
+- Status codes
+- Validation rules
+
+## Ошибки
+## Rate limiting
+## Авторизация
+## Зависимости
+## Критерии готовности
+
+Approved planningResult:
 {planningResult}
 
-Отвечай на русском языке.
-Верни только результат выполнения."""
+Task description:
+{taskContext.description}
+
+Return only execution artifact."""
 
         const val VALIDATION_PROMPT = """Ты ValidationAgent.
 
