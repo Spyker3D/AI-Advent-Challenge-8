@@ -51,7 +51,13 @@ class MemoryViewModel @Inject constructor(
                     architecture = invariants
                         .filterIsInstance<ArchitectureInvariant>()
                         .firstOrNull()
-                        ?.architecture
+                        ?.required
+                        .orEmpty(),
+                    bannedArchitectures = invariants
+                        .filterIsInstance<ArchitectureInvariant>()
+                        .firstOrNull()
+                        ?.banned
+                        ?.joinToString("\n")
                         .orEmpty(),
                     budget = invariants
                         .filterIsInstance<BudgetInvariant>()
@@ -125,6 +131,7 @@ class MemoryViewModel @Inject constructor(
         allowedStack: String,
         bannedStack: String,
         architecture: String,
+        bannedArchitectures: String,
         budget: String,
         maxDependencies: String
     ) {
@@ -132,6 +139,7 @@ class MemoryViewModel @Inject constructor(
             allowedStack = allowedStack,
             bannedStack = bannedStack,
             architecture = architecture,
+            bannedArchitectures = bannedArchitectures,
             budget = budget,
             maxDependencies = maxDependencies
         )
@@ -141,6 +149,7 @@ class MemoryViewModel @Inject constructor(
         val state = _uiState.value
         val allowed = state.allowedStack.toInvariantSet()
         val banned = state.bannedStack.toInvariantSet()
+        val bannedArchitectures = state.bannedArchitectures.toInvariantSet()
         val max = state.maxDependencies.toIntOrNull()
 
         if (allowed.isEmpty() || allowed.any(banned::contains) ||
@@ -158,7 +167,10 @@ class MemoryViewModel @Inject constructor(
                 invariantRepository.saveInvariants(
                     listOf(
                         StackInvariant(allowed = allowed, banned = banned),
-                        ArchitectureInvariant(architecture = state.architecture.trim()),
+                        ArchitectureInvariant(
+                            required = state.architecture.trim(),
+                            banned = bannedArchitectures
+                        ),
                         BudgetInvariant(rule = state.budget.trim()),
                         MaxDependenciesInvariant(max = max)
                     )

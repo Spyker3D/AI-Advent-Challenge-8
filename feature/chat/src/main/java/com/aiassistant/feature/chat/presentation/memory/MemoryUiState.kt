@@ -15,6 +15,7 @@ data class MemoryUiState(
     val allowedStack: String = "",
     val bannedStack: String = "",
     val architecture: String = "",
+    val bannedArchitectures: String = "MVC\nMVP",
     val budget: String = "",
     val maxDependencies: String = "",
     val isLoading: Boolean = false,
