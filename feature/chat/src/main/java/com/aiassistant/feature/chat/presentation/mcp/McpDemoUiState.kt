@@ -8,5 +8,7 @@ data class McpDemoUiState(
     val weatherResult: String = "Нажмите кнопку, чтобы вызвать weather MCP tool",
     val isAutoRefreshEnabled: Boolean = false,
     val lastAutoRefreshAt: String = "",
-    val autoRefreshIntervalSec: Int = 10
+    val autoRefreshIntervalSec: Int = 10,
+    val pipelineRequest: String = "Подготовь отчет о погоде в Санкт-Петербурге",
+    val pipelineResult: String = "Нажмите кнопку, чтобы запустить MCP pipeline"
 )

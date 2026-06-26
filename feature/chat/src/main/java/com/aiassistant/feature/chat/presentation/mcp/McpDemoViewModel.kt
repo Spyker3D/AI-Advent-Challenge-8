@@ -3,6 +3,7 @@ package com.aiassistant.feature.chat.presentation.mcp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiassistant.core.domain.mcp.McpAgentRepository
+import com.aiassistant.core.domain.mcp.McpPipelineAgent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -18,7 +19,8 @@ import javax.inject.Inject
 private const val AUTO_REFRESH_INTERVAL_MS = 10_000L
 
 class McpDemoViewModel @Inject constructor(
-    private val mcpAgentRepository: McpAgentRepository
+    private val mcpAgentRepository: McpAgentRepository,
+    private val mcpPipelineAgent: McpPipelineAgent
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(McpDemoUiState())
     val uiState = _uiState.asStateFlow()
@@ -27,6 +29,10 @@ class McpDemoViewModel @Inject constructor(
 
     fun onTaskIdChanged(value: String) {
         _uiState.update { it.copy(taskId = value) }
+    }
+
+    fun onPipelineRequestChanged(value: String) {
+        _uiState.update { it.copy(pipelineRequest = value) }
     }
 
     fun loadTools() {
@@ -90,6 +96,30 @@ class McpDemoViewModel @Inject constructor(
                     isLoading = false,
                     weatherResult = result
                 )
+            }
+        }
+    }
+
+    fun runPipeline() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            runCatching {
+                val result = mcpPipelineAgent.run(_uiState.value.pipelineRequest)
+                mcpPipelineAgent.formatDebugResult(result)
+            }.onSuccess { result ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        pipelineResult = result
+                    )
+                }
+            }.onFailure { throwable ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        pipelineResult = "Ошибка MCP pipeline:\n${throwable.message}"
+                    )
+                }
             }
         }
     }

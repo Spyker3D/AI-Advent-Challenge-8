@@ -14,6 +14,10 @@ class McpAgentRepositoryImpl @Inject constructor(
         mcpClient.listTools()
     }
 
+    override suspend fun callTool(name: String, arguments: Map<String, Any?>): String = withContext(Dispatchers.IO) {
+        mcpClient.callTool(name, arguments)
+    }
+
     override suspend fun checkTaskStatus(taskId: String): String = withContext(Dispatchers.IO) {
         mcpClient.callGetTaskStatus(taskId)
     }

@@ -190,3 +190,36 @@ Day 18 реализован в двух частях:
 - в логах VPS видно `Weather collected`;
 - в Android-приложении можно нажать `Запустить авто-сводку`;
 - summary обновляется автоматически каждые 10 секунд.
+
+## Day 19: MCP Tool Composition Pipeline
+
+Реализован автоматический pipeline из нескольких MCP tools.
+
+Основной сценарий:
+Пользователь пишет в чат:
+
+`Подготовь отчет о погоде в Санкт-Петербурге`
+
+Android agent:
+
+1. Определяет, что запрос относится к weather pipeline.
+2. Строит цепочку MCP tools через LLM planner или fallback planner.
+3. Последовательно вызывает MCP tools.
+4. Передает результат одного tool в следующий через `$previous`.
+5. Показывает финальный ответ в чате.
+
+MCP tools:
+
+- `get_weather_by_city` — получает текущую погоду по городу.
+- `create_weather_report` — формирует отчет по weather JSON.
+- `save_report_to_file` — сохраняет отчет в файл и возвращает URL.
+
+Pipeline:
+
+`get_weather_by_city → create_weather_report → save_report_to_file`
+
+MCP server не вызывает LLM. Все tools находятся на MCP server.
+
+Сохраненные отчеты доступны по URL:
+
+`http://31.129.110.10:3000/reports/<fileName>`

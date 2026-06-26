@@ -165,6 +165,26 @@ fun McpDemoScreen(
             )
             Text("Интервал обновления: ${state.autoRefreshIntervalSec} секунд")
 
+            Text(
+                text = "MCP Day 19: Tool Composition Pipeline",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            OutlinedTextField(
+                value = state.pipelineRequest,
+                onValueChange = viewModel::onPipelineRequestChanged,
+                label = { Text("User request") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
+            )
+            Button(
+                onClick = viewModel::runPipeline,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Запустить MCP pipeline")
+            }
+
             if (state.isLoading) {
                 CircularProgressIndicator()
             }
@@ -172,6 +192,10 @@ fun McpDemoScreen(
             McpResultCard(
                 title = "Weather tool result:",
                 content = state.weatherResult
+            )
+            McpResultCard(
+                title = "Pipeline result:",
+                content = state.pipelineResult
             )
         }
     }
