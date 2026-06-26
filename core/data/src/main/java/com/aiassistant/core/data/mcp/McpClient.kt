@@ -40,6 +40,52 @@ class McpClient @Inject constructor(
         """.trimIndent()
     )
 
+    fun callGetWeatherSummary(limit: Int): String = postJson(
+        """
+        {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "method": "tools/call",
+          "params": {
+            "name": "get_weather_summary",
+            "arguments": {
+              "limit": $limit
+            }
+          }
+        }
+        """.trimIndent()
+    )
+
+    fun callGetWeatherHistory(limit: Int): String = postJson(
+        """
+        {
+          "jsonrpc": "2.0",
+          "id": 4,
+          "method": "tools/call",
+          "params": {
+            "name": "get_weather_history",
+            "arguments": {
+              "limit": $limit
+            }
+          }
+        }
+        """.trimIndent()
+    )
+
+    fun callCollectWeatherNow(): String = postJson(
+        """
+        {
+          "jsonrpc": "2.0",
+          "id": 5,
+          "method": "tools/call",
+          "params": {
+            "name": "collect_weather_now",
+            "arguments": {}
+          }
+        }
+        """.trimIndent()
+    )
+
     private fun postJson(json: String): String = try {
         val request = Request.Builder()
             .url(MCP_ENDPOINT)

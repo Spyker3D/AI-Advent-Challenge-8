@@ -17,4 +17,16 @@ class McpAgentRepositoryImpl @Inject constructor(
     override suspend fun checkTaskStatus(taskId: String): String = withContext(Dispatchers.IO) {
         mcpClient.callGetTaskStatus(taskId)
     }
+
+    override suspend fun getWeatherSummary(limit: Int): String = withContext(Dispatchers.IO) {
+        mcpClient.callGetWeatherSummary(limit)
+    }
+
+    override suspend fun getWeatherHistory(limit: Int): String = withContext(Dispatchers.IO) {
+        mcpClient.callGetWeatherHistory(limit)
+    }
+
+    override suspend fun collectWeatherNow(): String = withContext(Dispatchers.IO) {
+        mcpClient.callCollectWeatherNow()
+    }
 }

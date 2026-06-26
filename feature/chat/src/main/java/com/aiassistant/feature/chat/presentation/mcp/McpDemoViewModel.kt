@@ -39,4 +39,37 @@ class McpDemoViewModel @Inject constructor(
             )
         }
     }
+
+    fun loadWeatherSummary() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val result = mcpAgentRepository.getWeatherSummary(limit = 10)
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                weatherResult = result
+            )
+        }
+    }
+
+    fun loadWeatherHistory() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val result = mcpAgentRepository.getWeatherHistory(limit = 10)
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                weatherResult = result
+            )
+        }
+    }
+
+    fun collectWeatherNow() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val result = mcpAgentRepository.collectWeatherNow()
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                weatherResult = result
+            )
+        }
+    }
 }

@@ -40,7 +40,7 @@ fun McpDemoScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("MCP Day 17 Demo") },
+                title = { Text("MCP Demo") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -62,7 +62,7 @@ fun McpDemoScreen(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
-            Text("Локальный MCP server: http://10.0.2.2:3000/mcp")
+            Text("MCP endpoint: http://31.129.110.10:3000/mcp")
 
             OutlinedTextField(
                 value = state.taskId,
@@ -87,17 +87,56 @@ fun McpDemoScreen(
                 }
             }
 
-            if (state.isLoading) {
-                CircularProgressIndicator()
-            }
-
             McpResultCard(
                 title = "Tools list:",
                 content = state.toolsList.ifBlank { "Пока не загружено" }
             )
             McpResultCard(
-                title = "Result:",
+                title = "Task tool result:",
                 content = state.result
+            )
+
+            Text(
+                text = "MCP Day 18: Periodic Weather Summary",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Данные собираются MCP-сервером на VPS по расписанию раз в 60 секунд " +
+                    "и сохраняются в JSON."
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = viewModel::loadWeatherSummary,
+                    enabled = !state.isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Получить weather summary")
+                }
+                Button(
+                    onClick = viewModel::loadWeatherHistory,
+                    enabled = !state.isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Показать weather history")
+                }
+                Button(
+                    onClick = viewModel::collectWeatherNow,
+                    enabled = !state.isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Собрать погоду сейчас")
+                }
+            }
+
+            if (state.isLoading) {
+                CircularProgressIndicator()
+            }
+
+            McpResultCard(
+                title = "Weather tool result:",
+                content = state.weatherResult
             )
         }
     }

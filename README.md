@@ -152,3 +152,26 @@ cd mcp-server
 npm install
 npm start
 ```
+
+## Day 18: Periodic MCP tool
+
+Реализован MCP-инструмент с периодическим выполнением.
+
+Что делает:
+
+- MCP server на VPS раз в 60 секунд собирает текущую погоду через Open-Meteo API;
+- данные сохраняются в `mcp-server/data/weather-history.json`;
+- tool `get_weather_summary` возвращает агрегированную сводку;
+- Android-приложение вызывает MCP tool и отображает результат.
+
+MCP endpoint:
+
+```text
+http://31.129.110.10:3000/mcp
+```
+
+Tools:
+
+- `collect_weather_now`
+- `get_weather_history`
+- `get_weather_summary`
