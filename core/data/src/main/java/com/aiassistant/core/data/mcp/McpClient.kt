@@ -70,7 +70,7 @@ class McpClient @Inject constructor(
     }
 
     private companion object {
-        const val MCP_ENDPOINT = "http://10.0.2.2:3000/mcp"
+        const val MCP_ENDPOINT = "http://31.129.110.10:3000/mcp"
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 }
