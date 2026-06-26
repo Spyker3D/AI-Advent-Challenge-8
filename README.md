@@ -129,3 +129,26 @@ feature/
 ├── chat/              # Чат функциональность
 └── settings/          # Настройки приложения
 ```
+
+## Day 17: MCP tool demo
+
+Реализована демонстрация вызова локального MCP tool из Android-приложения.
+
+Android-приложение:
+- получает список tools через `tools/list`;
+- вызывает tool `get_task_status` через `tools/call`;
+- отображает результат на экране.
+
+Локальный MCP endpoint для Android Emulator:
+
+```text
+http://10.0.2.2:3000/mcp
+```
+
+Перед запуском Android-приложения нужно запустить локальный MCP server:
+
+```bash
+cd mcp-server
+npm install
+npm start
+```

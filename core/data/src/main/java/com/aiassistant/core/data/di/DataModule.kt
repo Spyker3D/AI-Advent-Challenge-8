@@ -7,12 +7,14 @@ import com.aiassistant.core.data.database.ChatDatabase
 import com.aiassistant.core.data.database.ChatMessageDao
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMessageMapper
+import com.aiassistant.core.data.mcp.McpAgentRepositoryImpl
 import com.aiassistant.core.data.repository.ChatRepositoryImpl
 import com.aiassistant.core.data.repository.InvariantRepositoryImpl
 import com.aiassistant.core.data.repository.LongTermMemoryRepositoryImpl
 import com.aiassistant.core.data.repository.SettingsRepositoryImpl
 import com.aiassistant.core.data.repository.WorkingMemoryRepositoryImpl
 import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.mcp.McpAgentRepository
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.repository.InvariantRepository
 import com.aiassistant.core.domain.repository.LongTermMemoryRepository
@@ -50,6 +52,11 @@ abstract class DataModule {
     abstract fun bindInvariantRepository(
         invariantRepositoryImpl: InvariantRepositoryImpl
     ): InvariantRepository
+
+    @Binds
+    abstract fun bindMcpAgentRepository(
+        impl: McpAgentRepositoryImpl
+    ): McpAgentRepository
     
     @Binds
     abstract fun bindLlmClient(

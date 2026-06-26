@@ -1,6 +1,7 @@
 package com.aiassistant.di
 
 import androidx.lifecycle.ViewModel
+import com.aiassistant.feature.chat.presentation.mcp.McpDemoViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.MemoryViewModel
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
@@ -25,4 +26,9 @@ abstract class ViewModelModule {
     @IntoMap
     @ViewModelKey(SettingsViewModel::class)
     abstract fun bindSettingsViewModel(settingsViewModel: SettingsViewModel): ViewModel
+
+    @Binds
+    @IntoMap
+    @ViewModelKey(McpDemoViewModel::class)
+    abstract fun bindMcpDemoViewModel(viewModel: McpDemoViewModel): ViewModel
 }

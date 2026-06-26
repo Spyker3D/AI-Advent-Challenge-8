@@ -9,6 +9,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.aiassistant.di.ViewModelFactory
 import com.aiassistant.feature.chat.presentation.memory.MemoryFileType
+import com.aiassistant.feature.chat.presentation.mcp.McpDemoScreen
+import com.aiassistant.feature.chat.presentation.mcp.McpDemoViewModel
 import com.aiassistant.feature.chat.presentation.screen.ChatScreen
 import com.aiassistant.feature.chat.presentation.screen.Day2Screen
 import com.aiassistant.feature.chat.presentation.screen.MarkdownMemoryEditorScreen
@@ -40,7 +42,18 @@ fun AppNavigation(
                 },
                 onNavigateToMemory = {
                     navController.navigate(Screen.Memory.route)
+                },
+                onNavigateToMcpDemo = {
+                    navController.navigate(Screen.McpDemo.route)
                 }
+            )
+        }
+
+        composable(Screen.McpDemo.route) {
+            val mcpDemoViewModel: McpDemoViewModel = viewModel(factory = viewModelFactory)
+            McpDemoScreen(
+                viewModel = mcpDemoViewModel,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

@@ -1,0 +1,10 @@
+{
+ "name": "ai-assistant-mcp-server",
+ "version": "1.0.0",
+ "description": "Local MCP server demo for AI Assistant Day 17",
+ "main": "server.js",
+ "scripts": {
+ "start": "node server.js"
+ },
+ "private": true
+ }

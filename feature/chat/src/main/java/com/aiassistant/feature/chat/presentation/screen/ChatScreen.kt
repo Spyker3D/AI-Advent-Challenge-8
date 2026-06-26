@@ -98,6 +98,7 @@ fun ChatScreen(
     viewModel: ChatViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToMemory: () -> Unit,
+    onNavigateToMcpDemo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -251,6 +252,13 @@ fun ChatScreen(
                                 onClick = {
                                     isOverflowMenuOpen = false
                                     onNavigateToMemory()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("MCP Day 17 Demo") },
+                                onClick = {
+                                    isOverflowMenuOpen = false
+                                    onNavigateToMcpDemo()
                                 }
                             )
                         }
