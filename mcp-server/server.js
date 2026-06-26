@@ -3,7 +3,7 @@ const http = require("http");
 const path = require("path");
 
 const PORT = 3000;
-const WEATHER_INTERVAL_MS = 60_000;
+const WEATHER_INTERVAL_MS = 10_000;
 const WEATHER_API_URL =
   "https://api.open-meteo.com/v1/forecast?latitude=55.7558&longitude=37.6173&current=temperature_2m,wind_speed_10m,precipitation";
 const DATA_DIR = path.join(__dirname, "data");

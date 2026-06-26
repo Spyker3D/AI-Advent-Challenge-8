@@ -175,3 +175,18 @@ Tools:
 - `collect_weather_now`
 - `get_weather_history`
 - `get_weather_summary`
+
+## Day 18: 24/7 Agent Monitoring
+
+Day 18 реализован в двух частях:
+
+1. MCP server на VPS работает через PM2 и сам собирает weather data по расписанию.
+2. Android agent может запускать auto refresh mode и каждые 10 секунд получать агрегированную сводку через MCP tool `get_weather_summary`.
+
+Для демонстрации используется интервал 10 секунд. В реальном режиме интервал можно изменить через константу `AUTO_REFRESH_INTERVAL_MS`.
+
+Проверка:
+
+- в логах VPS видно `Weather collected`;
+- в Android-приложении можно нажать `Запустить авто-сводку`;
+- summary обновляется автоматически каждые 10 секунд.

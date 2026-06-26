@@ -130,6 +130,41 @@ fun McpDemoScreen(
                 }
             }
 
+            Text(
+                text = "24/7 Agent Monitoring",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "MCP-сервер на VPS собирает данные по расписанию, а Android-агент " +
+                    "каждые 10 секунд запрашивает агрегированную сводку через MCP tool " +
+                    "get_weather_summary."
+            )
+            Button(
+                onClick = viewModel::toggleAutoRefresh,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (state.isAutoRefreshEnabled) {
+                        "Остановить авто-сводку"
+                    } else {
+                        "Запустить авто-сводку"
+                    }
+                )
+            }
+            Text(
+                text = if (state.isAutoRefreshEnabled) {
+                    "Статус: авто-сводка включена"
+                } else {
+                    "Статус: авто-сводка выключена"
+                }
+            )
+            Text(
+                text = "Последнее обновление: " +
+                    state.lastAutoRefreshAt.ifBlank { "ещё не выполнялось" }
+            )
+            Text("Интервал обновления: ${state.autoRefreshIntervalSec} секунд")
+
             if (state.isLoading) {
                 CircularProgressIndicator()
             }
