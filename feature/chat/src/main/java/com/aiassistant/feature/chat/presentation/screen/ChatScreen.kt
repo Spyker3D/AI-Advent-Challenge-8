@@ -3,6 +3,7 @@ package com.aiassistant.feature.chat.presentation.screen
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -66,7 +68,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -1268,8 +1275,9 @@ fun EnhancedMessageBubble(
                 Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
+                    AssistantMessageText(
                         text = message.content,
+                        isUserMessage = isUserMessage,
                         color = contentColor,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth()
@@ -1325,6 +1333,81 @@ fun EnhancedMessageBubble(
         }
     }
 }
+
+@Composable
+private fun AssistantMessageText(
+    text: String,
+    isUserMessage: Boolean,
+    color: androidx.compose.ui.graphics.Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val linkText = buildReportLinkText(text)
+
+    if (isUserMessage || linkText == null) {
+        Text(
+            text = text,
+            color = color,
+            style = style,
+            modifier = modifier
+        )
+        return
+    }
+
+    ClickableText(
+        text = linkText.annotatedText,
+        style = style.copy(color = color),
+        modifier = modifier,
+        onClick = { offset ->
+            linkText.annotatedText
+                .getStringAnnotations(REPORT_URL_TAG, offset, offset)
+                .firstOrNull()
+                ?.let { annotation ->
+                    openReportUrl(context, annotation.item)
+                }
+        }
+    )
+}
+
+private data class ReportLinkText(
+    val annotatedText: AnnotatedString
+)
+
+private fun buildReportLinkText(text: String): ReportLinkText? {
+    val match = REPORT_URL_REGEX.find(text) ?: return null
+    val url = match.value
+    val displayText = "Открыть отчет"
+
+    return ReportLinkText(
+        annotatedText = buildAnnotatedString {
+            append(text.substring(0, match.range.first))
+            pushStringAnnotation(tag = REPORT_URL_TAG, annotation = url)
+            pushStyle(
+                SpanStyle(
+                    color = androidx.compose.ui.graphics.Color(0xFF1565C0),
+                    textDecoration = TextDecoration.Underline
+                )
+            )
+            append(displayText)
+            pop()
+            pop()
+            append(text.substring(match.range.last + 1))
+        }
+    )
+}
+
+private fun openReportUrl(context: Context, url: String) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        context.startActivity(intent)
+    } catch (throwable: Throwable) {
+        Toast.makeText(context, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private const val REPORT_URL_TAG = "report_url"
+private val REPORT_URL_REGEX = Regex("http://31\\.129\\.110\\.10:3000/reports/[^\\s\"}]+")
 
 fun buildCompressionInfoText(
     tokenMetrics: TokenMetrics,
