@@ -71,19 +71,44 @@ class McpPipelineAgent @Inject constructor(
             .mapIndexed { index, step -> "${index + 1}. ${step.toolName}" }
             .joinToString("\n")
         val finalText = result.finalResult
-        val reportUrl = extractReportUrl(finalText)
+        val reportText = result.steps
+            .lastOrNull { step -> step.toolName == "create_weather_report" }
+            ?.result
+            ?: finalText
+        val saveResult = result.steps
+            .lastOrNull { step -> step.toolName == "save_report_to_file" }
+            ?.result
+        val reportUrl = saveResult?.let(::extractReportUrl) ?: extractReportUrl(finalText)
+        val fileResult = reportUrl ?: saveResult
 
-        return if (reportUrl != null) {
-            """
-            Готово. Я получил погоду, подготовил отчет и сохранил его в файл.
+        if (saveResult != null) {
+            return """
+                Готово. Я получил погоду, подготовил отчет и сохранил его в файл.
 
-            Файл отчета:
-            $reportUrl
+                Отчет:
 
-            Pipeline:
-            $pipeline
-            """.trimIndent()
-        } else if (result.steps.size == 1 && result.steps.first().toolName == "get_weather_by_city") {
+                $reportText
+
+                Файл отчета:
+                $fileResult
+
+                Pipeline:
+                $pipeline
+                """.trimIndent()
+        }
+
+        if (result.steps.any { step -> step.toolName == "create_weather_report" }) {
+            return """
+                Сейчас в Санкт-Петербурге:
+
+                $reportText
+
+                Pipeline:
+                $pipeline
+                """.trimIndent()
+        }
+
+        return if (result.steps.size == 1 && result.steps.first().toolName == "get_weather_by_city") {
             """
             ${formatWeatherJsonForChat(finalText)}
 
@@ -283,7 +308,12 @@ class McpPipelineAgent @Inject constructor(
     }
 
     private fun extractReportUrl(text: String): String? {
-        return Regex("http://31\\.129\\.110\\.10:3000/reports/[^\\s\"}]+")
+        val jsonUrl = runCatching {
+            JSONObject(text).optString("url")
+                .takeIf { url -> url.isNotBlank() }
+        }.getOrNull()
+
+        return jsonUrl ?: Regex("https?://[^\\s\"}]+/reports/[^\\s\"}]+")
             .find(text)
             ?.value
     }
