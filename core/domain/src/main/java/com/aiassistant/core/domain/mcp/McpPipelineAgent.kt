@@ -68,7 +68,7 @@ class McpPipelineAgent @Inject constructor(
 
     fun formatChatAnswer(result: McpPipelineResult): String {
         val pipeline = result.steps
-            .mapIndexed { index, step -> "${index + 1}. ${step.toolName}" }
+            .mapIndexed { index, step -> "${index + 1}. `${step.toolName}`" }
             .joinToString("\n")
         val finalText = result.finalResult
         val reportText = result.steps
@@ -82,28 +82,31 @@ class McpPipelineAgent @Inject constructor(
         val fileResult = reportUrl ?: saveResult
 
         if (saveResult != null) {
+            val fileLink = reportUrl?.let { url -> "[ Открыть отчет]($url)" } ?: fileResult
             return """
-                Готово. Я получил погоду, подготовил отчет и сохранил его в файл.
+                ## Готово
 
-                Отчет:
+                Я получил погоду, подготовил отчет и сохранил его в файл.
+
+                ### Отчет
 
                 $reportText
 
-                Файл отчета:
-                $fileResult
+                ### Файл отчета
+                $fileLink
 
-                Pipeline:
+                ### Pipeline
                 $pipeline
                 """.trimIndent()
         }
 
         if (result.steps.any { step -> step.toolName == "create_weather_report" }) {
             return """
-                Сейчас в Санкт-Петербурге:
+                ## Сейчас в Санкт-Петербурге
 
                 $reportText
 
-                Pipeline:
+                ### Pipeline
                 $pipeline
                 """.trimIndent()
         }
@@ -112,14 +115,14 @@ class McpPipelineAgent @Inject constructor(
             """
             ${formatWeatherJsonForChat(finalText)}
 
-            Pipeline:
+            ### Pipeline
             $pipeline
             """.trimIndent()
         } else {
             """
             $finalText
 
-            Pipeline:
+            ### Pipeline
             $pipeline
             """.trimIndent()
         }

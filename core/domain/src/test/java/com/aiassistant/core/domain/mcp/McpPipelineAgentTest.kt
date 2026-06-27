@@ -49,11 +49,10 @@ class McpPipelineAgentTest {
             )
         )
 
-        assertTrue(answer.contains("Отчет:"))
+        assertTrue(answer.contains("###"))
         assertTrue(answer.contains(report))
-        assertTrue(answer.contains("Файл отчета:"))
-        assertTrue(answer.contains("http://31.129.110.10:3000/reports/weather-report-saint-petersburg.txt"))
-        assertTrue(answer.contains("1. get_weather_by_city\n2. create_weather_report\n3. save_report_to_file"))
+        assertTrue(answer.contains("[ Открыть отчет](http://31.129.110.10:3000/reports/weather-report-saint-petersburg.txt)"))
+        assertTrue(answer.contains("1. `get_weather_by_city`\n2. `create_weather_report`\n3. `save_report_to_file`"))
         assertTrue(answer.indexOf(report) < answer.indexOf("http://31.129.110.10:3000/reports/weather-report-saint-petersburg.txt"))
     }
 
@@ -80,8 +79,8 @@ class McpPipelineAgentTest {
         )
 
         assertTrue(answer.contains(report))
-        assertTrue(answer.contains("Pipeline:"))
-        assertTrue(answer.contains("1. get_weather_by_city\n2. create_weather_report"))
+        assertTrue(answer.contains("### Pipeline"))
+        assertTrue(answer.contains("1. `get_weather_by_city`\n2. `create_weather_report`"))
     }
 
     private fun weatherJson(): String {

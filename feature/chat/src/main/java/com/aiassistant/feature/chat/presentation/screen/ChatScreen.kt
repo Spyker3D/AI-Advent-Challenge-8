@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,11 +69,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
@@ -1338,14 +1342,11 @@ fun EnhancedMessageBubble(
 private fun AssistantMessageText(
     text: String,
     isUserMessage: Boolean,
-    color: androidx.compose.ui.graphics.Color,
+    color: Color,
     style: TextStyle,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val linkText = buildReportLinkText(text)
-
-    if (isUserMessage || linkText == null) {
+    if (isUserMessage) {
         Text(
             text = text,
             color = color,
@@ -1355,49 +1356,192 @@ private fun AssistantMessageText(
         return
     }
 
-    ClickableText(
-        text = linkText.annotatedText,
-        style = style.copy(color = color),
-        modifier = modifier,
-        onClick = { offset ->
-            linkText.annotatedText
-                .getStringAnnotations(REPORT_URL_TAG, offset, offset)
-                .firstOrNull()
-                ?.let { annotation ->
-                    openReportUrl(context, annotation.item)
-                }
-        }
+    MarkdownMessageText(
+        text = text,
+        color = color,
+        style = style,
+        modifier = modifier
     )
 }
 
-private data class ReportLinkText(
-    val annotatedText: AnnotatedString
+@Composable
+private fun MarkdownMessageText(
+    text: String,
+    color: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Column(modifier = modifier) {
+        text.lines().forEach { line ->
+            val block = parseMarkdownBlock(line, color, style)
+            if (block == null) {
+                Spacer(modifier = Modifier.height(6.dp))
+            } else {
+                ClickableText(
+                    text = block.text,
+                    style = block.style,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = block.topPadding),
+                    onClick = { offset ->
+                        block.text
+                            .getStringAnnotations(URL_TAG, offset, offset)
+                            .firstOrNull()
+                            ?.let { annotation ->
+                                openUrl(context, annotation.item)
+                            }
+                    }
+                )
+            }
+        }
+    }
+}
+
+private data class MarkdownBlock(
+    val text: AnnotatedString,
+    val style: TextStyle,
+    val topPadding: androidx.compose.ui.unit.Dp
 )
 
-private fun buildReportLinkText(text: String): ReportLinkText? {
-    val match = REPORT_URL_REGEX.find(text) ?: return null
-    val url = match.value
-    val displayText = "Открыть отчет"
+@Composable
+private fun parseMarkdownBlock(
+    line: String,
+    color: Color,
+    baseStyle: TextStyle
+): MarkdownBlock? {
+    val trimmed = line.trim()
+    if (trimmed.isEmpty()) return null
 
-    return ReportLinkText(
-        annotatedText = buildAnnotatedString {
-            append(text.substring(0, match.range.first))
-            pushStringAnnotation(tag = REPORT_URL_TAG, annotation = url)
-            pushStyle(
-                SpanStyle(
-                    color = androidx.compose.ui.graphics.Color(0xFF1565C0),
-                    textDecoration = TextDecoration.Underline
-                )
-            )
-            append(displayText)
-            pop()
-            pop()
-            append(text.substring(match.range.last + 1))
-        }
+    val heading = Regex("^(#{1,6})\\s+(.+)$").find(trimmed)
+    if (heading != null) {
+        val level = heading.groupValues[1].length
+        val content = heading.groupValues[2]
+        val headingStyle = when (level) {
+            1 -> MaterialTheme.typography.titleLarge
+            2 -> MaterialTheme.typography.titleMedium
+            else -> MaterialTheme.typography.titleSmall
+        }.copy(color = color, fontWeight = FontWeight.SemiBold)
+
+        return MarkdownBlock(
+            text = buildInlineMarkdown(content),
+            style = headingStyle,
+            topPadding = if (level == 1) 8.dp else 6.dp
+        )
+    }
+
+    val bullet = Regex("^[-*]\\s+(.+)$").find(trimmed)
+    if (bullet != null) {
+        return MarkdownBlock(
+            text = buildInlineMarkdown("• ${bullet.groupValues[1]}"),
+            style = baseStyle.copy(color = color),
+            topPadding = 2.dp
+        )
+    }
+
+    return MarkdownBlock(
+        text = buildInlineMarkdown(trimmed),
+        style = baseStyle.copy(color = color),
+        topPadding = 0.dp
     )
 }
 
-private fun openReportUrl(context: Context, url: String) {
+private fun buildInlineMarkdown(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        var index = 0
+        while (index < text.length) {
+            val next = findNextInlineToken(text, index)
+            if (next == null) {
+                append(text.substring(index))
+                break
+            }
+
+            if (next.range.first > index) {
+                append(text.substring(index, next.range.first))
+            }
+
+            when (next) {
+                is InlineToken.Link -> {
+                    pushStringAnnotation(tag = URL_TAG, annotation = next.url)
+                    pushStyle(
+                        SpanStyle(
+                            color = Color(0xFF1565C0),
+                            textDecoration = TextDecoration.Underline
+                        )
+                    )
+                    append(next.label)
+                    pop()
+                    pop()
+                }
+
+                is InlineToken.Bold -> {
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                    append(next.content)
+                    pop()
+                }
+
+                is InlineToken.Code -> {
+                    pushStyle(
+                        SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            background = Color(0x1A000000)
+                        )
+                    )
+                    append(next.content)
+                    pop()
+                }
+            }
+
+            index = next.range.last + 1
+        }
+    }
+}
+
+private sealed class InlineToken {
+    abstract val range: IntRange
+
+    data class Link(
+        override val range: IntRange,
+        val label: String,
+        val url: String
+    ) : InlineToken()
+
+    data class Bold(
+        override val range: IntRange,
+        val content: String
+    ) : InlineToken()
+
+    data class Code(
+        override val range: IntRange,
+        val content: String
+    ) : InlineToken()
+}
+
+private fun findNextInlineToken(text: String, startIndex: Int): InlineToken? {
+    val link = MARKDOWN_LINK_REGEX.find(text, startIndex)?.let {
+        InlineToken.Link(
+            range = it.range,
+            label = it.groupValues[1],
+            url = it.groupValues[2]
+        )
+    }
+    val bold = MARKDOWN_BOLD_REGEX.find(text, startIndex)?.let {
+        InlineToken.Bold(
+            range = it.range,
+            content = it.groupValues[1]
+        )
+    }
+    val code = MARKDOWN_CODE_REGEX.find(text, startIndex)?.let {
+        InlineToken.Code(
+            range = it.range,
+            content = it.groupValues[1]
+        )
+    }
+
+    return listOfNotNull(link, bold, code).minByOrNull { it.range.first }
+}
+
+private fun openUrl(context: Context, url: String) {
     try {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         context.startActivity(intent)
@@ -1406,8 +1550,10 @@ private fun openReportUrl(context: Context, url: String) {
     }
 }
 
-private const val REPORT_URL_TAG = "report_url"
-private val REPORT_URL_REGEX = Regex("http://31\\.129\\.110\\.10:3000/reports/[^\\s\"}]+")
+private const val URL_TAG = "url"
+private val MARKDOWN_LINK_REGEX = Regex("\\[([^\\]]+)]\\((https?://[^\\s)]+)\\)")
+private val MARKDOWN_BOLD_REGEX = Regex("\\*\\*([^*]+)\\*\\*")
+private val MARKDOWN_CODE_REGEX = Regex("`([^`]+)`")
 
 fun buildCompressionInfoText(
     tokenMetrics: TokenMetrics,
