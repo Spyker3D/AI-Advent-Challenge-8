@@ -197,6 +197,34 @@ fun McpDemoScreen(
                 title = "Pipeline result:",
                 content = state.pipelineResult
             )
+
+            Text(
+                text = "MCP Day 20: Multi-server Orchestration",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            OutlinedTextField(
+                value = state.orchestrationRequest,
+                onValueChange = viewModel::onOrchestrationRequestChanged,
+                label = { Text("Orchestration request") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+            Button(
+                onClick = viewModel::runOrchestration,
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Запустить orchestration flow")
+            }
+            McpResultCard(
+                title = "Registered MCP servers and tools:",
+                content = state.orchestrationServers.ifBlank { "Пока не загружено" }
+            )
+            McpResultCard(
+                title = "Orchestration result:",
+                content = state.orchestrationResult
+            )
         }
     }
 }

@@ -10,5 +10,8 @@ data class McpDemoUiState(
     val lastAutoRefreshAt: String = "",
     val autoRefreshIntervalSec: Int = 10,
     val pipelineRequest: String = "Подготовь отчет о погоде в Санкт-Петербурге",
-    val pipelineResult: String = "Нажмите кнопку, чтобы запустить MCP pipeline"
+    val pipelineResult: String = "Нажмите кнопку, чтобы запустить MCP pipeline",
+    val orchestrationRequest: String = "Подготовь отчет о погоде в Санкт-Петербурге, сохрани его в заметки и создай задачу проверить погоду завтра",
+    val orchestrationServers: String = "",
+    val orchestrationResult: String = "Нажмите кнопку, чтобы запустить MCP orchestration flow"
 )

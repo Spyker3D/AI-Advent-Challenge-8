@@ -16,8 +16,11 @@ class McpClient @Inject constructor(
 ) {
     private val gson = Gson()
 
-    fun listTools(): String = postJson(
-        gson.toJson(
+    fun listTools(): String = listTools(MCP_ENDPOINT)
+
+    fun listTools(endpoint: String): String = postJson(
+        endpoint = endpoint,
+        json = gson.toJson(
             mapOf(
                 "jsonrpc" to "2.0",
                 "id" to 1,
@@ -27,8 +30,15 @@ class McpClient @Inject constructor(
         )
     )
 
-    fun callTool(name: String, arguments: Map<String, Any?>): String = postJson(
-        gson.toJson(
+    fun callTool(name: String, arguments: Map<String, Any?>): String = callTool(
+        endpoint = MCP_ENDPOINT,
+        name = name,
+        arguments = arguments
+    )
+
+    fun callTool(endpoint: String, name: String, arguments: Map<String, Any?>): String = postJson(
+        endpoint = endpoint,
+        json = gson.toJson(
             mapOf(
                 "jsonrpc" to "2.0",
                 "id" to 100,
@@ -61,9 +71,9 @@ class McpClient @Inject constructor(
         arguments = emptyMap()
     )
 
-    private fun postJson(json: String): String = try {
+    private fun postJson(endpoint: String, json: String): String = try {
         val request = Request.Builder()
-            .url(MCP_ENDPOINT)
+            .url(endpoint)
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", "application/json, text/event-stream")
             .post(json.toRequestBody(JSON_MEDIA_TYPE))
@@ -78,7 +88,7 @@ class McpClient @Inject constructor(
             }
         }
     } catch (throwable: Throwable) {
-        "Ошибка MCP-запроса:\n${throwable.stackTraceString()}"
+        "MCP request error:\n${throwable.stackTraceString()}"
     }
 
     private fun Throwable.stackTraceString(): String {

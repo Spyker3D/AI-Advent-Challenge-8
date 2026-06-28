@@ -223,3 +223,48 @@ MCP server не вызывает LLM. Все tools находятся на MCP s
 Сохраненные отчеты доступны по URL:
 
 `http://31.129.110.10:3000/reports/<fileName>`
+
+## Day 20: Orchestration MCP
+
+Реализована оркестрация нескольких MCP-серверов.
+
+MCP servers:
+
+- Weather MCP: `http://31.129.110.10:3000/mcp`
+- Notes MCP: `http://31.129.110.10:3001/mcp`
+- Tasks MCP: `http://31.129.110.10:3002/mcp`
+
+Example request:
+
+`Подготовь отчет о погоде в Санкт-Петербурге, сохрани его в заметки и создай задачу проверить погоду завтра`
+
+Pipeline:
+
+1. `weather.get_weather_by_city`
+2. `weather.create_weather_report`
+3. `notes.save_note`
+4. `tasks.create_task`
+
+Android agent:
+
+- gets `tools/list` from all MCP servers;
+- sends tools + user request to LLM planner;
+- receives JSON pipeline with `serverId` + `toolName`;
+- routes each tool call to the correct MCP server;
+- passes `$previous` between steps;
+- shows final result in chat.
+
+MCP servers do not call LLM.
+
+New server folders:
+
+- `mcp-notes-server`
+- `mcp-tasks-server`
+
+Run on VPS:
+
+```bash
+cd mcp-server && npm start
+cd mcp-notes-server && npm start
+cd mcp-tasks-server && npm start
+```

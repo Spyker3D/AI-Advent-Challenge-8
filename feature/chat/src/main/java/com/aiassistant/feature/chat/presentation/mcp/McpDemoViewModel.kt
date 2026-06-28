@@ -3,7 +3,9 @@ package com.aiassistant.feature.chat.presentation.mcp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiassistant.core.domain.mcp.McpAgentRepository
+import com.aiassistant.core.domain.mcp.McpOrchestratorAgent
 import com.aiassistant.core.domain.mcp.McpPipelineAgent
+import com.aiassistant.core.domain.mcp.McpServerRegistry
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -20,7 +22,8 @@ private const val AUTO_REFRESH_INTERVAL_MS = 10_000L
 
 class McpDemoViewModel @Inject constructor(
     private val mcpAgentRepository: McpAgentRepository,
-    private val mcpPipelineAgent: McpPipelineAgent
+    private val mcpPipelineAgent: McpPipelineAgent,
+    private val mcpOrchestratorAgent: McpOrchestratorAgent
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(McpDemoUiState())
     val uiState = _uiState.asStateFlow()
@@ -33,6 +36,10 @@ class McpDemoViewModel @Inject constructor(
 
     fun onPipelineRequestChanged(value: String) {
         _uiState.update { it.copy(pipelineRequest = value) }
+    }
+
+    fun onOrchestrationRequestChanged(value: String) {
+        _uiState.update { it.copy(orchestrationRequest = value) }
     }
 
     fun loadTools() {
@@ -118,6 +125,43 @@ class McpDemoViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         pipelineResult = "Ошибка MCP pipeline:\n${throwable.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun runOrchestration() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            runCatching {
+                val tools = mcpOrchestratorAgent.loadToolsFromAllServers()
+                val serversText = buildString {
+                    appendLine("Registered MCP servers:")
+                    McpServerRegistry.mcpServers.forEach { server ->
+                        appendLine("- ${server.id}: ${server.name} (${server.endpoint})")
+                    }
+                    appendLine()
+                    appendLine("Tools:")
+                    tools.forEach { tool ->
+                        appendLine("- ${tool.serverId}.${tool.toolName}: ${tool.description}")
+                    }
+                }
+                val result = mcpOrchestratorAgent.run(_uiState.value.orchestrationRequest)
+                serversText to mcpOrchestratorAgent.formatDebugResult(result)
+            }.onSuccess { (serversText, result) ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        orchestrationServers = serversText,
+                        orchestrationResult = result
+                    )
+                }
+            }.onFailure { throwable ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        orchestrationResult = "Ошибка MCP orchestration:\n${throwable.message}"
                     )
                 }
             }

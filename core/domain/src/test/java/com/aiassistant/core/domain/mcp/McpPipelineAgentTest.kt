@@ -115,7 +115,13 @@ class McpPipelineAgentTest {
 
 private class FakeMcpAgentRepository : McpAgentRepository {
     override suspend fun listTools(): String = ""
+    override suspend fun listTools(endpoint: String): String = ""
     override suspend fun callTool(name: String, arguments: Map<String, Any?>): String = ""
+    override suspend fun callTool(
+        endpoint: String,
+        name: String,
+        arguments: Map<String, Any?>
+    ): String = ""
     override suspend fun checkTaskStatus(taskId: String): String = ""
     override suspend fun getWeatherSummary(limit: Int): String = ""
     override suspend fun getWeatherHistory(limit: Int): String = ""

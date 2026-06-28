@@ -3,6 +3,7 @@ const http = require("http");
 const path = require("path");
 
 const PORT = 3000;
+const SERVER_ID = "weather";
 const PUBLIC_BASE_URL = "http://31.129.110.10:3000";
 const WEATHER_INTERVAL_MS = 60_000;
 const CURRENT_FIELDS = "temperature_2m,wind_speed_10m,precipitation";
@@ -41,6 +42,19 @@ function createJsonRpcError(id, code, message) {
 
 function textResult(text) {
   return { content: [{ type: "text", text }] };
+}
+
+function safeLogArguments(args) {
+  const copy = { ...args };
+  if (typeof copy.content === "string") {
+    copy.contentLength = copy.content.length;
+    delete copy.content;
+  }
+  if (typeof copy.weatherJson === "string") {
+    copy.weatherJsonLength = copy.weatherJson.length;
+    delete copy.weatherJson;
+  }
+  return JSON.stringify(copy);
 }
 
 function ensureDataStorage() {
@@ -341,13 +355,19 @@ function handleToolsList(id) {
 async function handleToolsCall(id, params) {
   const toolName = params && params.name;
   const args = params && params.arguments ? params.arguments : {};
+  console.log(`[MCP tools/call] server=${SERVER_ID} start tool=${toolName} arguments=${safeLogArguments(args)}`);
+
+  const success = (response) => {
+    console.log(`[MCP tools/call] server=${SERVER_ID} success tool=${toolName}`);
+    return response;
+  };
 
   if (toolName === "get_task_status") {
     const taskId = args.taskId;
     if (!taskId) return createJsonRpcError(id, -32602, "Missing required parameter: taskId");
     const task = tasks[taskId];
     const text = task ? `Task ${taskId}: ${task.status}. ${task.title}.` : `Task ${taskId} was not found.`;
-    return createJsonRpcResponse(id, textResult(text));
+    return success(createJsonRpcResponse(id, textResult(text)));
   }
 
   if (toolName === "get_weather_by_city") {
@@ -355,7 +375,7 @@ async function handleToolsCall(id, params) {
     if (!city) return createJsonRpcError(id, -32602, `Unsupported city: ${args.city}`);
     try {
       const weather = await fetchWeatherForCity(city.name, city.latitude, city.longitude);
-      return createJsonRpcResponse(id, textResult(JSON.stringify(weather, null, 2)));
+      return success(createJsonRpcResponse(id, textResult(JSON.stringify(weather, null, 2))));
     } catch (error) {
       return createJsonRpcError(id, -32000, `Weather request failed: ${error.message}`);
     }
@@ -363,7 +383,7 @@ async function handleToolsCall(id, params) {
 
   if (toolName === "create_weather_report") {
     try {
-      return createJsonRpcResponse(id, textResult(createWeatherReport(args.weatherJson)));
+      return success(createJsonRpcResponse(id, textResult(createWeatherReport(args.weatherJson))));
     } catch (error) {
       return createJsonRpcError(id, -32602, error.message);
     }
@@ -373,21 +393,21 @@ async function handleToolsCall(id, params) {
     if (!args.fileName || !args.content) {
       return createJsonRpcError(id, -32602, "Missing required parameters: fileName, content");
     }
-    return createJsonRpcResponse(id, textResult(JSON.stringify(saveReportToFile(args.fileName, args.content), null, 2)));
+    return success(createJsonRpcResponse(id, textResult(JSON.stringify(saveReportToFile(args.fileName, args.content), null, 2))));
   }
 
   if (toolName === "get_weather_summary") {
-    return createJsonRpcResponse(id, textResult(buildWeatherSummary(args.limit)));
+    return success(createJsonRpcResponse(id, textResult(buildWeatherSummary(args.limit))));
   }
 
   if (toolName === "get_weather_history") {
-    return createJsonRpcResponse(id, textResult(buildWeatherHistory(args.limit)));
+    return success(createJsonRpcResponse(id, textResult(buildWeatherHistory(args.limit))));
   }
 
   if (toolName === "collect_weather_now") {
     try {
       const record = await collectWeatherNow();
-      return createJsonRpcResponse(id, textResult(JSON.stringify(record, null, 2)));
+      return success(createJsonRpcResponse(id, textResult(JSON.stringify(record, null, 2))));
     } catch (error) {
       console.error("Manual weather collection failed:", error);
       return createJsonRpcError(id, -32000, `Weather collection failed: ${error.message}`);

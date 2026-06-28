@@ -1,0 +1,10 @@
+{
+  "name": "ai-assistant-mcp-tasks-server",
+  "version": "1.0.0",
+  "description": "Tasks MCP server for AI Assistant Day 20",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "private": true
+}

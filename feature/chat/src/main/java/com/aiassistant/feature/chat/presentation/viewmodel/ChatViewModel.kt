@@ -21,6 +21,7 @@ import com.aiassistant.core.domain.memory.TaskRunStatus
 import com.aiassistant.core.domain.memory.TaskStage
 import com.aiassistant.core.domain.memory.TaskUserIntentParser
 import com.aiassistant.core.domain.memory.TaskWaitingUserResult
+import com.aiassistant.core.domain.mcp.McpOrchestratorAgent
 import com.aiassistant.core.domain.mcp.McpPipelineAgent
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
@@ -55,6 +56,7 @@ class ChatViewModel @Inject constructor(
     private val llmClient: LlmClient,
     private val taskPipelineOrchestrator: TaskPipelineOrchestrator,
     private val workingMemoryRepository: WorkingMemoryRepository,
+    private val mcpOrchestratorAgent: McpOrchestratorAgent,
     private val mcpPipelineAgent: McpPipelineAgent
 ) : ViewModel() {
 
@@ -414,6 +416,11 @@ class ChatViewModel @Inject constructor(
         val currentMessage = _uiState.value.currentMessage.trim()
         if (currentMessage.isBlank() || _uiState.value.isLoading) return
 
+        if (mcpOrchestratorAgent.canHandleOrchestration(currentMessage)) {
+            sendMcpOrchestrationMessage(currentMessage)
+            return
+        }
+
         if (mcpPipelineAgent.canHandleWeatherPipeline(currentMessage)) {
             sendMcpPipelineMessage(currentMessage)
             return
@@ -668,6 +675,65 @@ class ChatViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = throwable.message ?: "MCP pipeline failed"
+                )
+            }
+        }
+    }
+
+    private fun sendMcpOrchestrationMessage(currentMessage: String) {
+        val state = _uiState.value
+        val chatId = state.currentChatId
+        val branchId = state.currentBranchId
+        val finalMessage = state.attachedFileText?.let {
+            "User question:\n$currentMessage\n\nAttached file content:\n$it"
+        } ?: currentMessage
+
+        val userMessage = Message(
+            id = UUID.randomUUID().toString(),
+            content = finalMessage,
+            role = MessageRole.USER,
+            timestamp = System.currentTimeMillis()
+        )
+
+        _uiState.value = state.copy(
+            messages = state.messages + userMessage,
+            branches = updateBranchWithMessage(branchId, userMessage),
+            currentMessage = "",
+            isLoading = true,
+            error = null
+        )
+
+        viewModelScope.launch {
+            chatRepository.saveMessage(userMessage, chatId)
+            runCatching {
+                val orchestrationResult = mcpOrchestratorAgent.run(finalMessage)
+                mcpOrchestratorAgent.formatChatAnswer(orchestrationResult)
+            }.onSuccess { assistantText ->
+                val assistantMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    content = assistantText,
+                    role = MessageRole.ASSISTANT,
+                    timestamp = System.currentTimeMillis()
+                )
+
+                chatRepository.saveMessage(assistantMessage, chatId)
+                chatRepository.updateChatMeta(chatId, generateChatTitleIfNeeded(finalMessage), assistantText.take(80))
+
+                if (_uiState.value.currentChatId != chatId) {
+                    return@onSuccess
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    messages = _uiState.value.messages + assistantMessage,
+                    branches = updateBranchWithMessage(branchId, assistantMessage),
+                    isLoading = false,
+                    attachedFileName = null,
+                    attachedFileText = null
+                )
+            }.onFailure { throwable ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = throwable.message ?: "MCP orchestration failed"
                 )
             }
         }
