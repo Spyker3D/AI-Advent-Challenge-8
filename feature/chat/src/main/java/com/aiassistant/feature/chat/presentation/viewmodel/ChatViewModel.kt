@@ -21,6 +21,7 @@ import com.aiassistant.core.domain.memory.TaskRunStatus
 import com.aiassistant.core.domain.memory.TaskStage
 import com.aiassistant.core.domain.memory.TaskUserIntentParser
 import com.aiassistant.core.domain.memory.TaskWaitingUserResult
+import com.aiassistant.core.domain.mcp.McpExecutionLogItem
 import com.aiassistant.core.domain.mcp.McpOrchestratorAgent
 import com.aiassistant.core.domain.mcp.McpPipelineAgent
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
@@ -42,8 +43,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
+
+private const val MCP_EXECUTION_DEMO_DELAY_MS = 400L
 
 class ChatViewModel @Inject constructor(
     private val sendMessageUseCase: SendMessageUseCase,
@@ -695,7 +701,10 @@ class ChatViewModel @Inject constructor(
             timestamp = System.currentTimeMillis()
         )
 
-        _uiState.value = state.copy(
+        clearMcpExecutionLogs()
+        showMcpExecution()
+
+        _uiState.value = _uiState.value.copy(
             messages = state.messages + userMessage,
             branches = updateBranchWithMessage(branchId, userMessage),
             currentMessage = "",
@@ -706,7 +715,11 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.saveMessage(userMessage, chatId)
             runCatching {
-                val orchestrationResult = mcpOrchestratorAgent.run(finalMessage)
+                val orchestrationResult = mcpOrchestratorAgent.run(
+                    userRequest = finalMessage,
+                    demoDelayMs = MCP_EXECUTION_DEMO_DELAY_MS,
+                    onLog = { item -> addMcpExecutionLog(item) }
+                )
                 mcpOrchestratorAgent.formatChatAnswer(orchestrationResult)
             }.onSuccess { assistantText ->
                 val assistantMessage = Message(
@@ -731,12 +744,42 @@ class ChatViewModel @Inject constructor(
                     attachedFileText = null
                 )
             }.onFailure { throwable ->
+                addMcpExecutionLog(
+                    McpExecutionLogItem(
+                        timestamp = currentTimestampText(),
+                        status = com.aiassistant.core.domain.mcp.McpExecutionStatus.ERROR,
+                        message = "Error: ${throwable.message ?: "MCP orchestration failed"}"
+                    )
+                )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = throwable.message ?: "MCP orchestration failed"
                 )
             }
         }
+    }
+
+    private fun clearMcpExecutionLogs() {
+        _uiState.value = _uiState.value.copy(mcpExecutionLogs = emptyList())
+    }
+
+    private fun addMcpExecutionLog(item: McpExecutionLogItem) {
+        _uiState.value = _uiState.value.copy(
+            mcpExecutionLogs = _uiState.value.mcpExecutionLogs + item
+        )
+    }
+
+    private fun showMcpExecution() {
+        _uiState.value = _uiState.value.copy(isMcpExecutionVisible = true)
+    }
+
+    @Suppress("unused")
+    private fun hideMcpExecution() {
+        _uiState.value = _uiState.value.copy(isMcpExecutionVisible = false)
+    }
+
+    private fun currentTimestampText(): String {
+        return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
     }
 
     private fun runTaskAction(command: String) {

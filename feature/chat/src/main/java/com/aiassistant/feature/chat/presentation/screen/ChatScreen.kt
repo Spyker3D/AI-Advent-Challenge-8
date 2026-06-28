@@ -31,6 +31,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
@@ -86,6 +88,8 @@ import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.domain.entity.TokenMetrics
+import com.aiassistant.core.domain.mcp.McpExecutionLogItem
+import com.aiassistant.core.domain.mcp.McpExecutionStatus
 import com.aiassistant.core.ui.components.LoadingIndicator
 import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
@@ -670,6 +674,11 @@ fun ChatScreen(
                     }
                 }
 
+                McpExecutionCard(
+                    logs = uiState.mcpExecutionLogs,
+                    isVisible = uiState.isMcpExecutionVisible
+                )
+
                 // Input section (existing chat input)
                 Row(
                     modifier = Modifier
@@ -727,6 +736,104 @@ fun ChatScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun McpExecutionCard(
+    logs: List<McpExecutionLogItem>,
+    isVisible: Boolean
+) {
+    var isExpanded by remember { mutableStateOf(true) }
+
+    LaunchedEffect(isVisible, logs.size) {
+        if (isVisible && logs.size <= 1) {
+            isExpanded = true
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "MCP Execution",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(
+                    onClick = { isExpanded = !isExpanded },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded) {
+                            Icons.Default.KeyboardArrowDown
+                        } else {
+                            Icons.Default.KeyboardArrowUp
+                        },
+                        contentDescription = if (isExpanded) {
+                            "Collapse MCP execution"
+                        } else {
+                            "Expand MCP execution"
+                        }
+                    )
+                }
+            }
+
+            if (!isVisible || logs.isEmpty()) {
+                Text(
+                    text = "Ожидание запроса...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (!isExpanded) {
+                logs.lastOrNull()?.let { item ->
+                    Text(
+                        text = "${item.statusPrefix()} ${item.message}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = item.statusColor()
+                    )
+                }
+            } else {
+                logs.forEach { item ->
+                    Text(
+                        text = "${item.statusPrefix()} ${item.message}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = item.statusColor()
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun McpExecutionLogItem.statusPrefix(): String {
+    return when (status) {
+        McpExecutionStatus.INFO -> "ℹ"
+        McpExecutionStatus.RUNNING -> "⏳"
+        McpExecutionStatus.SUCCESS -> "✅"
+        McpExecutionStatus.ERROR -> "❌"
+    }
+}
+
+@Composable
+private fun McpExecutionLogItem.statusColor(): Color {
+    return when (status) {
+        McpExecutionStatus.ERROR -> MaterialTheme.colorScheme.error
+        McpExecutionStatus.SUCCESS -> MaterialTheme.colorScheme.primary
+        McpExecutionStatus.RUNNING -> MaterialTheme.colorScheme.tertiary
+        McpExecutionStatus.INFO -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 

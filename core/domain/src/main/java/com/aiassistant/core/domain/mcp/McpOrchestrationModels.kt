@@ -37,6 +37,22 @@ data class McpOrchestrationResult(
     val finalResult: String
 )
 
+data class McpExecutionLogItem(
+    val timestamp: String,
+    val status: McpExecutionStatus,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val toolName: String? = null,
+    val message: String
+)
+
+enum class McpExecutionStatus {
+    INFO,
+    RUNNING,
+    SUCCESS,
+    ERROR
+}
+
 object McpServerRegistry {
     val mcpServers = listOf(
         McpServerConfig(

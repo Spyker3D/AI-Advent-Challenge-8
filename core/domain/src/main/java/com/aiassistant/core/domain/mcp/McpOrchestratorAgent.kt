@@ -5,8 +5,12 @@ import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.delay
 
 @Singleton
 class McpOrchestratorAgent @Inject constructor(
@@ -24,26 +28,112 @@ class McpOrchestratorAgent @Inject constructor(
     }
 
     suspend fun run(userRequest: String): McpOrchestrationResult {
+        return run(
+            userRequest = userRequest,
+            demoDelayMs = 0L,
+            onLog = {}
+        )
+    }
+
+    suspend fun run(
+        userRequest: String,
+        demoDelayMs: Long = 0L,
+        onLog: suspend (McpExecutionLogItem) -> Unit
+    ): McpOrchestrationResult {
+        emitLog(
+            onLog = onLog,
+            demoDelayMs = demoDelayMs,
+            item = McpExecutionLogItem(
+                timestamp = currentTimestamp(),
+                status = McpExecutionStatus.RUNNING,
+                message = "Planning with LLM..."
+            )
+        )
+
         val tools = loadToolsFromAllServers()
         val availableToolKeys = tools.map { "${it.serverId}.${it.toolName}" }.toSet()
-        val plannedSteps = buildPipelineWithLlm(userRequest, tools)
-            .getOrElse { buildFallbackPipeline(userRequest) }
-            .ifEmpty { buildFallbackPipeline(userRequest) }
+        val llmPlanResult = buildPipelineWithLlm(userRequest, tools)
+        val llmSteps = llmPlanResult.getOrNull().orEmpty()
+        val plannedSteps = if (llmPlanResult.isSuccess && llmSteps.isNotEmpty()) {
+            emitLog(
+                onLog = onLog,
+                demoDelayMs = demoDelayMs,
+                item = McpExecutionLogItem(
+                    timestamp = currentTimestamp(),
+                    status = McpExecutionStatus.SUCCESS,
+                    message = "LLM planner returned ${llmSteps.size} steps"
+                )
+            )
+            llmSteps
+        } else {
+            val fallbackSteps = buildFallbackPipeline(userRequest)
+            emitLog(
+                onLog = onLog,
+                demoDelayMs = demoDelayMs,
+                item = McpExecutionLogItem(
+                    timestamp = currentTimestamp(),
+                    status = McpExecutionStatus.INFO,
+                    message = "Fallback planner used (${fallbackSteps.size} steps)"
+                )
+            )
+            fallbackSteps
+        }
 
         val steps = if (plannedSteps.isNotEmpty()) plannedSteps else buildFallbackPipeline(userRequest)
         val results = mutableListOf<McpOrchestrationStepResult>()
         var previous = ""
 
-        for (step in steps) {
+        for ((index, step) in steps.withIndex()) {
             val server = servers.firstOrNull { it.id == step.serverId }
-                ?: return stoppedResult(userRequest, tools, results, "Unknown MCP serverId: ${step.serverId}")
+                ?: run {
+                    val error = "Unknown MCP serverId: ${step.serverId}"
+                    emitLog(
+                        onLog = onLog,
+                        demoDelayMs = demoDelayMs,
+                        item = McpExecutionLogItem(
+                            timestamp = currentTimestamp(),
+                            status = McpExecutionStatus.ERROR,
+                            serverId = step.serverId,
+                            toolName = step.toolName,
+                            message = error
+                        )
+                    )
+                    return stoppedResult(userRequest, tools, results, error)
+                }
             if ("${step.serverId}.${step.toolName}" !in availableToolKeys) {
-                return stoppedResult(userRequest, tools, results, "Unknown MCP tool: ${step.serverId}.${step.toolName}")
+                val error = "Unknown MCP tool: ${step.serverId}.${step.toolName}"
+                emitLog(
+                    onLog = onLog,
+                    demoDelayMs = demoDelayMs,
+                    item = McpExecutionLogItem(
+                        timestamp = currentTimestamp(),
+                        status = McpExecutionStatus.ERROR,
+                        serverId = server.id,
+                        serverName = server.name,
+                        toolName = step.toolName,
+                        message = "[${index + 1}/${steps.size}] ${server.name} → ${step.toolName}\nError: $error"
+                    )
+                )
+                return stoppedResult(userRequest, tools, results, error)
             }
 
             val resolvedArguments = step.arguments.mapValues { (_, value) ->
                 if (value == PREVIOUS_PLACEHOLDER) previous else value
             }
+
+            emitLog(
+                onLog = onLog,
+                demoDelayMs = demoDelayMs,
+                item = McpExecutionLogItem(
+                    timestamp = currentTimestamp(),
+                    status = McpExecutionStatus.RUNNING,
+                    serverId = server.id,
+                    serverName = server.name,
+                    toolName = step.toolName,
+                    message = "[${index + 1}/${steps.size}] ${server.name} → ${step.toolName}"
+                )
+            )
+
             val rawResult = mcpAgentRepository.callTool(
                 endpoint = server.endpoint,
                 name = step.toolName,
@@ -60,6 +150,18 @@ class McpOrchestratorAgent @Inject constructor(
             )
 
             if (isJsonRpcError(rawResult)) {
+                emitLog(
+                    onLog = onLog,
+                    demoDelayMs = demoDelayMs,
+                    item = McpExecutionLogItem(
+                        timestamp = currentTimestamp(),
+                        status = McpExecutionStatus.ERROR,
+                        serverId = server.id,
+                        serverName = server.name,
+                        toolName = step.toolName,
+                        message = "[${index + 1}/${steps.size}] ${server.name} → ${step.toolName}\nError: $toolResult"
+                    )
+                )
                 return stoppedResult(
                     userRequest = userRequest,
                     tools = tools,
@@ -68,8 +170,31 @@ class McpOrchestratorAgent @Inject constructor(
                 )
             }
 
+            emitLog(
+                onLog = onLog,
+                demoDelayMs = demoDelayMs,
+                item = McpExecutionLogItem(
+                    timestamp = currentTimestamp(),
+                    status = McpExecutionStatus.SUCCESS,
+                    serverId = server.id,
+                    serverName = server.name,
+                    toolName = step.toolName,
+                    message = "[${index + 1}/${steps.size}] ${server.name} → ${step.toolName}"
+                )
+            )
+
             previous = toolResult
         }
+
+        emitLog(
+            onLog = onLog,
+            demoDelayMs = demoDelayMs,
+            item = McpExecutionLogItem(
+                timestamp = currentTimestamp(),
+                status = McpExecutionStatus.SUCCESS,
+                message = "Orchestration completed successfully"
+            )
+        )
 
         return McpOrchestrationResult(
             userRequest = userRequest,
@@ -384,6 +509,21 @@ class McpOrchestratorAgent @Inject constructor(
             result[key] = get(key)
         }
         return result
+    }
+
+    private suspend fun emitLog(
+        onLog: suspend (McpExecutionLogItem) -> Unit,
+        demoDelayMs: Long,
+        item: McpExecutionLogItem
+    ) {
+        onLog(item)
+        if (demoDelayMs > 0L) {
+            delay(demoDelayMs)
+        }
+    }
+
+    private fun currentTimestamp(): String {
+        return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
     }
 
     private companion object {

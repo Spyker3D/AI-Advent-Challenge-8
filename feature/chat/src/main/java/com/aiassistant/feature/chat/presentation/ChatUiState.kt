@@ -7,6 +7,7 @@ import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.memory.TaskContext
+import com.aiassistant.core.domain.mcp.McpExecutionLogItem
 
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
@@ -45,5 +46,7 @@ data class ChatUiState(
     val chats: List<Chat> = emptyList(),
     val currentChatId: String = "main",
     val isChatDrawerOpen: Boolean = false,
-    val activeTaskContext: TaskContext? = null
+    val activeTaskContext: TaskContext? = null,
+    val mcpExecutionLogs: List<McpExecutionLogItem> = emptyList(),
+    val isMcpExecutionVisible: Boolean = false
 )
