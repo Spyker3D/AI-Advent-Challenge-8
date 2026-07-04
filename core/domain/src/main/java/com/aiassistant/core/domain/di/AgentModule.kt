@@ -4,6 +4,8 @@ import com.aiassistant.core.domain.agent.ChatAgent
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.memory.MemoryOrchestrator
 import com.aiassistant.core.domain.memory.PromptBuilder
+import com.aiassistant.core.domain.memory.LlmTaskMemoryUpdater
+import com.aiassistant.core.domain.memory.TaskMemoryUpdater
 import com.aiassistant.core.domain.invariant.InvariantValidator
 import com.aiassistant.core.domain.rag.LlmQueryRewriter
 import com.aiassistant.core.domain.rag.QueryRewriter
@@ -46,4 +48,10 @@ class AgentModule {
     fun provideQueryRewriter(
         llmQueryRewriter: LlmQueryRewriter
     ): QueryRewriter = llmQueryRewriter
+
+    @Provides
+    @Singleton
+    fun provideTaskMemoryUpdater(
+        llmTaskMemoryUpdater: LlmTaskMemoryUpdater
+    ): TaskMemoryUpdater = llmTaskMemoryUpdater
 }

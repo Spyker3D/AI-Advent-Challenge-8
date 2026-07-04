@@ -1,10 +1,15 @@
 package com.aiassistant.core.domain.rag
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RagRetrieverTest {
     private val retriever = RagRetriever()
+    private val promptBuilder = RagPromptBuilder(
+        recentHistoryFormatter = RecentHistoryFormatter(),
+        taskMemoryPromptFormatter = TaskMemoryPromptFormatter()
+    )
 
     @Test
     fun `search returns five results by default after rerank`() {
@@ -147,7 +152,7 @@ class RagRetrieverTest {
 
     @Test
     fun `rag prompt asks model to include relevant quote facts in answer`() {
-        val prompt = RagPromptBuilder().build(
+        val prompt = promptBuilder.build(
             question = "What role does Retrofit play?",
             results = listOf(
                 result(
@@ -160,6 +165,31 @@ class RagRetrieverTest {
 
         assertEquals(true, prompt.contains("Do not leave important facts only in Sources or Quotes."))
         assertEquals(true, prompt.contains("OpenRouter"))
+    }
+
+    @Test
+    fun `rag prompt includes task memory and recent conversation before retrieved context`() {
+        val prompt = promptBuilder.build(
+            question = "How should this be updated?",
+            results = listOf(result("rag", 0.8f)),
+            taskContext = com.aiassistant.core.domain.memory.TaskContext(
+                id = "day25",
+                title = "Day25 mini-chat",
+                description = "Add RAG memory",
+                goals = listOf("Run RAG every turn")
+            ),
+            recentMessages = listOf(
+                com.aiassistant.core.domain.entity.Message(
+                    id = "m1",
+                    content = "Use existing Working Memory.",
+                    role = com.aiassistant.core.domain.entity.MessageRole.USER
+                )
+            )
+        )
+
+        assertTrue(prompt.indexOf("Task Memory:") < prompt.indexOf("Retrieved RAG Context:"))
+        assertTrue(prompt.contains("Day25 mini-chat"))
+        assertTrue(prompt.contains("User: Use existing Working Memory."))
     }
 
     @Test
