@@ -16,6 +16,9 @@ import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.memory.TaskContext
+import com.aiassistant.core.domain.memory.TaskContextUpdate
+import com.aiassistant.core.domain.memory.TaskMemoryMerger
+import com.aiassistant.core.domain.memory.TaskMemoryUpdater
 import com.aiassistant.core.domain.memory.TaskPipelineOrchestrator
 import com.aiassistant.core.domain.memory.TaskRunStatus
 import com.aiassistant.core.domain.memory.TaskStage
@@ -86,8 +89,6 @@ private val RAG_AMBIGUOUS_TERMS = setOf(
     "делать",
     "дальше",
     "объясни",
-    "жизненный",
-    "цикл",
     "расскажи",
     "покажи",
     "where",
@@ -115,7 +116,9 @@ class ChatViewModel @Inject constructor(
     private val ragEmbeddingClient: RagEmbeddingClient,
     private val ragRetriever: RagRetriever,
     private val ragPromptBuilder: RagPromptBuilder,
-    private val queryRewriter: QueryRewriter
+    private val queryRewriter: QueryRewriter,
+    private val taskMemoryUpdater: TaskMemoryUpdater,
+    private val taskMemoryMerger: TaskMemoryMerger
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -571,9 +574,15 @@ class ChatViewModel @Inject constructor(
                 if (_uiState.value.selectedContextStrategy == ContextStrategy.STICKY_FACTS) {
                     updatedFacts = updateStickyFacts(finalMessage)
                 }
+                val recentMessagesForRag = _uiState.value.messages.takeLast(8)
+                val taskContextForRag = loadCurrentTaskContext(sendingTaskContextId)
                 
                 val ragContext = if (_uiState.value.ragEnabled) {
-                    buildRagContext(finalMessage)
+                    buildRagContext(
+                        question = finalMessage,
+                        taskContext = taskContextForRag,
+                        recentMessages = recentMessagesForRag
+                    )
                 } else {
                     RagContext(
                         prompt = finalMessage,
@@ -754,6 +763,13 @@ class ChatViewModel @Inject constructor(
                         
                         // Update token estimates after sending message
                         updateTokenEstimates()
+                        if (_uiState.value.ragEnabled) {
+                            updateTaskMemoryAfterAssistantResponse(
+                                taskContext = taskContextForRag,
+                                chatId = sendingChatId,
+                                recentMessages = (recentMessagesForRag + assistantMessage).takeLast(8)
+                            )
+                        }
                     }
                                         .onFailure { throwable ->
                         _uiState.value = _uiState.value.copy(
@@ -770,17 +786,34 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private suspend fun buildRagContext(question: String): RagContext {
+    private suspend fun buildRagContext(
+        question: String,
+        taskContext: TaskContext?,
+        recentMessages: List<Message>
+    ): RagContext {
         val config = if (_uiState.value.day23ImprovedRetrievalEnabled) {
             RagRetrievalConfig.Improved
         } else {
             RagRetrievalConfig.Baseline
         }
         val rewrittenQuery = if (config.queryRewriteEnabled) {
-            queryRewriter.rewrite(question)
+            queryRewriter.rewrite(
+                question = question,
+                taskContext = taskContext,
+                recentMessages = recentMessages
+            )
         } else {
             question
         }
+        android.util.Log.d("RAG_DAY25", "RAG_DAY25_RETRIEVAL_EVERY_TURN question=${question.previewForLog(300)}")
+        android.util.Log.d(
+            "RAG_DAY25",
+            "RAG_DAY25_PROMPT_MEMORY_INCLUDED included=${taskContext != null}, preview=${taskContext?.title.orEmpty().previewForLog(300)}"
+        )
+        android.util.Log.d(
+            "RAG_DAY25",
+            "RAG_DAY25_RECENT_HISTORY_INCLUDED messages=${recentMessages.size}, preview=${recentMessages.joinToString(" ") { it.content }.previewForLog(600)}"
+        )
         android.util.Log.d("RAG_DAY23", "original question=$question")
         android.util.Log.d("RAG_DAY23", "rewritten query=$rewrittenQuery")
 
@@ -801,7 +834,12 @@ class ChatViewModel @Inject constructor(
             confidence >= ragAnswerConfig.minimumConfidence &&
             !underspecifiedQuestion
         ) {
-            ragPromptBuilder.build(question, results)
+            ragPromptBuilder.build(
+                question = question,
+                results = results,
+                taskContext = taskContext,
+                recentMessages = recentMessages
+            )
         } else {
             null
         }
@@ -816,6 +854,58 @@ class ChatViewModel @Inject constructor(
             confidence = confidence,
             results = results
         )
+    }
+
+    private suspend fun loadCurrentTaskContext(taskContextId: String?): TaskContext? {
+        return taskContextId
+            ?.let { id -> workingMemoryRepository.getTaskContext(id) }
+            ?: workingMemoryRepository.getActiveTaskContext()
+    }
+
+    private fun updateTaskMemoryAfterAssistantResponse(
+        taskContext: TaskContext?,
+        chatId: String,
+        recentMessages: List<Message>
+    ) {
+        if (taskContext == null) {
+            android.util.Log.d("TASK_MEMORY", "TASK_MEMORY_UPDATE_SKIPPED No active task context")
+            return
+        }
+
+        viewModelScope.launch {
+            android.util.Log.d("TASK_MEMORY", "TASK_MEMORY_UPDATE_STARTED taskId=${taskContext.id}")
+            runCatching {
+                val update = taskMemoryUpdater.updateFromConversation(
+                    taskContext = taskContext,
+                    recentMessages = recentMessages
+                )
+                if (update.isEmpty()) {
+                    android.util.Log.d("TASK_MEMORY", "TASK_MEMORY_UPDATE_SKIPPED No stable facts extracted")
+                    return@launch
+                }
+                val merged = taskMemoryMerger.merge(taskContext, update).copy(
+                    relatedChatIds = (taskContext.relatedChatIds + chatId).distinct()
+                )
+                workingMemoryRepository.saveTaskContext(merged)
+                workingMemoryRepository.setActiveTaskContext(merged.id)
+                chatRepository.updateChatActiveTaskContext(chatId, merged.id)
+                android.util.Log.d(
+                    "TASK_MEMORY",
+                    "TASK_MEMORY_UPDATE_APPLIED taskId=${merged.id}, goals=${merged.goals.size}, constraints=${merged.constraints.size}, decisions=${merged.decisions.size}"
+                )
+            }.onFailure { throwable ->
+                android.util.Log.d("TASK_MEMORY", "TASK_MEMORY_UPDATE_ERROR ${throwable.message.orEmpty()}")
+            }
+        }
+    }
+
+    private fun TaskContextUpdate.isEmpty(): Boolean {
+        return goalsAdd.isEmpty() &&
+            constraintsAdd.isEmpty() &&
+            decisionsAdd.isEmpty() &&
+            clarificationsAdd.isEmpty() &&
+            termsAdd.isEmpty() &&
+            currentState.isNullOrBlank()
     }
 
     private fun String.previewForLog(maxChars: Int): String {

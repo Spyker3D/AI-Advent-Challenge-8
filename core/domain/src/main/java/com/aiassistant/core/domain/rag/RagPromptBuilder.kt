@@ -1,12 +1,21 @@
 package com.aiassistant.core.domain.rag
 
+import com.aiassistant.core.domain.entity.Message
+import com.aiassistant.core.domain.memory.TaskContext
 import javax.inject.Inject
 
-class RagPromptBuilder @Inject constructor() {
+class RagPromptBuilder @Inject constructor(
+    private val recentHistoryFormatter: RecentHistoryFormatter,
+    private val taskMemoryPromptFormatter: TaskMemoryPromptFormatter
+) {
     fun build(
         question: String,
-        results: List<RagSearchResult>
+        results: List<RagSearchResult>,
+        taskContext: TaskContext? = null,
+        recentMessages: List<Message> = emptyList()
     ): String {
+        val taskMemory = taskMemoryPromptFormatter.format(taskContext)
+        val recentConversation = recentHistoryFormatter.format(recentMessages)
         val context = results.mapIndexed { index, result ->
             val chunk = result.chunk
             """
@@ -39,8 +48,16 @@ class RagPromptBuilder @Inject constructor() {
             |Keep the Answer concise but complete; usually write 3-6 sentences.
             |Quotes must be copied only from the provided context.
             |Do not change the meaning of quotes.
+            |Task Memory and Recent conversation help understand the user goal and follow-up references.
+            |RAG context is the only allowed source for project facts, sources, and quotes.
             |
-            |Context:
+            |Task Memory:
+            |$taskMemory
+            |
+            |Recent conversation:
+            |$recentConversation
+            |
+            |Retrieved RAG Context:
             |$context
             |
             |Question:
