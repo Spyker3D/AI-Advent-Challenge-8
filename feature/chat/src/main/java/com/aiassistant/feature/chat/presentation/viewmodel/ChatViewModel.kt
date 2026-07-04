@@ -26,6 +26,8 @@ import com.aiassistant.core.domain.mcp.McpOrchestratorAgent
 import com.aiassistant.core.domain.mcp.McpPipelineAgent
 import com.aiassistant.core.domain.rag.RagEmbeddingClient
 import com.aiassistant.core.domain.rag.RagIndexLoader
+import com.aiassistant.core.domain.rag.RagAnswerConfig
+import com.aiassistant.core.domain.rag.RagContext
 import com.aiassistant.core.domain.rag.RagPromptBuilder
 import com.aiassistant.core.domain.rag.RagRetrievalConfig
 import com.aiassistant.core.domain.rag.RagRetriever
@@ -58,6 +60,43 @@ import java.util.UUID
 import javax.inject.Inject
 
 private const val MCP_EXECUTION_DEMO_DELAY_MS = 400L
+private val RAG_AMBIGUOUS_TERMS = setOf(
+    "где",
+    "что",
+    "это",
+    "этот",
+    "эта",
+    "эти",
+    "там",
+    "тут",
+    "как",
+    "какой",
+    "какая",
+    "какие",
+    "зачем",
+    "почему",
+    "когда",
+    "оно",
+    "она",
+    "они",
+    "его",
+    "её",
+    "еще",
+    "ещё",
+    "делать",
+    "дальше",
+    "объясни",
+    "жизненный",
+    "цикл",
+    "расскажи",
+    "покажи",
+    "where",
+    "what",
+    "this",
+    "that",
+    "how",
+    "why"
+)
 
 class ChatViewModel @Inject constructor(
     private val sendMessageUseCase: SendMessageUseCase,
@@ -81,6 +120,7 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+    private val ragAnswerConfig = RagAnswerConfig()
 
         init {
         observeChatSettings()
@@ -532,15 +572,63 @@ class ChatViewModel @Inject constructor(
                     updatedFacts = updateStickyFacts(finalMessage)
                 }
                 
-                val ragSearchResults = if (_uiState.value.ragEnabled) {
+                val ragContext = if (_uiState.value.ragEnabled) {
                     buildRagContext(finalMessage)
                 } else {
-                    emptyList()
+                    RagContext(
+                        prompt = finalMessage,
+                        confidence = 1f,
+                        results = emptyList()
+                    )
                 }
                 val messageForLlm = if (_uiState.value.ragEnabled) {
-                    ragPromptBuilder.build(finalMessage, ragSearchResults)
+                    ragContext.prompt
                 } else {
                     finalMessage
+                }
+                if (messageForLlm == null) {
+                    val assistantMessage = Message(
+                        id = UUID.randomUUID().toString(),
+                        content = buildLowConfidenceRagAnswer(),
+                        role = MessageRole.ASSISTANT,
+                        timestamp = System.currentTimeMillis()
+                    )
+
+                    viewModelScope.launch {
+                        chatRepository.saveMessage(assistantMessage, sendingChatId)
+                        chatRepository.updateChatMeta(
+                            sendingChatId,
+                            generateChatTitleIfNeeded(finalMessage),
+                            assistantMessage.content.take(80)
+                        )
+                    }
+
+                    if (_uiState.value.currentChatId != sendingChatId) {
+                        return@launch
+                    }
+
+                    val updatedMessages = _uiState.value.messages + assistantMessage
+                    val updatedBranches = updateBranchWithMessage(sendingBranchId, assistantMessage)
+                    val updatedRagSources = if (ragContext.results.isNotEmpty()) {
+                        _uiState.value.ragSourcesByMessageId + (
+                            assistantMessage.id to ragContext.results.toRagSourceUi(
+                                improvedRetrieval = _uiState.value.day23ImprovedRetrievalEnabled
+                            )
+                        )
+                    } else {
+                        _uiState.value.ragSourcesByMessageId
+                    }
+
+                    _uiState.value = _uiState.value.copy(
+                        messages = updatedMessages,
+                        branches = updatedBranches,
+                        ragSourcesByMessageId = updatedRagSources,
+                        isLoading = false,
+                        attachedFileName = null,
+                        attachedFileText = null
+                    )
+                    updateTokenEstimates()
+                    return@launch
                 }
                 if (_uiState.value.ragEnabled) {
                     android.util.Log.d(
@@ -641,20 +729,14 @@ class ChatViewModel @Inject constructor(
                         
                         // Update current branch with the new message
                         val updatedBranches = updateBranchWithMessage(sendingBranchId, assistantMessage)
-                        val updatedRagSources = if (ragSearchResults.isNotEmpty()) {
+                        if (_uiState.value.ragEnabled) {
+                            logMissingRagAnswerSections(response.message)
+                        }
+
+                        val updatedRagSources = if (ragContext.results.isNotEmpty()) {
                             val improvedRetrieval = _uiState.value.day23ImprovedRetrievalEnabled
                             _uiState.value.ragSourcesByMessageId + (
-                                assistantMessage.id to ragSearchResults.map { result ->
-                                    RagSourceUi(
-                                        source = result.chunk.source,
-                                        section = result.chunk.section,
-                                        finalScore = result.finalScore,
-                                        cosineScore = result.cosineScore,
-                                        keywordScore = result.keywordScore,
-                                        metadataScore = result.metadataScore,
-                                        improvedRetrieval = improvedRetrieval
-                                    )
-                                }
+                                assistantMessage.id to ragContext.results.toRagSourceUi(improvedRetrieval)
                             )
                         } else {
                             _uiState.value.ragSourcesByMessageId
@@ -688,7 +770,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private suspend fun buildRagContext(question: String): List<RagSearchResult> {
+    private suspend fun buildRagContext(question: String): RagContext {
         val config = if (_uiState.value.day23ImprovedRetrievalEnabled) {
             RagRetrievalConfig.Improved
         } else {
@@ -706,18 +788,109 @@ class ChatViewModel @Inject constructor(
         val questionEmbedding = ragEmbeddingClient.embed(rewrittenQuery).getOrElse { throwable ->
             throw throwable
         }
-        return ragRetriever.search(
+        val results = ragRetriever.search(
             question = rewrittenQuery,
             questionEmbedding = questionEmbedding,
             chunks = chunks,
             config = config,
             lexicalQuestion = "$question $rewrittenQuery"
         )
+        val confidence = ragRetriever.confidence(results)
+        val underspecifiedQuestion = isUnderspecifiedRagQuestion(question)
+        val prompt = if (
+            confidence >= ragAnswerConfig.minimumConfidence &&
+            !underspecifiedQuestion
+        ) {
+            ragPromptBuilder.build(question, results)
+        } else {
+            null
+        }
+        logRagDay24Context(
+            confidence = confidence,
+            results = results,
+            prompt = prompt,
+            underspecifiedQuestion = underspecifiedQuestion
+        )
+        return RagContext(
+            prompt = prompt,
+            confidence = confidence,
+            results = results
+        )
     }
 
     private fun String.previewForLog(maxChars: Int): String {
         val compact = replace(Regex("\\s+"), " ").trim()
         return if (compact.length <= maxChars) compact else compact.take(maxChars) + "..."
+    }
+
+    private fun List<RagSearchResult>.toRagSourceUi(
+        improvedRetrieval: Boolean
+    ): List<RagSourceUi> {
+        return map { result ->
+            RagSourceUi(
+                source = result.chunk.source,
+                section = result.chunk.section,
+                finalScore = result.finalScore,
+                cosineScore = result.cosineScore,
+                keywordScore = result.keywordScore,
+                metadataScore = result.metadataScore,
+                improvedRetrieval = improvedRetrieval
+            )
+        }
+    }
+
+    private fun buildLowConfidenceRagAnswer(): String {
+        return """
+            |Я не нашёл достаточно информации в базе знаний проекта, чтобы уверенно ответить.
+            |
+            |Попробуйте:
+            |
+            |• уточнить вопрос;
+            |• использовать название класса;
+            |• указать модуль;
+            |• задать вопрос более конкретно.
+        """.trimMargin()
+    }
+
+    private fun logRagDay24Context(
+        confidence: Float,
+        results: List<RagSearchResult>,
+        prompt: String?,
+        underspecifiedQuestion: Boolean
+    ) {
+        val bestScore = results.firstOrNull()?.finalScore ?: 0f
+        android.util.Log.d("RAG_DAY24", "CONFIDENCE=$confidence")
+        android.util.Log.d("RAG_DAY24", "TOP3_AVERAGE=$confidence")
+        android.util.Log.d("RAG_DAY24", "CONFIDENCE_THRESHOLD=${ragAnswerConfig.minimumConfidence}")
+        android.util.Log.d("RAG_DAY24", "MINIMUM_SPECIFIC_TERMS=${ragAnswerConfig.minimumSpecificTerms}")
+        android.util.Log.d("RAG_DAY24", "UNDERSPECIFIED_QUESTION=$underspecifiedQuestion")
+        android.util.Log.d("RAG_DAY24", "RESULTS_COUNT=${results.size}")
+        android.util.Log.d("RAG_DAY24", "PROMPT_SIZE=${prompt?.length ?: 0}")
+        android.util.Log.d("RAG_DAY24", "BEST_SCORE=$bestScore")
+        android.util.Log.d("RAG_DAY24", "PROMPT_PREVIEW=${prompt?.previewForLog(2000).orEmpty()}")
+    }
+
+    private fun isUnderspecifiedRagQuestion(question: String): Boolean {
+        val specificTerms = Regex("[\\p{L}\\p{N}]+")
+            .findAll(question.lowercase(Locale.ROOT))
+            .map { it.value }
+            .filter { it.length >= 3 }
+            .filterNot { it in RAG_AMBIGUOUS_TERMS }
+            .toList()
+        return specificTerms.size < ragAnswerConfig.minimumSpecificTerms
+    }
+
+    private fun logMissingRagAnswerSections(answer: String) {
+        if (!answer.contains("Источники", ignoreCase = true) &&
+            !answer.contains("Sources", ignoreCase = true)
+        ) {
+            android.util.Log.d("RAG_DAY24", "Missing sources")
+        }
+        if (!answer.contains("Цитаты", ignoreCase = true) &&
+            !answer.contains("Quotes", ignoreCase = true)
+        ) {
+            android.util.Log.d("RAG_DAY24", "Missing citations")
+        }
     }
 
     private fun List<Message>.withoutCurrentUserMessage(currentMessage: String): List<Message> {

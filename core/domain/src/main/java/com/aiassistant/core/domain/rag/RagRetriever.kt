@@ -135,6 +135,15 @@ class RagRetriever @Inject constructor() {
         return reranked
     }
 
+    fun confidence(results: List<RagSearchResult>): Float {
+        if (results.isEmpty()) return 0f
+        return results
+            .take(CONFIDENCE_TOP_K)
+            .map { it.finalScore }
+            .average()
+            .toFloat()
+    }
+
     private fun selectPromptResults(
         sortedCandidates: List<RagSearchResult>,
         lexicalCandidates: List<RagSearchResult>,
@@ -317,6 +326,7 @@ class RagRetriever @Inject constructor() {
         private const val DEBUG_PREVIEW_CHARS = 300
         private const val MIN_TOKEN_LENGTH = 3
         private const val MIN_FILTERED_RESULTS = 3
+        private const val CONFIDENCE_TOP_K = 3
         private const val LEXICAL_KEYWORD_BYPASS_THRESHOLD = 0.35f
         private const val LEXICAL_METADATA_BYPASS_THRESHOLD = 0.35f
         private const val TITLE_METADATA_WEIGHT = 0.35f

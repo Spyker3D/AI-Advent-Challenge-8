@@ -88,6 +88,8 @@ class PromptBuilder @Inject constructor() {
     }
 
     private fun StringBuilder.appendInvariantSection(invariants: List<Invariant>) {
+        if (invariants.isEmpty()) return
+
         appendLine()
         appendLine("=========================")
         appendLine("INVARIANTS")
