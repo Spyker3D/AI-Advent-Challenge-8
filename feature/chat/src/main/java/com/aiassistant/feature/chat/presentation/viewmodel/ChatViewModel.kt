@@ -27,8 +27,10 @@ import com.aiassistant.core.domain.mcp.McpPipelineAgent
 import com.aiassistant.core.domain.rag.RagEmbeddingClient
 import com.aiassistant.core.domain.rag.RagIndexLoader
 import com.aiassistant.core.domain.rag.RagPromptBuilder
+import com.aiassistant.core.domain.rag.RagRetrievalConfig
 import com.aiassistant.core.domain.rag.RagRetriever
 import com.aiassistant.core.domain.rag.RagSearchResult
+import com.aiassistant.core.domain.rag.QueryRewriter
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
@@ -73,7 +75,8 @@ class ChatViewModel @Inject constructor(
     private val ragIndexLoader: RagIndexLoader,
     private val ragEmbeddingClient: RagEmbeddingClient,
     private val ragRetriever: RagRetriever,
-    private val ragPromptBuilder: RagPromptBuilder
+    private val ragPromptBuilder: RagPromptBuilder,
+    private val queryRewriter: QueryRewriter
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -425,6 +428,9 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.RagToggled -> {
                 _uiState.value = _uiState.value.copy(ragEnabled = event.enabled)
             }
+            is ChatUiEvent.Day23ImprovedRetrievalToggled -> {
+                _uiState.value = _uiState.value.copy(day23ImprovedRetrievalEnabled = event.enabled)
+            }
             is ChatUiEvent.PauseTask -> runTaskAction("пауза")
             is ChatUiEvent.ResumeTask -> runTaskAction("продолжи")
             is ChatUiEvent.ContinueTask -> runTaskAction("да, продолжай")
@@ -536,6 +542,12 @@ class ChatViewModel @Inject constructor(
                 } else {
                     finalMessage
                 }
+                if (_uiState.value.ragEnabled) {
+                    android.util.Log.d(
+                        "RAG_DAY23",
+                        "FINAL_RAG_PROMPT_PREVIEW=${messageForLlm.previewForLog(2000)}"
+                    )
+                }
 
                 // Calculate token metrics before building the request
                 val requestTokens = TokenCounter.countTokens(messageForLlm)
@@ -630,6 +642,7 @@ class ChatViewModel @Inject constructor(
                         // Update current branch with the new message
                         val updatedBranches = updateBranchWithMessage(sendingBranchId, assistantMessage)
                         val updatedRagSources = if (ragSearchResults.isNotEmpty()) {
+                            val improvedRetrieval = _uiState.value.day23ImprovedRetrievalEnabled
                             _uiState.value.ragSourcesByMessageId + (
                                 assistantMessage.id to ragSearchResults.map { result ->
                                     RagSourceUi(
@@ -638,7 +651,8 @@ class ChatViewModel @Inject constructor(
                                         finalScore = result.finalScore,
                                         cosineScore = result.cosineScore,
                                         keywordScore = result.keywordScore,
-                                        metadataScore = result.metadataScore
+                                        metadataScore = result.metadataScore,
+                                        improvedRetrieval = improvedRetrieval
                                     )
                                 }
                             )
@@ -675,15 +689,35 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun buildRagContext(question: String): List<RagSearchResult> {
+        val config = if (_uiState.value.day23ImprovedRetrievalEnabled) {
+            RagRetrievalConfig.Improved
+        } else {
+            RagRetrievalConfig.Baseline
+        }
+        val rewrittenQuery = if (config.queryRewriteEnabled) {
+            queryRewriter.rewrite(question)
+        } else {
+            question
+        }
+        android.util.Log.d("RAG_DAY23", "original question=$question")
+        android.util.Log.d("RAG_DAY23", "rewritten query=$rewrittenQuery")
+
         val chunks = ragIndexLoader.loadChunks()
-        val questionEmbedding = ragEmbeddingClient.embed(question).getOrElse { throwable ->
+        val questionEmbedding = ragEmbeddingClient.embed(rewrittenQuery).getOrElse { throwable ->
             throw throwable
         }
         return ragRetriever.search(
-            question = question,
+            question = rewrittenQuery,
             questionEmbedding = questionEmbedding,
-            chunks = chunks
+            chunks = chunks,
+            config = config,
+            lexicalQuestion = "$question $rewrittenQuery"
         )
+    }
+
+    private fun String.previewForLog(maxChars: Int): String {
+        val compact = replace(Regex("\\s+"), " ").trim()
+        return if (compact.length <= maxChars) compact else compact.take(maxChars) + "..."
     }
 
     private fun List<Message>.withoutCurrentUserMessage(currentMessage: String): List<Message> {

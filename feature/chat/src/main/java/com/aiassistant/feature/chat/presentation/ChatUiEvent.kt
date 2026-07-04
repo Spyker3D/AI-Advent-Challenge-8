@@ -29,6 +29,7 @@ sealed class ChatUiEvent {
     object OpenChatDrawer : ChatUiEvent()
     object CloseChatDrawer : ChatUiEvent()
     data class RagToggled(val enabled: Boolean) : ChatUiEvent()
+    data class Day23ImprovedRetrievalToggled(val enabled: Boolean) : ChatUiEvent()
 
     object PauseTask : ChatUiEvent()
     object ResumeTask : ChatUiEvent()

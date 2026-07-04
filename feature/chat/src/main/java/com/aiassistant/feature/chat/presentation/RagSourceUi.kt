@@ -6,5 +6,6 @@ data class RagSourceUi(
     val finalScore: Float,
     val cosineScore: Float,
     val keywordScore: Float,
-    val metadataScore: Float
+    val metadataScore: Float,
+    val improvedRetrieval: Boolean = true
 )

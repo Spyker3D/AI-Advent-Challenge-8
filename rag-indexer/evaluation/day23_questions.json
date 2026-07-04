@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "question": "Р§С‚Рѕ С‚Р°РєРѕРµ rememberSaveable РІ Jetpack Compose?"
+  },
+  {
+    "id": 2,
+    "question": "РљРѕРіРґР° РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ LaunchedEffect?"
+  },
+  {
+    "id": 3,
+    "question": "Р§РµРј StateFlow РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РѕС‚ SharedFlow?"
+  },
+  {
+    "id": 4,
+    "question": "Р—Р°С‡РµРј РЅСѓР¶РµРЅ Repository Pattern?"
+  },
+  {
+    "id": 5,
+    "question": "РљР°Рє СЂР°Р±РѕС‚Р°РµС‚ streaming РѕС‚РІРµС‚РѕРІ LLM?"
+  },
+  {
+    "id": 6,
+    "question": "Р”Р»СЏ С‡РµРіРѕ РёСЃРїРѕР»СЊР·СѓРµС‚СЏ Ollama nomic-embed-text?"
+  },
+  {
+    "id": 7,
+    "question": "Р§РµРј structure-based chunking Р»СѓС‡С€Рµ fixed-size chunking?"
+  },
+  {
+    "id": 8,
+    "question": "Р”Р»СЏ С‡РµРіРѕ РЅСѓР¶РµРЅ Retrofit Interceptor?"
+  },
+  {
+    "id": 9,
+    "question": "Р§С‚Рѕ С‚Р°РєРѕРµ MCP?"
+  },
+  {
+    "id": 10,
+    "question": "РљР°Рє СЂР°Р±РѕС‚Р°РµС‚ RAG pipeline?"
+  }
+]
