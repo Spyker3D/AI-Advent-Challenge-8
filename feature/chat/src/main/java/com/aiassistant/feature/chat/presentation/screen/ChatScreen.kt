@@ -1419,12 +1419,16 @@ fun RagSourcesBlock(
                 fontWeight = FontWeight.Bold
             )
             sources.forEach { source ->
-                Text(
-                    text = "- ${source.source} / ${source.section ?: "N/A"} / " +
-                        "final=${String.format(Locale.US, "%.2f", source.finalScore)} " +
+                val scoreText = if (source.improvedRetrieval) {
+                    "final=${String.format(Locale.US, "%.2f", source.finalScore)} " +
                         "cosine=${String.format(Locale.US, "%.2f", source.cosineScore)} " +
                         "keyword=${String.format(Locale.US, "%.2f", source.keywordScore)} " +
-                        "metadata=${String.format(Locale.US, "%.2f", source.metadataScore)}",
+                        "metadata=${String.format(Locale.US, "%.2f", source.metadataScore)}"
+                } else {
+                    "cosine=${String.format(Locale.US, "%.2f", source.cosineScore)}"
+                }
+                Text(
+                    text = "- ${source.source} / ${source.section ?: "N/A"} / $scoreText",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)

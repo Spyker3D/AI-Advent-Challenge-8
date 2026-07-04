@@ -642,6 +642,7 @@ class ChatViewModel @Inject constructor(
                         // Update current branch with the new message
                         val updatedBranches = updateBranchWithMessage(sendingBranchId, assistantMessage)
                         val updatedRagSources = if (ragSearchResults.isNotEmpty()) {
+                            val improvedRetrieval = _uiState.value.day23ImprovedRetrievalEnabled
                             _uiState.value.ragSourcesByMessageId + (
                                 assistantMessage.id to ragSearchResults.map { result ->
                                     RagSourceUi(
@@ -650,7 +651,8 @@ class ChatViewModel @Inject constructor(
                                         finalScore = result.finalScore,
                                         cosineScore = result.cosineScore,
                                         keywordScore = result.keywordScore,
-                                        metadataScore = result.metadataScore
+                                        metadataScore = result.metadataScore,
+                                        improvedRetrieval = improvedRetrieval
                                     )
                                 }
                             )
