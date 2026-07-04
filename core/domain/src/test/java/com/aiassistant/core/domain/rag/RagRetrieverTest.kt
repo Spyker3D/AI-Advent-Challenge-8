@@ -117,6 +117,34 @@ class RagRetrieverTest {
         assertEquals("message-lifecycle", results.first().chunk.chunkId)
     }
 
+    @Test
+    fun `confidence is average of top three final scores`() {
+        val results = listOf(
+            result("one", 0.9f),
+            result("two", 0.6f),
+            result("three", 0.3f),
+            result("four", 0.1f)
+        )
+
+        assertEquals(0.6f, retriever.confidence(results), 0.0001f)
+    }
+
+    @Test
+    fun `confidence is zero for empty results`() {
+        assertEquals(0f, retriever.confidence(emptyList()), 0.0001f)
+    }
+
+    @Test
+    fun `prompt quote is limited`() {
+        val chunk = chunk(
+            id = "long",
+            text = (1..100).joinToString(" ") { "Sentence $it." },
+            embedding = listOf(1f, 0f)
+        )
+
+        assertEquals(true, chunk.toPromptQuote().length <= 800)
+    }
+
     private fun chunk(
         id: String,
         text: String,
@@ -132,6 +160,20 @@ class RagRetrieverTest {
             strategy = "test",
             text = text,
             embedding = embedding
+        )
+    }
+
+    private fun result(id: String, finalScore: Float): RagSearchResult {
+        return RagSearchResult(
+            chunk = chunk(
+                id = id,
+                text = id,
+                embedding = listOf(1f, 0f)
+            ),
+            finalScore = finalScore,
+            cosineScore = finalScore,
+            keywordScore = 0f,
+            metadataScore = 0f
         )
     }
 }
