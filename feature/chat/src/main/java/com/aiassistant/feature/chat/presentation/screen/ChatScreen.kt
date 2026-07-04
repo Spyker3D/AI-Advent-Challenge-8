@@ -1390,7 +1390,11 @@ fun RagSourcesBlock(
             )
             sources.forEach { source ->
                 Text(
-                    text = "- ${source.source} / ${source.section ?: "N/A"} / score=${String.format(Locale.US, "%.2f", source.score)}",
+                    text = "- ${source.source} / ${source.section ?: "N/A"} / " +
+                        "final=${String.format(Locale.US, "%.2f", source.finalScore)} " +
+                        "cos=${String.format(Locale.US, "%.2f", source.cosineScore)} " +
+                        "kw=${String.format(Locale.US, "%.2f", source.keywordScore)} " +
+                        "meta=${String.format(Locale.US, "%.2f", source.metadataScore)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)

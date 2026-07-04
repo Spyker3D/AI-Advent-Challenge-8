@@ -39,6 +39,6 @@ fun main() {
 private fun embedAll(chunks: List<Chunk>, embeddingClient: OllamaEmbeddingClient): List<Chunk> {
     return chunks.mapIndexed { index, chunk ->
         println("Embedding ${index + 1}/${chunks.size}: ${chunk.chunkId}")
-        chunk.copy(embedding = embeddingClient.embed(chunk.text))
+        chunk.copy(embedding = embeddingClient.embed(chunk.embeddingContent()))
     }
 }

@@ -635,7 +635,10 @@ class ChatViewModel @Inject constructor(
                                     RagSourceUi(
                                         source = result.chunk.source,
                                         section = result.chunk.section,
-                                        score = result.score
+                                        finalScore = result.finalScore,
+                                        cosineScore = result.cosineScore,
+                                        keywordScore = result.keywordScore,
+                                        metadataScore = result.metadataScore
                                     )
                                 }
                             )

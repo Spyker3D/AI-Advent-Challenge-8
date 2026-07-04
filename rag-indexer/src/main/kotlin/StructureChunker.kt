@@ -41,7 +41,6 @@ class StructureChunker(
             if (heading != null) {
                 flushSection(sections, currentTitle, currentText)
                 currentTitle = heading.groupValues[2].trim()
-                currentText.appendLine(line)
             } else {
                 currentText.appendLine(line)
             }

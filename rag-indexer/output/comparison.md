@@ -5,7 +5,7 @@
 | Strategy | Chunks | Average size | Minimum size | Maximum size | Chunks without section |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Fixed-size | 576 | 1017 | 4 | 1200 | 0 |
-| Structure-based | 1108 | 582 | 5 | 1200 | 2 |
+| Structure-based | 1076 | 592 | 11 | 1200 | 2 |
 
 ## Fixed-size
 
