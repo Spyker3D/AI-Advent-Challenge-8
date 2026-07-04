@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "question": "Что такое rememberSaveable в Jetpack Compose?"
+  },
+  {
+    "id": 2,
+    "question": "Когда использовать LaunchedEffect?"
+  },
+  {
+    "id": 3,
+    "question": "Чем StateFlow отличается от SharedFlow?"
+  },
+  {
+    "id": 4,
+    "question": "Зачем нужен Repository Pattern?"
+  },
+  {
+    "id": 5,
+    "question": "Как работает streaming ответов LLM?"
+  },
+  {
+    "id": 6,
+    "question": "Для чего используется Ollama nomic-embed-text?"
+  },
+  {
+    "id": 7,
+    "question": "Чем structure-based chunking лучше fixed-size chunking?"
+  },
+  {
+    "id": 8,
+    "question": "Для чего нужен Retrofit Interceptor?"
+  },
+  {
+    "id": 9,
+    "question": "Что такое MCP?"
+  },
+  {
+    "id": 10,
+    "question": "Как работает RAG pipeline?"
+  }
+]

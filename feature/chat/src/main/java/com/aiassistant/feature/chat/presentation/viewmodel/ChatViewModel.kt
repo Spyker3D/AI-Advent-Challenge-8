@@ -24,6 +24,11 @@ import com.aiassistant.core.domain.memory.TaskWaitingUserResult
 import com.aiassistant.core.domain.mcp.McpExecutionLogItem
 import com.aiassistant.core.domain.mcp.McpOrchestratorAgent
 import com.aiassistant.core.domain.mcp.McpPipelineAgent
+import com.aiassistant.core.domain.rag.RagEmbeddingClient
+import com.aiassistant.core.domain.rag.RagIndexLoader
+import com.aiassistant.core.domain.rag.RagPromptBuilder
+import com.aiassistant.core.domain.rag.RagRetriever
+import com.aiassistant.core.domain.rag.RagSearchResult
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
@@ -33,6 +38,7 @@ import com.aiassistant.core.domain.usecase.SendMessageUseCase
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.ChatUiState
+import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -63,7 +69,11 @@ class ChatViewModel @Inject constructor(
     private val taskPipelineOrchestrator: TaskPipelineOrchestrator,
     private val workingMemoryRepository: WorkingMemoryRepository,
     private val mcpOrchestratorAgent: McpOrchestratorAgent,
-    private val mcpPipelineAgent: McpPipelineAgent
+    private val mcpPipelineAgent: McpPipelineAgent,
+    private val ragIndexLoader: RagIndexLoader,
+    private val ragEmbeddingClient: RagEmbeddingClient,
+    private val ragRetriever: RagRetriever,
+    private val ragPromptBuilder: RagPromptBuilder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -412,6 +422,9 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.CloseChatDrawer -> {
                 _uiState.value = _uiState.value.copy(isChatDrawerOpen = false)
             }
+            is ChatUiEvent.RagToggled -> {
+                _uiState.value = _uiState.value.copy(ragEnabled = event.enabled)
+            }
             is ChatUiEvent.PauseTask -> runTaskAction("пауза")
             is ChatUiEvent.ResumeTask -> runTaskAction("продолжи")
             is ChatUiEvent.ContinueTask -> runTaskAction("да, продолжай")
@@ -513,8 +526,19 @@ class ChatViewModel @Inject constructor(
                     updatedFacts = updateStickyFacts(finalMessage)
                 }
                 
+                val ragSearchResults = if (_uiState.value.ragEnabled) {
+                    buildRagContext(finalMessage)
+                } else {
+                    emptyList()
+                }
+                val messageForLlm = if (_uiState.value.ragEnabled) {
+                    ragPromptBuilder.build(finalMessage, ragSearchResults)
+                } else {
+                    finalMessage
+                }
+
                 // Calculate token metrics before building the request
-                val requestTokens = TokenCounter.countTokens(finalMessage)
+                val requestTokens = TokenCounter.countTokens(messageForLlm)
                 
                 // Build the appropriate history based on the selected context strategy
                 val (effectiveHistory, historyTokens) = when (_uiState.value.selectedContextStrategy) {
@@ -532,13 +556,19 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 
+                val historyForLlm = if (_uiState.value.ragEnabled) {
+                    effectiveHistory.withoutCurrentUserMessage(finalMessage)
+                } else {
+                    effectiveHistory
+                }
+
                 val chatRequest = ChatRequest(
-                    message = finalMessage,
+                    message = messageForLlm,
                     model = _uiState.value.selectedModel,
                     temperature = _uiState.value.temperature,
                     maxTokens = _uiState.value.maxTokens,
                     systemPrompt = _uiState.value.systemPrompt,
-                    history = effectiveHistory
+                    history = historyForLlm
                 )
 
                 // Send message using ChatAgent with context strategy
@@ -599,10 +629,24 @@ class ChatViewModel @Inject constructor(
                         
                         // Update current branch with the new message
                         val updatedBranches = updateBranchWithMessage(sendingBranchId, assistantMessage)
+                        val updatedRagSources = if (ragSearchResults.isNotEmpty()) {
+                            _uiState.value.ragSourcesByMessageId + (
+                                assistantMessage.id to ragSearchResults.map { result ->
+                                    RagSourceUi(
+                                        source = result.chunk.source,
+                                        section = result.chunk.section,
+                                        score = result.score
+                                    )
+                                }
+                            )
+                        } else {
+                            _uiState.value.ragSourcesByMessageId
+                        }
                         
                         _uiState.value = _uiState.value.copy(
                             messages = updatedMessages,
                             branches = updatedBranches,
+                            ragSourcesByMessageId = updatedRagSources,
                             isLoading = false,
                             // Clear attached file after sending
                             attachedFileName = null,
@@ -624,6 +668,28 @@ class ChatViewModel @Inject constructor(
                     error = e.message ?: "An unknown error occurred"
                 )
             }
+        }
+    }
+
+    private suspend fun buildRagContext(question: String): List<RagSearchResult> {
+        val chunks = ragIndexLoader.loadChunks()
+        val questionEmbedding = ragEmbeddingClient.embed(question).getOrElse { throwable ->
+            throw throwable
+        }
+        return ragRetriever.search(
+            question = question,
+            questionEmbedding = questionEmbedding,
+            chunks = chunks
+        )
+    }
+
+    private fun List<Message>.withoutCurrentUserMessage(currentMessage: String): List<Message> {
+        if (isEmpty()) return this
+        val lastMessage = last()
+        return if (lastMessage.role == MessageRole.USER && lastMessage.content == currentMessage) {
+            dropLast(1)
+        } else {
+            this
         }
     }
 

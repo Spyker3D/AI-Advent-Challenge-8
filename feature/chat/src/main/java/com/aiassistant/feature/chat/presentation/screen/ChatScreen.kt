@@ -57,6 +57,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
@@ -93,6 +94,7 @@ import com.aiassistant.core.domain.mcp.McpExecutionStatus
 import com.aiassistant.core.ui.components.LoadingIndicator
 import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
+import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -240,6 +242,22 @@ fun ChatScreen(
                         }
                     },
                     actions = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text(
+                                text = if (uiState.ragEnabled) "RAG ON" else "RAG OFF",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                            Switch(
+                                checked = uiState.ragEnabled,
+                                onCheckedChange = {
+                                    viewModel.handleEvent(ChatUiEvent.RagToggled(it))
+                                },
+                                modifier = Modifier.padding(start = 6.dp)
+                            )
+                        }
                         IconButton(onClick = { viewModel.handleEvent(ChatUiEvent.ClearChat) }) {
                             Icon(
                                 imageVector = Icons.Outlined.Clear,
@@ -589,6 +607,16 @@ fun ChatScreen(
                                                 MessageBubble(
                                                     message = message,
                                                     modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        }
+                                        if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                                            uiState.ragSourcesByMessageId[message.id]?.takeIf { it.isNotEmpty() }?.let { sources ->
+                                                RagSourcesBlock(
+                                                    sources = sources,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 4.dp)
                                                 )
                                             }
                                         }
@@ -1342,6 +1370,35 @@ fun BranchingControls(
 }
 
 
+
+@Composable
+fun RagSourcesBlock(
+    sources: List<RagSourceUi>,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Sources:",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            sources.forEach { source ->
+                Text(
+                    text = "- ${source.source} / ${source.section ?: "N/A"} / score=${String.format(Locale.US, "%.2f", source.score)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun EnhancedMessageBubble(

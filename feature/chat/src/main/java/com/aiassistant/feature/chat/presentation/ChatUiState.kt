@@ -48,5 +48,7 @@ data class ChatUiState(
     val isChatDrawerOpen: Boolean = false,
     val activeTaskContext: TaskContext? = null,
     val mcpExecutionLogs: List<McpExecutionLogItem> = emptyList(),
-    val isMcpExecutionVisible: Boolean = false
+    val isMcpExecutionVisible: Boolean = false,
+    val ragEnabled: Boolean = false,
+    val ragSourcesByMessageId: Map<String, List<RagSourceUi>> = emptyMap()
 )

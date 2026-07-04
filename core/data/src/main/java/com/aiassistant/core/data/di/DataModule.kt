@@ -8,6 +8,8 @@ import com.aiassistant.core.data.database.ChatMessageDao
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.data.mcp.McpAgentRepositoryImpl
+import com.aiassistant.core.data.rag.AndroidOllamaEmbeddingClient
+import com.aiassistant.core.data.rag.AndroidRagIndexLoader
 import com.aiassistant.core.data.repository.ChatRepositoryImpl
 import com.aiassistant.core.data.repository.InvariantRepositoryImpl
 import com.aiassistant.core.data.repository.LongTermMemoryRepositoryImpl
@@ -15,6 +17,8 @@ import com.aiassistant.core.data.repository.SettingsRepositoryImpl
 import com.aiassistant.core.data.repository.WorkingMemoryRepositoryImpl
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.mcp.McpAgentRepository
+import com.aiassistant.core.domain.rag.RagEmbeddingClient
+import com.aiassistant.core.domain.rag.RagIndexLoader
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.domain.repository.InvariantRepository
 import com.aiassistant.core.domain.repository.LongTermMemoryRepository
@@ -62,7 +66,16 @@ abstract class DataModule {
     abstract fun bindLlmClient(
         llmClientImpl: LlmClientImpl
     ): LlmClient
-    
+
+    @Binds
+    abstract fun bindRagIndexLoader(
+        androidRagIndexLoader: AndroidRagIndexLoader
+    ): RagIndexLoader
+
+    @Binds
+    abstract fun bindRagEmbeddingClient(
+        androidOllamaEmbeddingClient: AndroidOllamaEmbeddingClient
+    ): RagEmbeddingClient
 
 
     companion object {
