@@ -2,7 +2,7 @@
 
 ## Config
 
-- minimumConfidence = 0.60
+- minimumConfidence = 0.45
 - confidence = average(top3.finalScore)
 - low confidence behavior = local answer, no OpenRouter request
 - prompt requires Answer, Sources, Quotes

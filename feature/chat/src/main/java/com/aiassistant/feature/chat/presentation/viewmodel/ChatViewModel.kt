@@ -60,6 +60,43 @@ import java.util.UUID
 import javax.inject.Inject
 
 private const val MCP_EXECUTION_DEMO_DELAY_MS = 400L
+private val RAG_AMBIGUOUS_TERMS = setOf(
+    "где",
+    "что",
+    "это",
+    "этот",
+    "эта",
+    "эти",
+    "там",
+    "тут",
+    "как",
+    "какой",
+    "какая",
+    "какие",
+    "зачем",
+    "почему",
+    "когда",
+    "оно",
+    "она",
+    "они",
+    "его",
+    "её",
+    "еще",
+    "ещё",
+    "делать",
+    "дальше",
+    "объясни",
+    "жизненный",
+    "цикл",
+    "расскажи",
+    "покажи",
+    "where",
+    "what",
+    "this",
+    "that",
+    "how",
+    "why"
+)
 
 class ChatViewModel @Inject constructor(
     private val sendMessageUseCase: SendMessageUseCase,
@@ -759,7 +796,11 @@ class ChatViewModel @Inject constructor(
             lexicalQuestion = "$question $rewrittenQuery"
         )
         val confidence = ragRetriever.confidence(results)
-        val prompt = if (confidence >= ragAnswerConfig.minimumConfidence) {
+        val underspecifiedQuestion = isUnderspecifiedRagQuestion(question)
+        val prompt = if (
+            confidence >= ragAnswerConfig.minimumConfidence &&
+            !underspecifiedQuestion
+        ) {
             ragPromptBuilder.build(question, results)
         } else {
             null
@@ -767,7 +808,8 @@ class ChatViewModel @Inject constructor(
         logRagDay24Context(
             confidence = confidence,
             results = results,
-            prompt = prompt
+            prompt = prompt,
+            underspecifiedQuestion = underspecifiedQuestion
         )
         return RagContext(
             prompt = prompt,
@@ -813,16 +855,29 @@ class ChatViewModel @Inject constructor(
     private fun logRagDay24Context(
         confidence: Float,
         results: List<RagSearchResult>,
-        prompt: String?
+        prompt: String?,
+        underspecifiedQuestion: Boolean
     ) {
         val bestScore = results.firstOrNull()?.finalScore ?: 0f
         android.util.Log.d("RAG_DAY24", "CONFIDENCE=$confidence")
         android.util.Log.d("RAG_DAY24", "TOP3_AVERAGE=$confidence")
         android.util.Log.d("RAG_DAY24", "CONFIDENCE_THRESHOLD=${ragAnswerConfig.minimumConfidence}")
+        android.util.Log.d("RAG_DAY24", "MINIMUM_SPECIFIC_TERMS=${ragAnswerConfig.minimumSpecificTerms}")
+        android.util.Log.d("RAG_DAY24", "UNDERSPECIFIED_QUESTION=$underspecifiedQuestion")
         android.util.Log.d("RAG_DAY24", "RESULTS_COUNT=${results.size}")
         android.util.Log.d("RAG_DAY24", "PROMPT_SIZE=${prompt?.length ?: 0}")
         android.util.Log.d("RAG_DAY24", "BEST_SCORE=$bestScore")
         android.util.Log.d("RAG_DAY24", "PROMPT_PREVIEW=${prompt?.previewForLog(2000).orEmpty()}")
+    }
+
+    private fun isUnderspecifiedRagQuestion(question: String): Boolean {
+        val specificTerms = Regex("[\\p{L}\\p{N}]+")
+            .findAll(question.lowercase(Locale.ROOT))
+            .map { it.value }
+            .filter { it.length >= 3 }
+            .filterNot { it in RAG_AMBIGUOUS_TERMS }
+            .toList()
+        return specificTerms.size < ragAnswerConfig.minimumSpecificTerms
     }
 
     private fun logMissingRagAnswerSections(answer: String) {

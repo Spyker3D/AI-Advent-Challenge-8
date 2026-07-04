@@ -145,6 +145,11 @@ class RagRetrieverTest {
         assertEquals(true, chunk.toPromptQuote().length <= 800)
     }
 
+    @Test
+    fun `answer confidence threshold is calibrated for current hybrid score scale`() {
+        assertEquals(0.45f, RagAnswerConfig().minimumConfidence, 0.0001f)
+    }
+
     private fun chunk(
         id: String,
         text: String,

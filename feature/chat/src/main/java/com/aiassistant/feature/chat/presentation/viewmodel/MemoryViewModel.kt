@@ -151,6 +151,27 @@ class MemoryViewModel @Inject constructor(
         val banned = state.bannedStack.toInvariantSet()
         val bannedArchitectures = state.bannedArchitectures.toInvariantSet()
         val max = state.maxDependencies.toIntOrNull()
+        val invariantsDisabled = allowed.isEmpty() &&
+            banned.isEmpty() &&
+            state.architecture.isBlank() &&
+            bannedArchitectures.isEmpty() &&
+            state.budget.isBlank() &&
+            state.maxDependencies.isBlank()
+
+        if (invariantsDisabled) {
+            viewModelScope.launch {
+                runCatching {
+                    invariantRepository.saveInvariants(emptyList())
+                }.onSuccess {
+                    _uiState.value = _uiState.value.copy(message = "Invariants disabled", error = null)
+                }.onFailure { throwable ->
+                    _uiState.value = _uiState.value.copy(
+                        error = throwable.message ?: "Failed to disable invariants"
+                    )
+                }
+            }
+            return
+        }
 
         if (allowed.isEmpty() || allowed.any(banned::contains) ||
             state.architecture.isBlank() ||

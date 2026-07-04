@@ -70,10 +70,18 @@ class InvariantRepositoryImpl @Inject constructor(
     private fun parse(json: JsonArray): List<Invariant> = json.mapNotNull { element ->
         val item = element.asJsonObject
         when (item.get("type")?.asString) {
-            "stack" -> StackInvariant(
-                allowed = item.stringSet("allowed"),
-                banned = item.stringSet("banned")
-            )
+            "stack" -> {
+                val allowed = item.stringSet("allowed")
+                val banned = item.stringSet("banned")
+                if (allowed.isEmpty() && banned.isEmpty()) {
+                    null
+                } else {
+                    StackInvariant(
+                        allowed = allowed,
+                        banned = banned
+                    )
+                }
+            }
             "architecture" -> ArchitectureInvariant(
                 required = item.get("required")?.asString
                     ?: item.get("architecture")?.asString
@@ -84,8 +92,12 @@ class InvariantRepositoryImpl @Inject constructor(
             "max_dependencies" -> MaxDependenciesInvariant(max = item.get("max").asInt)
             else -> null
         }
-    }.ifEmpty { defaultInvariants() }
+    }
 
     private fun JsonObject.stringSet(name: String): Set<String> =
-        getAsJsonArray(name)?.mapTo(linkedSetOf()) { it.asString } ?: emptySet()
+        getAsJsonArray(name)
+            ?.mapNotNullTo(linkedSetOf()) { element ->
+                element.asString.trim().ifBlank { null }
+            }
+            ?: emptySet()
 }
