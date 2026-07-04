@@ -31,10 +31,10 @@ class RagRetriever @Inject constructor() {
         question: String,
         questionEmbedding: List<Float>,
         chunks: List<RagChunk>,
-        candidateTopK: Int = DEFAULT_CANDIDATE_TOP_K,
-        promptTopK: Int = DEFAULT_PROMPT_TOP_K
+        config: RagRetrievalConfig = RagRetrievalConfig.Improved,
+        lexicalQuestion: String = question
     ): List<RagSearchResult> {
-        val questionTerms = tokenize(question)
+        val questionTerms = tokenize(lexicalQuestion)
         val termWeights = questionTermWeights(questionTerms, chunks)
 
         val scoredChunks = chunks
@@ -52,7 +52,8 @@ class RagRetriever @Inject constructor() {
                     finalScore = finalScore(
                         cosineScore = cosineScore,
                         keywordScore = keywordScore,
-                        metadataScore = metadataScore
+                        metadataScore = metadataScore,
+                        config = config
                     )
                 )
             }
@@ -60,7 +61,7 @@ class RagRetriever @Inject constructor() {
 
         val cosineCandidates = scoredChunks
             .sortedByDescending { it.cosineScore }
-            .take(candidateTopK)
+            .take(config.candidateTopK)
 
         val lexicalCandidates = scoredChunks
             .sortedWith(
@@ -68,47 +69,96 @@ class RagRetriever @Inject constructor() {
                     .thenByDescending { it.metadataScore }
                     .thenByDescending { it.cosineScore }
             )
-            .take(candidateTopK)
+            .take(config.candidateTopK)
 
-        val candidates = (cosineCandidates + lexicalCandidates)
+        val candidatesBeforeFilter = cosineCandidates
+        val filteredCandidates = if (config.filteringEnabled) {
+            cosineCandidates.filter { it.cosineScore >= config.similarityThreshold }
+        } else {
+            cosineCandidates
+        }
+        val candidatesAfterFilter = if (config.filteringEnabled && filteredCandidates.size < MIN_FILTERED_RESULTS) {
+            cosineCandidates.take(MIN_FILTERED_RESULTS)
+        } else {
+            filteredCandidates
+        }
+        val removedByThreshold = if (config.filteringEnabled) {
+            cosineCandidates.filterNot { candidate ->
+                candidatesAfterFilter.any { it.chunk.chunkId == candidate.chunk.chunkId }
+            }
+        } else {
+            emptyList()
+        }
+
+        val allowedLexicalCandidates = lexicalCandidates.filter { lexicalCandidate ->
+            lexicalCandidate.finalScore >= config.similarityThreshold ||
+                lexicalCandidate.keywordScore >= LEXICAL_KEYWORD_BYPASS_THRESHOLD ||
+                lexicalCandidate.metadataScore >= LEXICAL_METADATA_BYPASS_THRESHOLD
+        }
+
+        val candidates = (candidatesAfterFilter + allowedLexicalCandidates)
             .distinctBy { it.chunk.chunkId }
 
-        val rerankedByFinalScore = candidates
-            .sortedWith(
+        val sortedCandidates = if (config.rerankingEnabled) {
+            candidates.sortedWith(
                 compareByDescending<RagSearchResult> { it.finalScore }
                     .thenByDescending { it.cosineScore }
                     .thenBy { it.chunk.source }
                     .thenBy { it.chunk.chunkId }
             )
+        } else {
+            candidates.map { result ->
+                result.copy(finalScore = result.cosineScore)
+            }.sortedWith(
+                compareByDescending<RagSearchResult> { it.cosineScore }
+                    .thenBy { it.chunk.source }
+                    .thenBy { it.chunk.chunkId }
+            )
+        }
 
         val reranked = selectPromptResults(
-            rerankedByFinalScore = rerankedByFinalScore,
+            sortedCandidates = sortedCandidates,
             lexicalCandidates = lexicalCandidates,
-            promptTopK = promptTopK
+            config = config
         )
 
-        logRetrieval(question, cosineCandidates, lexicalCandidates, reranked)
+        logRetrieval(
+            question = question,
+            lexicalQuestion = lexicalQuestion,
+            config = config,
+            candidatesBeforeFilter = candidatesBeforeFilter,
+            candidatesAfterFilter = candidatesAfterFilter,
+            removedByThreshold = removedByThreshold,
+            lexicalCandidates = lexicalCandidates,
+            reranked = reranked
+        )
         return reranked
     }
 
     private fun selectPromptResults(
-        rerankedByFinalScore: List<RagSearchResult>,
+        sortedCandidates: List<RagSearchResult>,
         lexicalCandidates: List<RagSearchResult>,
-        promptTopK: Int
+        config: RagRetrievalConfig
     ): List<RagSearchResult> {
-        val bestLexical = lexicalCandidates.firstOrNull {
-            it.keywordScore > 0f || it.metadataScore > 0f
+        val bestLexical = if (config.rerankingEnabled) {
+            lexicalCandidates.firstOrNull {
+                it.finalScore >= config.similarityThreshold ||
+                    it.keywordScore >= LEXICAL_KEYWORD_BYPASS_THRESHOLD ||
+                    it.metadataScore >= LEXICAL_METADATA_BYPASS_THRESHOLD
+            }
+        } else {
+            null
         }
         val selected = mutableListOf<RagSearchResult>()
         if (bestLexical != null) {
             selected += bestLexical
         }
-        rerankedByFinalScore.forEach { result ->
+        sortedCandidates.forEach { result ->
             if (selected.none { it.chunk.chunkId == result.chunk.chunkId }) {
                 selected += result
             }
         }
-        return selected.take(promptTopK)
+        return selected.take(config.finalTopK)
     }
 
     private fun keywordScore(termWeights: Map<String, Float>, chunk: RagChunk): Float {
@@ -122,39 +172,63 @@ class RagRetriever @Inject constructor() {
         if (termWeights.isEmpty()) return 0f
         val titleTerms = tokenize(chunk.title)
         val sectionTerms = tokenize(chunk.section.orEmpty())
+        val sourceTerms = tokenize(chunk.source)
         val titleMatches = weightedCoverage(termWeights) { term -> term in titleTerms }
         val sectionMatches = weightedCoverage(termWeights) { term -> term in sectionTerms }
-        return (titleMatches * TITLE_METADATA_WEIGHT + sectionMatches * SECTION_METADATA_WEIGHT)
+        val sourceMatches = weightedCoverage(termWeights) { term -> term in sourceTerms }
+        return (titleMatches * TITLE_METADATA_WEIGHT +
+            sectionMatches * SECTION_METADATA_WEIGHT +
+            sourceMatches * SOURCE_METADATA_WEIGHT)
             .coerceIn(0f, 1f)
     }
 
     private fun finalScore(
         cosineScore: Float,
         keywordScore: Float,
-        metadataScore: Float
+        metadataScore: Float,
+        config: RagRetrievalConfig
     ): Float {
-        return cosineScore * COSINE_WEIGHT +
-            keywordScore * KEYWORD_WEIGHT +
-            metadataScore * METADATA_WEIGHT
+        return if (config.rerankingEnabled) {
+            cosineScore * config.cosineWeight +
+                keywordScore * config.keywordWeight +
+                metadataScore * config.metadataWeight
+        } else {
+            cosineScore
+        }
     }
 
     private fun logRetrieval(
         question: String,
-        cosineCandidates: List<RagSearchResult>,
+        lexicalQuestion: String,
+        config: RagRetrievalConfig,
+        candidatesBeforeFilter: List<RagSearchResult>,
+        candidatesAfterFilter: List<RagSearchResult>,
+        removedByThreshold: List<RagSearchResult>,
         lexicalCandidates: List<RagSearchResult>,
         reranked: List<RagSearchResult>
     ) {
         val message = buildString {
-            appendLine("question=$question")
-            appendLine("top 20 before rerank")
-            cosineCandidates.forEachIndexed { index, result ->
+            appendLine("original question=$question")
+            appendLine("lexical question=$lexicalQuestion")
+            appendLine("candidateTopK=${config.candidateTopK}")
+            appendLine("finalTopK=${config.finalTopK}")
+            appendLine("similarityThreshold=${config.similarityThreshold.formatScore()}")
+            appendLine("rewrite=${config.queryRewriteEnabled}, filter=${config.filteringEnabled}, rerank=${config.rerankingEnabled}")
+            appendLine("candidates before filter=${candidatesBeforeFilter.size}")
+            appendLine("candidates after filter=${candidatesAfterFilter.size}")
+            appendLine("top candidates before filter")
+            candidatesBeforeFilter.forEachIndexed { index, result ->
                 appendResult(index + 1, result)
             }
-            appendLine("top 20 lexical/metadata candidates")
+            appendLine("removed by threshold=${removedByThreshold.size}")
+            removedByThreshold.forEachIndexed { index, result ->
+                appendResult(index + 1, result)
+            }
+            appendLine("top lexical/metadata candidates")
             lexicalCandidates.forEachIndexed { index, result ->
                 appendResult(index + 1, result)
             }
-            appendLine("top 5 after rerank")
+            appendLine("top results after rerank")
             reranked.forEachIndexed { index, result ->
                 appendResult(index + 1, result)
             }
@@ -239,16 +313,15 @@ class RagRetriever @Inject constructor() {
     }
 
     companion object {
-        const val DEFAULT_CANDIDATE_TOP_K = 20
-        const val DEFAULT_PROMPT_TOP_K = 5
-        private const val LOG_TAG = "RAG_RETRIEVAL"
+        private const val LOG_TAG = "RAG_DAY23"
         private const val DEBUG_PREVIEW_CHARS = 300
         private const val MIN_TOKEN_LENGTH = 3
-        private const val COSINE_WEIGHT = 0.75f
-        private const val KEYWORD_WEIGHT = 0.20f
-        private const val METADATA_WEIGHT = 0.05f
-        private const val TITLE_METADATA_WEIGHT = 0.4f
-        private const val SECTION_METADATA_WEIGHT = 0.6f
+        private const val MIN_FILTERED_RESULTS = 3
+        private const val LEXICAL_KEYWORD_BYPASS_THRESHOLD = 0.35f
+        private const val LEXICAL_METADATA_BYPASS_THRESHOLD = 0.35f
+        private const val TITLE_METADATA_WEIGHT = 0.35f
+        private const val SECTION_METADATA_WEIGHT = 0.50f
+        private const val SOURCE_METADATA_WEIGHT = 0.15f
         private val TOKEN_REGEX = Regex("[\\p{L}\\p{N}]+")
         private val STOP_WORDS = setOf(
             "как",

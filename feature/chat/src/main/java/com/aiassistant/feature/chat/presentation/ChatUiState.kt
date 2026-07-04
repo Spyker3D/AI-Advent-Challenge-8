@@ -50,5 +50,6 @@ data class ChatUiState(
     val mcpExecutionLogs: List<McpExecutionLogItem> = emptyList(),
     val isMcpExecutionVisible: Boolean = false,
     val ragEnabled: Boolean = false,
+    val day23ImprovedRetrievalEnabled: Boolean = true,
     val ragSourcesByMessageId: Map<String, List<RagSourceUi>> = emptyMap()
 )

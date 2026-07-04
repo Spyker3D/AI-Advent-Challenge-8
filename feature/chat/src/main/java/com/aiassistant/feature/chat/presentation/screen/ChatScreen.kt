@@ -242,22 +242,6 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text(
-                                text = if (uiState.ragEnabled) "RAG ON" else "RAG OFF",
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                            Switch(
-                                checked = uiState.ragEnabled,
-                                onCheckedChange = {
-                                    viewModel.handleEvent(ChatUiEvent.RagToggled(it))
-                                },
-                                modifier = Modifier.padding(start = 6.dp)
-                            )
-                        }
                         IconButton(onClick = { viewModel.handleEvent(ChatUiEvent.ClearChat) }) {
                             Icon(
                                 imageVector = Icons.Outlined.Clear,
@@ -280,6 +264,52 @@ fun ChatScreen(
                             expanded = isOverflowMenuOpen,
                             onDismissRequest = { isOverflowMenuOpen = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text(if (uiState.ragEnabled) "RAG ON" else "RAG OFF") },
+                                onClick = {
+                                    viewModel.handleEvent(ChatUiEvent.RagToggled(!uiState.ragEnabled))
+                                },
+                                trailingIcon = {
+                                    Switch(
+                                        checked = uiState.ragEnabled,
+                                        onCheckedChange = {
+                                            viewModel.handleEvent(ChatUiEvent.RagToggled(it))
+                                        }
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (uiState.day23ImprovedRetrievalEnabled) {
+                                            "Day23 Improved"
+                                        } else {
+                                            "Day23 Baseline"
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    if (uiState.ragEnabled) {
+                                        viewModel.handleEvent(
+                                            ChatUiEvent.Day23ImprovedRetrievalToggled(
+                                                !uiState.day23ImprovedRetrievalEnabled
+                                            )
+                                        )
+                                    }
+                                },
+                                enabled = uiState.ragEnabled,
+                                trailingIcon = {
+                                    Switch(
+                                        checked = uiState.day23ImprovedRetrievalEnabled,
+                                        enabled = uiState.ragEnabled,
+                                        onCheckedChange = {
+                                            viewModel.handleEvent(
+                                                ChatUiEvent.Day23ImprovedRetrievalToggled(it)
+                                            )
+                                        }
+                                    )
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Memory") },
                                 onClick = {
@@ -1392,9 +1422,9 @@ fun RagSourcesBlock(
                 Text(
                     text = "- ${source.source} / ${source.section ?: "N/A"} / " +
                         "final=${String.format(Locale.US, "%.2f", source.finalScore)} " +
-                        "cos=${String.format(Locale.US, "%.2f", source.cosineScore)} " +
-                        "kw=${String.format(Locale.US, "%.2f", source.keywordScore)} " +
-                        "meta=${String.format(Locale.US, "%.2f", source.metadataScore)}",
+                        "cosine=${String.format(Locale.US, "%.2f", source.cosineScore)} " +
+                        "keyword=${String.format(Locale.US, "%.2f", source.keywordScore)} " +
+                        "metadata=${String.format(Locale.US, "%.2f", source.metadataScore)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)
