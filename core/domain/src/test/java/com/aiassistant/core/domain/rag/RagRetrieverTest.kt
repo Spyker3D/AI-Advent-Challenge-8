@@ -146,6 +146,23 @@ class RagRetrieverTest {
     }
 
     @Test
+    fun `rag prompt asks model to include relevant quote facts in answer`() {
+        val prompt = RagPromptBuilder().build(
+            question = "What role does Retrofit play?",
+            results = listOf(
+                result(
+                    id = "retrofit",
+                    finalScore = 0.8f,
+                    text = "Retrofit sends user messages to OpenRouter and receives model answers."
+                )
+            )
+        )
+
+        assertEquals(true, prompt.contains("Do not leave important facts only in Sources or Quotes."))
+        assertEquals(true, prompt.contains("OpenRouter"))
+    }
+
+    @Test
     fun `answer confidence threshold is calibrated for current hybrid score scale`() {
         assertEquals(0.45f, RagAnswerConfig().minimumConfidence, 0.0001f)
     }
@@ -168,11 +185,15 @@ class RagRetrieverTest {
         )
     }
 
-    private fun result(id: String, finalScore: Float): RagSearchResult {
+    private fun result(
+        id: String,
+        finalScore: Float,
+        text: String = id
+    ): RagSearchResult {
         return RagSearchResult(
             chunk = chunk(
                 id = id,
-                text = id,
+                text = text,
                 embedding = listOf(1f, 0f)
             ),
             finalScore = finalScore,
