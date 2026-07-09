@@ -1,12 +1,16 @@
 package com.aiassistant.feature.settings.presentation
 
 import com.aiassistant.core.domain.entity.AiModel
+import com.aiassistant.core.domain.entity.AiProvider
 
 sealed class SettingsUiEvent {
+    data class ProviderChanged(val provider: AiProvider) : SettingsUiEvent()
     data class ModelChanged(val model: AiModel) : SettingsUiEvent()
     data class TemperatureChanged(val temperature: Float) : SettingsUiEvent()
     data class MaxTokensChanged(val maxTokens: Int) : SettingsUiEvent()
     data class SystemPromptChanged(val systemPrompt: String) : SettingsUiEvent()
+    data class LocalBaseUrlChanged(val localBaseUrl: String) : SettingsUiEvent()
+    data class LocalModelChanged(val localModel: String) : SettingsUiEvent()
     object SaveSettings : SettingsUiEvent()
     object ResetToDefaults : SettingsUiEvent()
     

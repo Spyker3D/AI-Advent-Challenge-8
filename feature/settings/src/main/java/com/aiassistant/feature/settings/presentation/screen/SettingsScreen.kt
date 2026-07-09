@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aiassistant.core.domain.entity.AiModel
+import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.feature.settings.presentation.SettingsUiEvent
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
@@ -50,6 +51,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var isProviderDropdownExpanded by remember { mutableStateOf(false) }
     var isModelDropdownExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -88,6 +90,74 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            SettingsCard(title = "AI Provider") {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ExposedDropdownMenuBox(
+                        expanded = isProviderDropdownExpanded,
+                        onExpandedChange = { isProviderDropdownExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.settings.provider.displayName(),
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(
+                                    expanded = isProviderDropdownExpanded
+                                )
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = isProviderDropdownExpanded,
+                            onDismissRequest = { isProviderDropdownExpanded = false }
+                        ) {
+                            AiProvider.values().forEach { provider ->
+                                DropdownMenuItem(
+                                    text = { Text(provider.displayName()) },
+                                    onClick = {
+                                        viewModel.handleEvent(SettingsUiEvent.ProviderChanged(provider))
+                                        isProviderDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (uiState.settings.provider == AiProvider.LOCAL_OLLAMA) {
+                        OutlinedTextField(
+                            value = uiState.settings.localBaseUrl,
+                            onValueChange = {
+                                viewModel.handleEvent(SettingsUiEvent.LocalBaseUrlChanged(it))
+                            },
+                            label = { Text("Ollama Base URL") },
+                            placeholder = { Text(ChatSettings.DEFAULT_LOCAL_BASE_URL) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = uiState.settings.localModel,
+                            onValueChange = {
+                                viewModel.handleEvent(SettingsUiEvent.LocalModelChanged(it))
+                            },
+                            label = { Text("Ollama Model") },
+                            placeholder = { Text(ChatSettings.DEFAULT_LOCAL_MODEL) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = "Android Emulator: http://10.0.2.2:11434\nReal phone on same Wi-Fi: http://COMPUTER_IP:11434",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             // Model Selection
             SettingsCard(title = "AI Model") {
                 ExposedDropdownMenuBox(
@@ -356,6 +426,13 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+private fun AiProvider.displayName(): String {
+    return when (this) {
+        AiProvider.OPENROUTER -> "Online OpenRouter"
+        AiProvider.LOCAL_OLLAMA -> "Local Ollama"
     }
 }
 
