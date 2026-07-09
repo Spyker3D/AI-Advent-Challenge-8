@@ -37,6 +37,10 @@ class SettingsViewModel @Inject constructor(
 
     fun handleEvent(event: SettingsUiEvent) {
         when (event) {
+            is SettingsUiEvent.ProviderChanged -> {
+                updateSettings { it.copy(provider = event.provider) }
+                saveSettings()
+            }
             is SettingsUiEvent.ModelChanged -> {
                 updateSettings { it.copy(selectedModel = event.model) }
                 saveSettings()
@@ -51,6 +55,14 @@ class SettingsViewModel @Inject constructor(
             }
             is SettingsUiEvent.SystemPromptChanged -> {
                 updateSettings { it.copy(systemPrompt = event.systemPrompt) }
+                saveSettings()
+            }
+            is SettingsUiEvent.LocalBaseUrlChanged -> {
+                updateSettings { it.copy(localBaseUrl = event.localBaseUrl) }
+                saveSettings()
+            }
+            is SettingsUiEvent.LocalModelChanged -> {
+                updateSettings { it.copy(localModel = event.localModel) }
                 saveSettings()
             }
             is SettingsUiEvent.SaveSettings -> {

@@ -268,3 +268,36 @@ cd mcp-server && npm start
 cd mcp-notes-server && npm start
 cd mcp-tasks-server && npm start
 ```
+
+## Day 26: Local LLM via Ollama
+
+Implemented local LLM support via Ollama.
+
+### Run local model
+
+```bash
+ollama pull llama3.2:3b
+ollama run llama3.2:3b
+```
+
+### API check
+
+```bash
+curl http://localhost:11434/api/generate -d '{
+  "model": "llama3.2:3b",
+  "prompt": "Привет! Ответь одним предложением.",
+  "stream": false
+}'
+```
+
+### Android Emulator URL
+
+```text
+http://10.0.2.2:11434
+```
+
+For a real phone on the same Wi-Fi network, use:
+
+```text
+http://COMPUTER_IP:11434
+```
