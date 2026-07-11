@@ -12,6 +12,13 @@ sealed class SettingsUiEvent {
     data class LocalBaseUrlChanged(val localBaseUrl: String) : SettingsUiEvent()
     data class LocalModelChanged(val localModel: String) : SettingsUiEvent()
     data class OpenAiModelChanged(val openAiModel: String) : SettingsUiEvent()
+    data class LocalTemperatureChanged(val value: Float) : SettingsUiEvent()
+    data class LocalMaxTokensChanged(val value: Int) : SettingsUiEvent()
+    data class LocalContextWindowChanged(val value: Int) : SettingsUiEvent()
+    data class LocalTopPChanged(val value: Float) : SettingsUiEvent()
+    data class LocalRepeatPenaltyChanged(val value: Float) : SettingsUiEvent()
+    data class LocalSeedChanged(val value: Int?) : SettingsUiEvent()
+    data class LocalSystemPromptChanged(val value: String) : SettingsUiEvent()
     object SaveSettings : SettingsUiEvent()
     object ResetToDefaults : SettingsUiEvent()
     

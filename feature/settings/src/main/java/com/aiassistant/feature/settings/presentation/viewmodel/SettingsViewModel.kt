@@ -69,6 +69,23 @@ class SettingsViewModel @Inject constructor(
                 updateSettings { it.copy(openAiModel = event.openAiModel) }
                 saveSettings()
             }
+            is SettingsUiEvent.LocalTemperatureChanged -> updateAndSave {
+                it.copy(localTemperature = ChatSettings.safeLocalTemperature(event.value))
+            }
+            is SettingsUiEvent.LocalMaxTokensChanged -> updateAndSave {
+                it.copy(localMaxTokens = ChatSettings.safeLocalMaxTokens(event.value))
+            }
+            is SettingsUiEvent.LocalContextWindowChanged -> updateAndSave {
+                it.copy(localContextWindow = ChatSettings.safeLocalContextWindow(event.value))
+            }
+            is SettingsUiEvent.LocalTopPChanged -> updateAndSave {
+                it.copy(localTopP = ChatSettings.safeLocalTopP(event.value))
+            }
+            is SettingsUiEvent.LocalRepeatPenaltyChanged -> updateAndSave {
+                it.copy(localRepeatPenalty = ChatSettings.safeLocalRepeatPenalty(event.value))
+            }
+            is SettingsUiEvent.LocalSeedChanged -> updateAndSave { it.copy(localSeed = event.value) }
+            is SettingsUiEvent.LocalSystemPromptChanged -> updateAndSave { it.copy(localSystemPrompt = event.value) }
             is SettingsUiEvent.SaveSettings -> {
                 saveSettings()
             }
@@ -109,6 +126,11 @@ class SettingsViewModel @Inject constructor(
         val currentSettings = _uiState.value.settings
         val newSettings = update(currentSettings)
         _uiState.value = _uiState.value.copy(settings = newSettings)
+    }
+
+    private fun updateAndSave(update: (ChatSettings) -> ChatSettings) {
+        updateSettings(update)
+        saveSettings()
     }
 
     private fun saveSettings() {

@@ -1,5 +1,35 @@
 # AI Assistant
 
+## Day 29 — Local LLM Optimization
+
+В режиме `Local` параметры Ollama меняются прямо в Settings и автоматически
+применяются к следующему обычному или RAG-запросу: Model, Temperature,
+Max output tokens, Context window, Top P, Repeat penalty, Seed и System prompt.
+
+- Temperature управляет предсказуемостью и разнообразием.
+- Max output tokens ограничивает длину ответа.
+- Context window задаёт объём учитываемого контекста и расход памяти.
+- Top P ограничивает набор вероятных токенов.
+- Repeat penalty уменьшает повторы.
+- Seed помогает повторять результаты.
+
+Для сравнения качества фиксируйте seed и меняйте по одному параметру. Скорость
+смотрите под локальным ответом в `tok/sec`; нажатие на метрики открывает детали
+времени загрузки, генерации и количества токенов.
+
+Установка и проверка моделей:
+
+```bash
+ollama pull qwen2.5:7b-instruct-q4_K_M
+ollama pull qwen2.5:7b-instruct-q5_K_M
+ollama list
+ollama ps
+ollama show qwen2.5:7b-instruct
+```
+
+Если выбранной модели нет, приложение не скачивает её автоматически: выполните
+`ollama pull <model>` вручную.
+
 > OpenRouter использует имена моделей вида `openai/gpt-4o-mini`, а прямой
 > OpenAI API использует только имя модели без префикса, например `gpt-4.1-mini`.
 

@@ -153,7 +153,7 @@ class ChatAgent @Inject constructor(
                 )
                 
                 // Return the response with token metrics
-                AiChatResponse(chatResponse.message, null, tokenMetrics)
+                AiChatResponse(chatResponse.message, chatResponse.metadata, tokenMetrics)
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -254,7 +254,7 @@ class ChatAgent @Inject constructor(
                 )
                 
                 // Return the response with token metrics
-                AiChatResponse(chatResponse.message, null, tokenMetrics)
+                AiChatResponse(chatResponse.message, chatResponse.metadata, tokenMetrics)
             }
         } catch (e: Exception) {
             Result.failure(e)

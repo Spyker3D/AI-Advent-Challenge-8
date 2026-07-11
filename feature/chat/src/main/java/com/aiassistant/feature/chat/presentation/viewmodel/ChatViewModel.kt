@@ -717,6 +717,7 @@ class ChatViewModel @Inject constructor(
                             content = response.message,
                             role = MessageRole.ASSISTANT,
                             timestamp = System.currentTimeMillis(),
+                            metadata = response.metadata,
                             tokenMetrics = tokenMetrics
                         )
                         

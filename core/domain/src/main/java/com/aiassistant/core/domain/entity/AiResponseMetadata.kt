@@ -7,5 +7,6 @@ data class AiResponseMetadata(
     val promptTokens: Int?,
     val completionTokens: Int?,
     val totalTokens: Int?,
-    val estimatedCostUsd: Double?
+    val estimatedCostUsd: Double?,
+    val localMetrics: LocalGenerationMetrics? = null
 )
