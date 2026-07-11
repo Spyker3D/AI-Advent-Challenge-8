@@ -8,7 +8,7 @@ enum class AiModel(
 ) {
     // Prices are approximate and should be verified on OpenRouter before final reporting.
     CHATGPT_4O_MINI(
-        "openai/gpt-4o-mini",
+        "gpt-4.1-mini",
         "ChatGPT 4o Mini",
         0.15, // $0.15 per 1M input tokens
         0.60  // $0.60 per 1M output tokens

@@ -65,6 +65,10 @@ class SettingsViewModel @Inject constructor(
                 updateSettings { it.copy(localModel = event.localModel) }
                 saveSettings()
             }
+            is SettingsUiEvent.OpenAiModelChanged -> {
+                updateSettings { it.copy(openAiModel = event.openAiModel) }
+                saveSettings()
+            }
             is SettingsUiEvent.SaveSettings -> {
                 saveSettings()
             }

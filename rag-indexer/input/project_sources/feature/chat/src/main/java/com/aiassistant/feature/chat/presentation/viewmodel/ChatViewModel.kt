@@ -1119,11 +1119,11 @@ $limitedConversationText""".trimIndent()
                     role = MessageRole.USER
                 )
                 
-                // Generate summary using OpenAI GPT-4o Mini
+                // Generate summary using OpenAI GPT-4.1 Mini
                 val result = llmClient.sendChat(
                     messages = listOf(summaryMessage),
                     maxTokens = 500, // Limit summary to 500 tokens
-                    model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for summaries
+                    model = "gpt-4.1-mini" // Always use GPT-4.1 Mini for summaries
                 )
                 
                 result
@@ -1317,11 +1317,11 @@ Return:""".trimIndent()
                 role = MessageRole.USER
             )
             
-            // Extract facts using GPT-4o Mini
+            // Extract facts using GPT-4.1 Mini
             val result = llmClient.sendChat(
                 messages = listOf(factsMessage),
                 maxTokens = 500,
-                model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for fact extraction
+                model = "gpt-4.1-mini" // Always use GPT-4.1 Mini for fact extraction
             )
             
             return result

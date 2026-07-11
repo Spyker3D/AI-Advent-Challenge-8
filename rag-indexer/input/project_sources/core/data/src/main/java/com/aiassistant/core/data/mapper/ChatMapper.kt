@@ -82,7 +82,7 @@ class ChatMapper @Inject constructor() {
         // For this simple implementation, we'll use default values
         // In a full implementation, these would come from settings or context
         return ChatRequestDto(
-            model = "gpt-4o-mini", // Default model
+            model = "gpt-4.1-mini", // Default model
             messages = messageDtos,
             temperature = 0.7f,
             maxTokens = 1000

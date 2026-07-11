@@ -4,6 +4,7 @@ import android.util.Log
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.memory.TaskContext
 import java.util.UUID
 import javax.inject.Inject
@@ -75,7 +76,7 @@ class LlmQueryRewriter @Inject constructor(
         return llmClient.sendChat(
             messages = listOf(message),
             maxTokens = 120,
-            model = "openai/gpt-4o-mini"
+            model = ChatSettings.DEFAULT_OPENAI_MODEL
         ).map { response ->
             response.message
                 .replace("```", "")

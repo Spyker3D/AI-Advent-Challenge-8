@@ -1,6 +1,8 @@
 package com.aiassistant.core.data.repository
 
-import com.aiassistant.core.network.api.OpenRouterApi
+import android.util.Log
+import com.aiassistant.core.data.BuildConfig
+import com.aiassistant.core.network.api.OpenAiApi
 import com.aiassistant.core.network.api.OllamaApiFactory
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.database.ChatDatabase
@@ -8,7 +10,6 @@ import com.aiassistant.core.data.database.ChatMessageDao
 import com.aiassistant.core.data.database.dao.ChatDao
 import com.aiassistant.core.data.database.entity.ChatEntity
 import com.aiassistant.core.data.datastore.SettingsDataStore
-import com.aiassistant.core.data.mapper.ChatMapper
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.AiChatResponse
@@ -24,6 +25,8 @@ import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.network.dto.OllamaGenerateRequestDto
 import com.aiassistant.core.network.dto.OllamaOptionsDto
+import com.aiassistant.core.network.dto.OpenAiInputMessageDto
+import com.aiassistant.core.network.dto.OpenAiResponseRequestDto
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -34,10 +37,9 @@ import java.net.UnknownHostException
 import javax.inject.Inject
 
 class ChatRepositoryImpl @Inject constructor(
-    private val openRouterApi: OpenRouterApi,
+    private val openAiApi: OpenAiApi,
     private val ollamaApiFactory: OllamaApiFactory,
     private val settingsDataStore: SettingsDataStore,
-    private val chatMapper: ChatMapper,
     private val chatMessageMapper: ChatMessageMapper,
     private val chatMessageDao: ChatMessageDao,
     private val chatDao: ChatDao,
@@ -46,86 +48,98 @@ class ChatRepositoryImpl @Inject constructor(
 ) : ChatRepository {
     
     companion object {
-        private const val BEARER_PREFIX = "Bearer "
+        private const val OPENAI_TEMPERATURE = 0.2
+        private const val OPENAI_MAX_OUTPUT_TOKENS = 1200
+        private const val OPENAI_SYSTEM_PROMPT = """Ты AI Assistant. Отвечай на языке пользователя.
+Давай точные и понятные ответы.
+Не выдумывай факты. Если информации недостаточно, скажи об этом."""
         private const val OLLAMA_TEMPERATURE = 0.2
         private const val OLLAMA_NUM_CTX = 8192
+        private const val TAG = "OpenAiRequest"
     }
     
 
     
-    private fun getActualCostFromBody(body: com.aiassistant.core.network.dto.ChatResponseDto?): Double? {
-        // Try to get actual cost from the response body if available
-        return body?.usage?.cost
-    }
-
     override suspend fun sendMessage(chatRequest: ChatRequest): Result<AiChatResponse> {
         return withContext(Dispatchers.IO) {
             val settings = settingsDataStore.chatSettings.first()
             when (settings.provider) {
-                AiProvider.OPENROUTER -> sendViaOpenRouter(chatRequest)
+                AiProvider.OPENAI -> sendViaOpenAi(chatRequest, settings)
                 AiProvider.LOCAL_OLLAMA -> sendViaOllama(chatRequest)
             }
         }
     }
 
-    private suspend fun sendViaOpenRouter(chatRequest: ChatRequest): Result<AiChatResponse> {
-            return try {
-                // Check if API key is configured
-                val apiKey = apiConfig.openRouterApiKey
-                if (apiKey.isBlank()) {
-                    return Result.failure(Exception("OpenRouter API key is not configured. Please add OPENROUTER_API_KEY to local.properties"))
-                }
-                // Use the history already provided in the chatRequest (for compression) or get all messages
-                val effectiveChatRequest = if (chatRequest.history.isNotEmpty()) {
-                    chatRequest
-                } else {
-                    chatRequest.copy(history = getMessages())
-                }
-                val requestDto = chatMapper.mapToChatRequestDto(effectiveChatRequest)
-                val startTime = System.currentTimeMillis()
-                val response = openRouterApi.sendChatMessage(
-                    authorization = BEARER_PREFIX + apiKey,
-                    request = requestDto
-                )
-                val responseTimeMs = System.currentTimeMillis() - startTime
-
-                if (response.isSuccessful) {
-                    val body = response.body()
-                    when {
-                        body?.error != null -> {
-                            val error = body.error!!
-                            Result.failure(Exception("API Error: ${error.message}"))
-                        }
-                        body?.choices?.isNotEmpty() == true -> {
-                            val assistantMessage = body.choices.first().message.content
-                            if (assistantMessage.isNotBlank()) {
-                                // Create metadata
-                                val metadata = AiResponseMetadata(
-                                    modelDisplayName = chatRequest.model.displayName,
-                                    modelApiName = chatRequest.model.modelName,
-                                    responseTimeMs = responseTimeMs,
-                                    promptTokens = body.usage?.promptTokens,
-                                    completionTokens = body.usage?.completionTokens,
-                                    totalTokens = body.usage?.totalTokens,
-                                                                    estimatedCostUsd = getActualCostFromBody(body)
-                                )
-                                
-                                Result.success(AiChatResponse(assistantMessage, metadata))
-                            } else {
-                                Result.failure(Exception("Empty response from AI model"))
-                            }
-                        }
-                        else -> {
-                            Result.failure(Exception("Invalid response format"))
-                        }
-                    }
-                } else {
-                    val errorBody = response.errorBody()?.string()
-                    Result.failure(Exception("HTTP ${response.code()}: ${errorBody ?: "Unknown error"}"))
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
+    private suspend fun sendViaOpenAi(
+        chatRequest: ChatRequest,
+        settings: ChatSettings
+    ): Result<AiChatResponse> {
+        if (apiConfig.openAiApiKey.isBlank()) {
+            return Result.failure(Exception("OpenAI API key не настроен.\nДобавьте OPENAI_API_KEY в local.properties и пересоберите приложение."))
+        }
+        val model = ChatSettings.normalizeOpenAiModel(settings.openAiModel)
+        val effectiveHistory = if (chatRequest.history.isNotEmpty()) chatRequest.history else getMessages()
+        val input = buildList {
+            add(OpenAiInputMessageDto("system", OPENAI_SYSTEM_PROMPT))
+            effectiveHistory.filterNot { it.role == MessageRole.SYSTEM }.forEach { message ->
+                add(OpenAiInputMessageDto(message.role.toOpenAiRole(), message.content))
             }
+            add(OpenAiInputMessageDto("user", chatRequest.message))
+        }
+        return try {
+            val startTime = System.currentTimeMillis()
+            if (BuildConfig.DEBUG) Log.d(TAG, "OpenAI model: $model")
+            val response = openAiApi.createResponse(
+                OpenAiResponseRequestDto(
+                    model = model,
+                    input = input,
+                    temperature = OPENAI_TEMPERATURE.takeIf { supportsTemperature(model) },
+                    maxOutputTokens = OPENAI_MAX_OUTPUT_TOKENS
+                )
+            )
+            val text = response.outputText()
+            if (text.isBlank()) return Result.failure(Exception("OpenAI вернул пустой ответ."))
+            Result.success(AiChatResponse(text, AiResponseMetadata(
+                modelDisplayName = model,
+                modelApiName = response.model ?: model,
+                responseTimeMs = System.currentTimeMillis() - startTime,
+                promptTokens = response.usage?.inputTokens,
+                completionTokens = response.usage?.outputTokens,
+                totalTokens = response.usage?.totalTokens,
+                estimatedCostUsd = null
+            )))
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("OpenAI не ответил вовремя. Проверьте интернет или VPN."))
+        } catch (e: UnknownHostException) {
+            Result.failure(Exception("Нет подключения к интернету."))
+        } catch (e: HttpException) {
+            Result.failure(Exception(openAiHttpError(e.code())))
+        } catch (e: java.io.IOException) {
+            Result.failure(Exception("Нет подключения к интернету."))
+        } catch (e: Exception) {
+            Result.failure(Exception("Не удалось получить ответ OpenAI."))
+        }
+    }
+
+    private fun MessageRole.toOpenAiRole(): String = when (this) {
+        MessageRole.USER -> "user"
+        MessageRole.ASSISTANT -> "assistant"
+        MessageRole.SYSTEM -> "system"
+    }
+
+    private fun supportsTemperature(model: String): Boolean {
+        val normalized = model.lowercase()
+        return !normalized.startsWith("gpt-5") && !normalized.startsWith("o1") &&
+            !normalized.startsWith("o3") && !normalized.startsWith("o4")
+    }
+
+    private fun openAiHttpError(code: Int): String = when (code) {
+        400 -> "OpenAI отклонил запрос. Проверьте имя модели и параметры запроса."
+        401 -> "Неверный OpenAI API key.\nПроверьте OPENAI_API_KEY в local.properties."
+        403 -> "Доступ к OpenAI API запрещён для текущего аккаунта или сети."
+        429 -> "Превышен лимит OpenAI API или закончился доступный баланс.\nПроверьте Billing и Usage в OpenAI Platform."
+        in 500..599 -> "OpenAI временно недоступен. Повторите запрос позже."
+        else -> "OpenAI отклонил запрос (HTTP $code)."
     }
 
     private suspend fun sendViaOllama(chatRequest: ChatRequest): Result<AiChatResponse> {

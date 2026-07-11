@@ -12,6 +12,7 @@ val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
+val openAiApiKey = localProperties.getProperty("OPENAI_API_KEY", "")
 
 android {
     namespace = "com.aiassistant"
@@ -29,8 +30,8 @@ android {
             useSupportLibrary = true
         }
         
-        // Expose OpenRouter API key as BuildConfig
-        buildConfigField("String", "OPENROUTER_API_KEY", "\"${localProperties.getProperty("OPENROUTER_API_KEY", "")}\"")
+        // Expose the local OpenAI API key for this educational build.
+        buildConfigField("String", "OPENAI_API_KEY", "\"${openAiApiKey.replace("\"", "\\\"")}\"")
     }
 
     buildTypes {

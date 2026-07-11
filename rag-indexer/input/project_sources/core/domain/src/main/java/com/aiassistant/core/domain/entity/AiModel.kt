@@ -5,7 +5,7 @@ enum class AiModel(
     val displayName: String
 ) {
     CHATGPT_4O_MINI(
-        "openai/gpt-4o-mini",
+        "gpt-4.1-mini",
         "ChatGPT 4o Mini"
     ),
     LLAMA_3_2_1B(

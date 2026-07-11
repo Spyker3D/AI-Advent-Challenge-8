@@ -4,9 +4,9 @@ enum class AiModel(
     val modelName: String,
     val displayName: String
 ) {
-    CHATGPT_4O_MINI(
-        "openai/gpt-4o-mini",
-        "ChatGPT 4o Mini"
+    GPT_4_1_MINI(
+        "gpt-4.1-mini",
+        "GPT-4.1 Mini"
     ),
     LLAMA_3_2_1B(
         "meta-llama/llama-3.2-1b-instruct",
@@ -26,6 +26,6 @@ enum class AiModel(
             return values().find { it.modelName == modelName }
         }
 
-        fun getDefault(): AiModel = CHATGPT_4O_MINI
+        fun getDefault(): AiModel = GPT_4_1_MINI
     }
 }

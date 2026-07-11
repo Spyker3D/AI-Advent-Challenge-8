@@ -28,6 +28,7 @@ class SettingsDataStore @Inject constructor(
         val TEMPERATURE = floatPreferencesKey("temperature")
         val MAX_TOKENS = intPreferencesKey("max_tokens")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
+        val OPENAI_MODEL = stringPreferencesKey("openai_model")
         val LOCAL_BASE_URL = stringPreferencesKey("local_base_url")
         val LOCAL_MODEL = stringPreferencesKey("local_model")
         // Day 2 fields
@@ -44,15 +45,16 @@ class SettingsDataStore @Inject constructor(
 
     val chatSettings: Flow<ChatSettings> = context.dataStore.data.map { preferences ->
         ChatSettings(
-            provider = preferences[PreferencesKeys.PROVIDER]
-                ?.let { runCatching { AiProvider.valueOf(it) }.getOrNull() }
-                ?: AiProvider.OPENROUTER,
+            provider = migrateProvider(preferences[PreferencesKeys.PROVIDER]),
             selectedModel = AiModel.fromModelName(
                 preferences[PreferencesKeys.SELECTED_MODEL] ?: AiModel.getDefault().modelName
             ) ?: AiModel.getDefault(),
             temperature = preferences[PreferencesKeys.TEMPERATURE] ?: 0.7f,
             maxTokens = preferences[PreferencesKeys.MAX_TOKENS] ?: 1000,
             systemPrompt = preferences[PreferencesKeys.SYSTEM_PROMPT] ?: "You are a helpful AI assistant.",
+            openAiModel = ChatSettings.normalizeOpenAiModel(
+                preferences[PreferencesKeys.OPENAI_MODEL]
+            ),
             localBaseUrl = preferences[PreferencesKeys.LOCAL_BASE_URL]
                 ?: ChatSettings.DEFAULT_LOCAL_BASE_URL,
             localModel = normalizeLocalModel(preferences[PreferencesKeys.LOCAL_MODEL]),
@@ -74,6 +76,8 @@ class SettingsDataStore @Inject constructor(
             preferences[PreferencesKeys.TEMPERATURE] = settings.temperature
             preferences[PreferencesKeys.MAX_TOKENS] = settings.maxTokens
             preferences[PreferencesKeys.SYSTEM_PROMPT] = settings.systemPrompt
+            preferences[PreferencesKeys.OPENAI_MODEL] =
+                ChatSettings.normalizeOpenAiModel(settings.openAiModel)
             preferences[PreferencesKeys.LOCAL_BASE_URL] = settings.localBaseUrl
             preferences[PreferencesKeys.LOCAL_MODEL] = normalizeLocalModel(settings.localModel)
             // Day 2 fields
@@ -94,5 +98,11 @@ class SettingsDataStore @Inject constructor(
             normalized in legacyLocalModels -> ChatSettings.DEFAULT_LOCAL_MODEL
             else -> normalized
         }
+    }
+
+    internal fun migrateProvider(value: String?): AiProvider = when (value?.uppercase()) {
+        "LOCAL_OLLAMA", "LOCAL" -> AiProvider.LOCAL_OLLAMA
+        "OPENROUTER", "ONLINE_OPENROUTER", "OPENAI", "ONLINE", null -> AiProvider.OPENAI
+        else -> AiProvider.OPENAI
     }
 }

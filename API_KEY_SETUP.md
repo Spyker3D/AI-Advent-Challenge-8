@@ -1,21 +1,17 @@
-# API Key Setup
+# OpenAI API key setup
 
-To use the AI Assistant app with OpenRouter API, you need to:
+1. Create an API key in OpenAI Platform and enable separate API billing.
+2. Add the key to the root `local.properties` file without quotes:
 
-1. Get your API key from [OpenRouter](https://openrouter.ai/)
-2. Open the file `core/data/src/main/java/com/aiassistant/core/data/repository/ChatRepositoryImpl.kt`
-3. Replace `YOUR_OPENROUTER_API_KEY` with your actual API key:
-
-```kotlin
-companion object {
-    private const val API_KEY = "sk-or-v1-..." // Your actual API key here
-    private const val BEARER_PREFIX = "Bearer "
-}
+```properties
+OPENAI_API_KEY=your_openai_api_key
 ```
 
-**Important**: Never commit your API key to version control. Consider using:
-- Build config fields
-- Local properties file
-- Environment variables
+3. Sync Gradle and rebuild the application.
+4. Select `Online` in Settings and send a test message.
 
-For production apps, implement proper secret management.
+`local.properties` is ignored by Git. Never put a real key in source code, resources,
+tests, Gradle properties, CI configuration, documentation, or commits.
+
+> This educational project passes the key through `BuildConfig`, so the key is embedded
+> in the APK. This approach must not be used in a published production application.

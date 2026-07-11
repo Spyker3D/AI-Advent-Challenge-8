@@ -37,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.feature.settings.presentation.SettingsUiEvent
@@ -52,7 +51,6 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var isProviderDropdownExpanded by remember { mutableStateOf(false) }
-    var isModelDropdownExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -128,7 +126,17 @@ fun SettingsScreen(
                         }
                     }
 
-                    if (uiState.settings.provider == AiProvider.LOCAL_OLLAMA) {
+                    if (uiState.settings.provider == AiProvider.OPENAI) {
+                        OutlinedTextField(
+                            value = uiState.settings.openAiModel,
+                            onValueChange = {
+                                viewModel.handleEvent(SettingsUiEvent.OpenAiModelChanged(it))
+                            },
+                            label = { Text("Online model") },
+                            placeholder = { Text(ChatSettings.DEFAULT_OPENAI_MODEL) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
                         OutlinedTextField(
                             value = uiState.settings.localBaseUrl,
                             onValueChange = {
@@ -154,42 +162,6 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                }
-            }
-
-            // Model Selection
-            SettingsCard(title = "AI Model") {
-                ExposedDropdownMenuBox(
-                    expanded = isModelDropdownExpanded,
-                    onExpandedChange = { isModelDropdownExpanded = it }
-                ) {
-                    OutlinedTextField(
-                        value = uiState.settings.selectedModel.displayName,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(
-                                expanded = isModelDropdownExpanded
-                            )
-                        },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = isModelDropdownExpanded,
-                        onDismissRequest = { isModelDropdownExpanded = false }
-                    ) {
-                        AiModel.values().forEach { model ->
-                            DropdownMenuItem(
-                                text = { Text(model.displayName) },
-                                onClick = {
-                                    viewModel.handleEvent(SettingsUiEvent.ModelChanged(model))
-                                    isModelDropdownExpanded = false
-                                }
-                            )
-                        }
                     }
                 }
             }
@@ -431,8 +403,8 @@ fun SettingsScreen(
 
 private fun AiProvider.displayName(): String {
     return when (this) {
-        AiProvider.OPENROUTER -> "Online OpenRouter"
-        AiProvider.LOCAL_OLLAMA -> "Local Ollama"
+        AiProvider.OPENAI -> "Online"
+        AiProvider.LOCAL_OLLAMA -> "Local"
     }
 }
 
