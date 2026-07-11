@@ -15,6 +15,7 @@ import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.entity.ChatRequest
+import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
@@ -22,6 +23,7 @@ import com.aiassistant.core.domain.entity.TokenMetrics
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.core.domain.repository.ChatRepository
 import com.aiassistant.core.network.dto.OllamaGenerateRequestDto
+import com.aiassistant.core.network.dto.OllamaOptionsDto
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -45,6 +47,8 @@ class ChatRepositoryImpl @Inject constructor(
     
     companion object {
         private const val BEARER_PREFIX = "Bearer "
+        private const val OLLAMA_TEMPERATURE = 0.2
+        private const val OLLAMA_NUM_CTX = 8192
     }
     
 
@@ -126,8 +130,8 @@ class ChatRepositoryImpl @Inject constructor(
 
     private suspend fun sendViaOllama(chatRequest: ChatRequest): Result<AiChatResponse> {
         val settings = settingsDataStore.chatSettings.first()
-        val baseUrl = settings.localBaseUrl.ifBlank { "http://10.0.2.2:11434" }
-        val model = settings.localModel.ifBlank { "llama3.2:3b" }
+        val baseUrl = settings.localBaseUrl.ifBlank { ChatSettings.DEFAULT_LOCAL_BASE_URL }
+        val model = settings.localModel.ifBlank { ChatSettings.DEFAULT_LOCAL_MODEL }
         val effectiveChatRequest = if (chatRequest.history.isNotEmpty()) {
             chatRequest
         } else {
@@ -147,7 +151,11 @@ class ChatRepositoryImpl @Inject constructor(
                     prompt = buildOllamaPrompt(messages.filterNot { it.role == MessageRole.SYSTEM }),
                     system = (effectiveChatRequest.systemPrompt ?: settings.systemPrompt)
                         .takeIf { it.isNotBlank() },
-                    stream = false
+                    stream = false,
+                    options = OllamaOptionsDto(
+                        temperature = OLLAMA_TEMPERATURE,
+                        numCtx = OLLAMA_NUM_CTX
+                    )
                 )
             )
             val responseTimeMs = System.currentTimeMillis() - startTime
@@ -179,7 +187,7 @@ class ChatRepositoryImpl @Inject constructor(
             Result.failure(Exception("Local LLM request timed out. Check that Ollama is running and the model is responding."))
         } catch (e: HttpException) {
             val message = if (e.code() == 404) {
-                "Ollama model '$model' was not found. Run: ollama pull $model"
+                ollamaModelNotFoundMessage(model)
             } else {
                 "Ollama HTTP ${e.code()}: ${e.message()}"
             }
@@ -201,6 +209,10 @@ class ChatRepositoryImpl @Inject constructor(
 
     private fun localOllamaConnectionError(baseUrl: String): String {
         return "Не удалось подключиться к локальной LLM.\nПроверь, что Ollama запущена и доступна по $baseUrl"
+    }
+
+    private fun ollamaModelNotFoundMessage(model: String): String {
+        return "Модель $model не найдена в Ollama.\nУстановите её командой:\nollama pull $model"
     }
 
     // This method is now handled by the ChatAgent

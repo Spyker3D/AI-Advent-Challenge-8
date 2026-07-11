@@ -21,7 +21,7 @@ data class ChatSettings(
 ) {
     companion object {
         const val DEFAULT_LOCAL_BASE_URL = "http://10.0.2.2:11434"
-        const val DEFAULT_LOCAL_MODEL = "llama3.2:3b"
+        const val DEFAULT_LOCAL_MODEL = "qwen2.5:7b-instruct"
         const val MIN_TEMPERATURE = 0.0f
         const val MAX_TEMPERATURE = 2.0f
         const val MIN_MAX_TOKENS = 10

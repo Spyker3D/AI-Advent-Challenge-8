@@ -3,6 +3,7 @@ package com.aiassistant.core.data.client
 import com.aiassistant.core.domain.agent.ChatResponse
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.entity.AiProvider
+import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
 import com.aiassistant.core.network.api.OpenRouterApi
@@ -12,6 +13,7 @@ import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMapper
 import com.aiassistant.core.network.dto.MessageDto
 import com.aiassistant.core.network.dto.OllamaGenerateRequestDto
+import com.aiassistant.core.network.dto.OllamaOptionsDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -30,6 +32,8 @@ class LlmClientImpl @Inject constructor(
     
     companion object {
         private const val BEARER_PREFIX = "Bearer "
+        private const val OLLAMA_TEMPERATURE = 0.2
+        private const val OLLAMA_NUM_CTX = 8192
     }
 
     override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> = withContext(Dispatchers.IO) {
@@ -104,8 +108,8 @@ class LlmClientImpl @Inject constructor(
 
     private suspend fun sendViaOllama(messages: List<Message>): Result<ChatResponse> {
         val settings = settingsDataStore.chatSettings.first()
-        val baseUrl = settings.localBaseUrl.ifBlank { "http://10.0.2.2:11434" }
-        val model = settings.localModel.ifBlank { "llama3.2:3b" }
+        val baseUrl = settings.localBaseUrl.ifBlank { ChatSettings.DEFAULT_LOCAL_BASE_URL }
+        val model = settings.localModel.ifBlank { ChatSettings.DEFAULT_LOCAL_MODEL }
 
         return try {
             val systemPrompt = messages
@@ -118,7 +122,11 @@ class LlmClientImpl @Inject constructor(
                     model = model,
                     prompt = prompt,
                     system = systemPrompt,
-                    stream = false
+                    stream = false,
+                    options = OllamaOptionsDto(
+                        temperature = OLLAMA_TEMPERATURE,
+                        numCtx = OLLAMA_NUM_CTX
+                    )
                 )
             )
             val assistantMessage = response.response.trim()
@@ -135,7 +143,7 @@ class LlmClientImpl @Inject constructor(
             Result.failure(Exception("Local LLM request timed out. Check that Ollama is running and the model is responding."))
         } catch (e: HttpException) {
             val message = if (e.code() == 404) {
-                "Ollama model '$model' was not found. Run: ollama pull $model"
+                ollamaModelNotFoundMessage(model)
             } else {
                 "Ollama HTTP ${e.code()}: ${e.message()}"
             }
@@ -157,5 +165,9 @@ class LlmClientImpl @Inject constructor(
 
     private fun localOllamaConnectionError(baseUrl: String): String {
         return "Не удалось подключиться к локальной LLM.\nПроверь, что Ollama запущена и доступна по $baseUrl"
+    }
+
+    private fun ollamaModelNotFoundMessage(model: String): String {
+        return "Модель $model не найдена в Ollama.\nУстановите её командой:\nollama pull $model"
     }
 }

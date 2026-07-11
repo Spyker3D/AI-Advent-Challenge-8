@@ -276,21 +276,28 @@ Implemented local LLM support via Ollama.
 ### Run local model
 
 ```bash
-ollama pull llama3.2:3b
-ollama run llama3.2:3b
+ollama pull qwen2.5:7b-instruct
+ollama run qwen2.5:7b-instruct
+ollama list
 ```
 
 ### API check
 
 ```bash
 curl http://localhost:11434/api/generate -d '{
-  "model": "llama3.2:3b",
+  "model": "qwen2.5:7b-instruct",
   "prompt": "Привет! Ответь одним предложением.",
   "stream": false
 }'
 ```
 
 ### Android Emulator URL
+
+In Android app settings:
+
+```text
+Local model: qwen2.5:7b-instruct
+```
 
 ```text
 http://10.0.2.2:11434

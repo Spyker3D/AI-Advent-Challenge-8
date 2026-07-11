@@ -40,6 +40,8 @@ class SettingsDataStore @Inject constructor(
         val KEEP_LAST_MESSAGES_COUNT = intPreferencesKey("keep_last_messages_count")
     }
 
+    private val legacyLocalModels = setOf("llama3.2" + ":3b")
+
     val chatSettings: Flow<ChatSettings> = context.dataStore.data.map { preferences ->
         ChatSettings(
             provider = preferences[PreferencesKeys.PROVIDER]
@@ -53,8 +55,7 @@ class SettingsDataStore @Inject constructor(
             systemPrompt = preferences[PreferencesKeys.SYSTEM_PROMPT] ?: "You are a helpful AI assistant.",
             localBaseUrl = preferences[PreferencesKeys.LOCAL_BASE_URL]
                 ?: ChatSettings.DEFAULT_LOCAL_BASE_URL,
-            localModel = preferences[PreferencesKeys.LOCAL_MODEL]
-                ?: ChatSettings.DEFAULT_LOCAL_MODEL,
+            localModel = normalizeLocalModel(preferences[PreferencesKeys.LOCAL_MODEL]),
             // Day 2 fields
             useJsonFormat = preferences[PreferencesKeys.USE_JSON_FORMAT] ?: false,
             limitLength = preferences[PreferencesKeys.LIMIT_LENGTH] ?: false,
@@ -74,7 +75,7 @@ class SettingsDataStore @Inject constructor(
             preferences[PreferencesKeys.MAX_TOKENS] = settings.maxTokens
             preferences[PreferencesKeys.SYSTEM_PROMPT] = settings.systemPrompt
             preferences[PreferencesKeys.LOCAL_BASE_URL] = settings.localBaseUrl
-            preferences[PreferencesKeys.LOCAL_MODEL] = settings.localModel
+            preferences[PreferencesKeys.LOCAL_MODEL] = normalizeLocalModel(settings.localModel)
             // Day 2 fields
             preferences[PreferencesKeys.USE_JSON_FORMAT] = settings.useJsonFormat
             preferences[PreferencesKeys.LIMIT_LENGTH] = settings.limitLength
@@ -83,6 +84,15 @@ class SettingsDataStore @Inject constructor(
             // Context compression fields
             preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] = settings.useContextCompression
             preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] = settings.keepLastMessagesCount
+        }
+    }
+
+    private fun normalizeLocalModel(localModel: String?): String {
+        val normalized = localModel?.trim()
+        return when {
+            normalized.isNullOrEmpty() -> ChatSettings.DEFAULT_LOCAL_MODEL
+            normalized in legacyLocalModels -> ChatSettings.DEFAULT_LOCAL_MODEL
+            else -> normalized
         }
     }
 }
