@@ -11,6 +11,7 @@ sealed class SettingsUiEvent {
     data class SystemPromptChanged(val systemPrompt: String) : SettingsUiEvent()
     data class LocalBaseUrlChanged(val localBaseUrl: String) : SettingsUiEvent()
     data class LocalModelChanged(val localModel: String) : SettingsUiEvent()
+    data class OpenAiModelChanged(val openAiModel: String) : SettingsUiEvent()
     object SaveSettings : SettingsUiEvent()
     object ResetToDefaults : SettingsUiEvent()
     

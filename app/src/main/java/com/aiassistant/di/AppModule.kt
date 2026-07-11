@@ -3,6 +3,7 @@ package com.aiassistant.di
 import android.content.Context
 import com.aiassistant.BuildConfig
 import com.aiassistant.core.data.config.ApiConfig
+import com.aiassistant.core.network.interceptor.OpenAiAuthInterceptor
 import dagger.Module
 import dagger.Provides
 import javax.inject.Singleton
@@ -18,7 +19,12 @@ class AppModule(private val context: Context) {
     @Singleton
     fun provideApiConfig(): ApiConfig {
         return ApiConfig(
-            openRouterApiKey = BuildConfig.OPENROUTER_API_KEY
+            openAiApiKey = BuildConfig.OPENAI_API_KEY
         )
     }
+
+    @Provides
+    @Singleton
+    fun provideOpenAiAuthInterceptor(): OpenAiAuthInterceptor =
+        OpenAiAuthInterceptor(BuildConfig.OPENAI_API_KEY)
 }

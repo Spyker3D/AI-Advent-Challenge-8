@@ -167,7 +167,7 @@ Authorization: Bearer <API_KEY>
 Content-Type: application/json
 
 {
-  "model": "openai/gpt-4o-mini",
+  "model": "gpt-4.1-mini",
   "messages": [
     { "role": "user", "content": "Привет" }
   ]
@@ -386,7 +386,7 @@ Converter превращает Kotlin-объект в JSON.
 
 ```kotlin
 val request = ChatCompletionRequestDto(
-    model = "openai/gpt-4o-mini",
+    model = "gpt-4.1-mini",
     messages = listOf(
         MessageDto(
             role = "user",
@@ -400,7 +400,7 @@ val request = ChatCompletionRequestDto(
 
 ```json
 {
-  "model": "openai/gpt-4o-mini",
+  "model": "gpt-4.1-mini",
   "messages": [
     {
       "role": "user",
@@ -484,7 +484,7 @@ class OpenRouterRepository(
     suspend fun sendMessage(text: String): String {
         val response = api.createChatCompletion(
             ChatCompletionRequestDto(
-                model = "openai/gpt-4o-mini",
+                model = "gpt-4.1-mini",
                 messages = listOf(
                     MessageDto(role = "user", content = text)
                 )

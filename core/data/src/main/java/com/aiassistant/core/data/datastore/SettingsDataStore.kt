@@ -28,6 +28,7 @@ class SettingsDataStore @Inject constructor(
         val TEMPERATURE = floatPreferencesKey("temperature")
         val MAX_TOKENS = intPreferencesKey("max_tokens")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
+        val OPENAI_MODEL = stringPreferencesKey("openai_model")
         val LOCAL_BASE_URL = stringPreferencesKey("local_base_url")
         val LOCAL_MODEL = stringPreferencesKey("local_model")
         // Day 2 fields
@@ -40,21 +41,23 @@ class SettingsDataStore @Inject constructor(
         val KEEP_LAST_MESSAGES_COUNT = intPreferencesKey("keep_last_messages_count")
     }
 
+    private val legacyLocalModels = setOf("llama3.2" + ":3b")
+
     val chatSettings: Flow<ChatSettings> = context.dataStore.data.map { preferences ->
         ChatSettings(
-            provider = preferences[PreferencesKeys.PROVIDER]
-                ?.let { runCatching { AiProvider.valueOf(it) }.getOrNull() }
-                ?: AiProvider.OPENROUTER,
+            provider = migrateProvider(preferences[PreferencesKeys.PROVIDER]),
             selectedModel = AiModel.fromModelName(
                 preferences[PreferencesKeys.SELECTED_MODEL] ?: AiModel.getDefault().modelName
             ) ?: AiModel.getDefault(),
             temperature = preferences[PreferencesKeys.TEMPERATURE] ?: 0.7f,
             maxTokens = preferences[PreferencesKeys.MAX_TOKENS] ?: 1000,
             systemPrompt = preferences[PreferencesKeys.SYSTEM_PROMPT] ?: "You are a helpful AI assistant.",
+            openAiModel = ChatSettings.normalizeOpenAiModel(
+                preferences[PreferencesKeys.OPENAI_MODEL]
+            ),
             localBaseUrl = preferences[PreferencesKeys.LOCAL_BASE_URL]
                 ?: ChatSettings.DEFAULT_LOCAL_BASE_URL,
-            localModel = preferences[PreferencesKeys.LOCAL_MODEL]
-                ?: ChatSettings.DEFAULT_LOCAL_MODEL,
+            localModel = normalizeLocalModel(preferences[PreferencesKeys.LOCAL_MODEL]),
             // Day 2 fields
             useJsonFormat = preferences[PreferencesKeys.USE_JSON_FORMAT] ?: false,
             limitLength = preferences[PreferencesKeys.LIMIT_LENGTH] ?: false,
@@ -73,8 +76,10 @@ class SettingsDataStore @Inject constructor(
             preferences[PreferencesKeys.TEMPERATURE] = settings.temperature
             preferences[PreferencesKeys.MAX_TOKENS] = settings.maxTokens
             preferences[PreferencesKeys.SYSTEM_PROMPT] = settings.systemPrompt
+            preferences[PreferencesKeys.OPENAI_MODEL] =
+                ChatSettings.normalizeOpenAiModel(settings.openAiModel)
             preferences[PreferencesKeys.LOCAL_BASE_URL] = settings.localBaseUrl
-            preferences[PreferencesKeys.LOCAL_MODEL] = settings.localModel
+            preferences[PreferencesKeys.LOCAL_MODEL] = normalizeLocalModel(settings.localModel)
             // Day 2 fields
             preferences[PreferencesKeys.USE_JSON_FORMAT] = settings.useJsonFormat
             preferences[PreferencesKeys.LIMIT_LENGTH] = settings.limitLength
@@ -84,5 +89,20 @@ class SettingsDataStore @Inject constructor(
             preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] = settings.useContextCompression
             preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] = settings.keepLastMessagesCount
         }
+    }
+
+    private fun normalizeLocalModel(localModel: String?): String {
+        val normalized = localModel?.trim()
+        return when {
+            normalized.isNullOrEmpty() -> ChatSettings.DEFAULT_LOCAL_MODEL
+            normalized in legacyLocalModels -> ChatSettings.DEFAULT_LOCAL_MODEL
+            else -> normalized
+        }
+    }
+
+    internal fun migrateProvider(value: String?): AiProvider = when (value?.uppercase()) {
+        "LOCAL_OLLAMA", "LOCAL" -> AiProvider.LOCAL_OLLAMA
+        "OPENROUTER", "ONLINE_OPENROUTER", "OPENAI", "ONLINE", null -> AiProvider.OPENAI
+        else -> AiProvider.OPENAI
     }
 }

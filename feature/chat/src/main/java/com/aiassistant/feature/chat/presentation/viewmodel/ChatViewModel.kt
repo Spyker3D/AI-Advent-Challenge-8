@@ -6,6 +6,7 @@ import com.aiassistant.core.domain.agent.ChatAgent
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.ChatRequest
+import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
@@ -1485,11 +1486,11 @@ $limitedConversationText""".trimIndent()
                     role = MessageRole.USER
                 )
                 
-                // Generate summary using OpenAI GPT-4o Mini
+                // Generate summary using the configured direct OpenAI model.
                 val result = llmClient.sendChat(
                     messages = listOf(summaryMessage),
                     maxTokens = 500, // Limit summary to 500 tokens
-                    model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for summaries
+                    model = ChatSettings.DEFAULT_OPENAI_MODEL
                 )
                 
                 result
@@ -1683,11 +1684,11 @@ Return:""".trimIndent()
                 role = MessageRole.USER
             )
             
-            // Extract facts using GPT-4o Mini
+            // Extract facts using the configured direct OpenAI model.
             val result = llmClient.sendChat(
                 messages = listOf(factsMessage),
                 maxTokens = 500,
-                model = "openai/gpt-4o-mini" // Always use GPT-4o Mini for fact extraction
+                model = ChatSettings.DEFAULT_OPENAI_MODEL
             )
             
             return result

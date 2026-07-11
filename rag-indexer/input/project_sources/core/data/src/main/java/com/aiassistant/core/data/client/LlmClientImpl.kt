@@ -38,8 +38,8 @@ class LlmClientImpl @Inject constructor(
                 )
             }
             
-            // Determine model - use provided model or default to gpt-4o-mini
-            val modelName = model ?: "gpt-4o-mini"
+            // Determine model - use provided model or default to gpt-4.1-mini
+            val modelName = model ?: "gpt-4.1-mini"
             
             // Create request DTO with proper parameters
             val requestDto = com.aiassistant.core.network.dto.ChatRequestDto(

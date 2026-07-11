@@ -4,6 +4,7 @@ import android.util.Log
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.rag.RecentHistoryFormatter
 import com.aiassistant.core.domain.rag.TaskMemoryPromptFormatter
 import com.google.gson.Gson
@@ -72,7 +73,7 @@ class LlmTaskMemoryUpdater @Inject constructor(
                 )
             ),
             maxTokens = 500,
-            model = "openai/gpt-4o-mini"
+            model = ChatSettings.DEFAULT_OPENAI_MODEL
         ).getOrElse { throwable ->
             Log.d(LOG_TAG, "TASK_MEMORY_UPDATE_ERROR=${throwable.message}")
             return TaskContextUpdate()

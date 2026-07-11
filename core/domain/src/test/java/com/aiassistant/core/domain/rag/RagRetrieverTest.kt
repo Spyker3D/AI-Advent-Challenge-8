@@ -158,13 +158,13 @@ class RagRetrieverTest {
                 result(
                     id = "retrofit",
                     finalScore = 0.8f,
-                    text = "Retrofit sends user messages to OpenRouter and receives model answers."
+                    text = "Retrofit sends user messages to OpenAI and receives model answers."
                 )
             )
         )
 
         assertEquals(true, prompt.contains("Do not leave important facts only in Sources or Quotes."))
-        assertEquals(true, prompt.contains("OpenRouter"))
+        assertEquals(true, prompt.contains("OpenAI"))
     }
 
     @Test
