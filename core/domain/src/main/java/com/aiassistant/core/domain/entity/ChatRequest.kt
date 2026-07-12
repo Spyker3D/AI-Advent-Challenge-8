@@ -6,5 +6,6 @@ data class ChatRequest(
     val temperature: Float,
     val maxTokens: Int,
     val systemPrompt: String? = null,
-    val history: List<Message> = emptyList()
+    val history: List<Message> = emptyList(),
+    val invariantsEnabled: Boolean = true
 )

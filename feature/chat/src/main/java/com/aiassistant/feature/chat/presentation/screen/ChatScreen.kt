@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -1438,12 +1440,37 @@ fun RagSourcesBlock(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EnhancedMessageBubble(
     message: Message,
     useContextCompression: Boolean,
     modifier: Modifier = Modifier
 ) {
+    var showLocalMetrics by remember { mutableStateOf(false) }
+    val localMetrics = message.metadata?.localMetrics
+    if (showLocalMetrics && localMetrics != null) {
+        ModalBottomSheet(onDismissRequest = { showLocalMetrics = false }) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Local generation details", style = MaterialTheme.typography.titleLarge)
+                listOf(
+                    "Model" to localMetrics.model,
+                    "Temperature" to localMetrics.temperature,
+                    "Max output tokens" to localMetrics.maxOutputTokens,
+                    "Context window" to localMetrics.contextWindow,
+                    "Top P" to localMetrics.topP,
+                    "Repeat penalty" to localMetrics.repeatPenalty,
+                    "Seed" to (localMetrics.seed ?: "random"),
+                    "Prompt tokens" to (localMetrics.promptTokens ?: "unavailable"),
+                    "Output tokens" to (localMetrics.outputTokens ?: "unavailable"),
+                    "Generation time" to localMetrics.generationSeconds?.let { String.format("%.2f sec", it) }.orEmpty(),
+                    "Load time" to localMetrics.loadSeconds?.let { String.format("%.2f sec", it) }.orEmpty(),
+                    "Tokens/sec" to localMetrics.tokensPerSecond?.let { String.format("%.1f", it) }.orEmpty()
+                ).forEach { (name, value) -> Text("$name: $value") }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
     val isUserMessage = message.role == MessageRole.USER
     val backgroundColor = if (isUserMessage) {
         MaterialTheme.colorScheme.primary
@@ -1502,6 +1529,20 @@ fun EnhancedMessageBubble(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 4.dp)
+                        )
+                    }
+
+                    if (!isUserMessage && localMetrics != null) {
+                        Text(
+                            text = listOfNotNull(
+                                localMetrics.model,
+                                localMetrics.generationSeconds?.let { String.format("%.1f sec", it) },
+                                localMetrics.tokensPerSecond?.let { String.format("%.1f tok/sec", it) },
+                                localMetrics.outputTokens?.let { "$it tokens" }
+                            ).joinToString("  •  "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.75f),
+                            modifier = Modifier.padding(top = 6.dp).clickable { showLocalMetrics = true }
                         )
                     }
 

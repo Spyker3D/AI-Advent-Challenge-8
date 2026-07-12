@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +52,15 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var isProviderDropdownExpanded by remember { mutableStateOf(false) }
+    var infoText by remember { mutableStateOf<String?>(null) }
+
+    infoText?.let { text ->
+        AlertDialog(
+            onDismissRequest = { infoText = null },
+            confirmButton = { TextButton(onClick = { infoText = null }) { Text("OK") } },
+            text = { Text(text) }
+        )
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -147,13 +157,61 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        OutlinedTextField(
+                        StringSettingDropdown(
+                            label = "Model",
                             value = uiState.settings.localModel,
-                            onValueChange = {
-                                viewModel.handleEvent(SettingsUiEvent.LocalModelChanged(it))
-                            },
-                            label = { Text("Ollama Model") },
-                            placeholder = { Text(ChatSettings.DEFAULT_LOCAL_MODEL) },
+                            values = listOf(
+                                "qwen2.5:7b-instruct",
+                                "qwen2.5:7b-instruct-q4_K_M",
+                                "qwen2.5:7b-instruct-q5_K_M",
+                                "qwen2.5:7b-instruct-q8_0"
+                            ),
+                            onSelected = { viewModel.handleEvent(SettingsUiEvent.LocalModelChanged(it)) }
+                        )
+                        Text(
+                            "Q4_K_M: меньше памяти, обычно быстрее, немного ниже точность.\n" +
+                                "Q5_K_M: больше памяти, немного медленнее, потенциально выше качество.\n" +
+                                "Результат зависит от запроса; можно вручную ввести любой Ollama tag.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        LocalSliderSetting("Temperature", uiState.settings.localTemperature, 0f..1.5f, 30,
+                            { infoText = "Чем ниже значение, тем более точные и предсказуемые ответы. Чем выше — тем более разнообразные." },
+                            { viewModel.handleEvent(SettingsUiEvent.LocalTemperatureChanged((it * 20).toInt() / 20f)) })
+
+                        IntSettingDropdown("Max output tokens", uiState.settings.localMaxTokens,
+                            listOf(128, 256, 512, 700, 1024, 2048), true,
+                            { infoText = "Максимальная длина ответа." },
+                            { viewModel.handleEvent(SettingsUiEvent.LocalMaxTokensChanged(it)) })
+
+                        IntSettingDropdown("Context window", uiState.settings.localContextWindow,
+                            listOf(2048, 4096, 8192, 16384), false,
+                            { infoText = "Максимальный объём контекста, который модель может учитывать. Больший контекст увеличивает расход памяти." },
+                            { viewModel.handleEvent(SettingsUiEvent.LocalContextWindowChanged(it)) })
+
+                        LocalSliderSetting("Top P", uiState.settings.localTopP, 0.1f..1f, 17,
+                            { infoText = "Ограничивает разнообразие выбираемых токенов." },
+                            { viewModel.handleEvent(SettingsUiEvent.LocalTopPChanged(it)) })
+
+                        LocalSliderSetting("Repeat penalty", uiState.settings.localRepeatPenalty, 0.8f..1.5f, 13,
+                            { infoText = "Уменьшает повторения одинаковых слов и предложений." },
+                            { viewModel.handleEvent(SettingsUiEvent.LocalRepeatPenaltyChanged(it)) })
+
+                        SettingLabel("Seed") { infoText = "Позволяет получать более повторяемые результаты." }
+                        OutlinedTextField(
+                            value = uiState.settings.localSeed?.toString().orEmpty(),
+                            onValueChange = { viewModel.handleEvent(SettingsUiEvent.LocalSeedChanged(it.toIntOrNull())) },
+                            label = { Text("Seed (optional)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        SettingLabel("System prompt") { infoText = "Инструкция, определяющая поведение локальной модели." }
+                        OutlinedTextField(
+                            value = uiState.settings.localSystemPrompt,
+                            onValueChange = { viewModel.handleEvent(SettingsUiEvent.LocalSystemPromptChanged(it)) },
+                            minLines = 3,
+                            maxLines = 6,
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -163,6 +221,52 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+            }
+
+            SettingsCard(title = "Invariants") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Enable Invariants")
+                        Text(
+                            "Если выключить, ответы не будут проверяться и блокироваться правилами Invariants.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.settings.invariantsEnabled,
+                        onCheckedChange = {
+                            viewModel.handleEvent(SettingsUiEvent.InvariantsEnabledChanged(it))
+                        }
+                    )
+                }
+            }
+
+            SettingsCard(title = "Task pipeline") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Enable Task pipeline")
+                        Text(
+                            "Если выключить, запросы будут сразу отправляться в обычный чат без этапов PLANNING, EXECUTION и VALIDATION.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.settings.taskPipelineEnabled,
+                        onCheckedChange = {
+                            viewModel.handleEvent(SettingsUiEvent.TaskPipelineEnabledChanged(it))
+                        }
+                    )
                 }
             }
 
@@ -399,6 +503,89 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SettingLabel(label: String, onInfo: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontWeight = FontWeight.Medium)
+        TextButton(onClick = onInfo) { Text("Info") }
+    }
+}
+
+@Composable
+private fun LocalSliderSetting(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onInfo: () -> Unit,
+    onChange: (Float) -> Unit
+) {
+    Column {
+        SettingLabel(label, onInfo)
+        Text(
+            text = "Текущее значение: ${String.format("%.2f", value)}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StringSettingDropdown(label: String, value: String, values: List<String>, onSelected: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(value = value, onValueChange = onSelected, label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth())
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            values.forEach { option -> DropdownMenuItem(text = { Text(localModelDisplayName(option)) }, onClick = {
+                onSelected(option); expanded = false
+            }) }
+        }
+    }
+}
+
+private fun localModelDisplayName(tag: String): String = when (tag) {
+    "qwen2.5:7b-instruct" -> "Qwen 2.5 7B — Q4_K_M"
+    "qwen2.5:7b-instruct-q5_K_M" -> "Qwen 2.5 7B — Q5_K_M"
+    "qwen2.5:7b-instruct-q4_K_M" -> "Qwen 2.5 7B — Q4_K_M (explicit tag)"
+    "qwen2.5:7b-instruct-q8_0" -> "Qwen 2.5 7B — Q8_0"
+    else -> tag
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IntSettingDropdown(
+    label: String,
+    value: Int,
+    values: List<Int>,
+    allowCustom: Boolean,
+    onInfo: () -> Unit,
+    onSelected: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var custom by remember(value) { mutableStateOf(allowCustom && value !in values) }
+    SettingLabel(label, onInfo)
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(value = if (custom) "Custom" else value.toString(), onValueChange = {}, readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth())
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            values.forEach { option -> DropdownMenuItem(text = { Text(option.toString()) }, onClick = {
+                custom = false; onSelected(option); expanded = false
+            }) }
+            if (allowCustom) DropdownMenuItem(text = { Text("Custom") }, onClick = { custom = true; expanded = false })
+        }
+    }
+    if (custom) OutlinedTextField(value = value.toString(), onValueChange = { it.toIntOrNull()?.let(onSelected) },
+        label = { Text("Custom value (128–4096)") }, modifier = Modifier.fillMaxWidth())
 }
 
 private fun AiProvider.displayName(): String {

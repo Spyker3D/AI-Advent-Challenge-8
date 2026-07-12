@@ -11,6 +11,7 @@ import com.aiassistant.core.data.database.dao.ChatDao
 import com.aiassistant.core.data.database.entity.ChatEntity
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMessageMapper
+import com.aiassistant.core.data.mapper.toOllamaOptionsDto
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiResponseMetadata
@@ -20,6 +21,7 @@ import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.LocalGenerationMetrics
 import com.aiassistant.core.domain.entity.TokenMetrics
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.core.domain.repository.ChatRepository
@@ -53,8 +55,6 @@ class ChatRepositoryImpl @Inject constructor(
         private const val OPENAI_SYSTEM_PROMPT = """Ты AI Assistant. Отвечай на языке пользователя.
 Давай точные и понятные ответы.
 Не выдумывай факты. Если информации недостаточно, скажи об этом."""
-        private const val OLLAMA_TEMPERATURE = 0.2
-        private const val OLLAMA_NUM_CTX = 8192
         private const val TAG = "OpenAiRequest"
     }
     
@@ -163,13 +163,9 @@ class ChatRepositoryImpl @Inject constructor(
                 OllamaGenerateRequestDto(
                     model = model,
                     prompt = buildOllamaPrompt(messages.filterNot { it.role == MessageRole.SYSTEM }),
-                    system = (effectiveChatRequest.systemPrompt ?: settings.systemPrompt)
-                        .takeIf { it.isNotBlank() },
+                    system = settings.localSystemPrompt.takeIf { it.isNotBlank() },
                     stream = false,
-                    options = OllamaOptionsDto(
-                        temperature = OLLAMA_TEMPERATURE,
-                        numCtx = OLLAMA_NUM_CTX
-                    )
+                    options = settings.toOllamaOptionsDto()
                 )
             )
             val responseTimeMs = System.currentTimeMillis() - startTime
@@ -188,7 +184,21 @@ class ChatRepositoryImpl @Inject constructor(
                             promptTokens = null,
                             completionTokens = null,
                             totalTokens = null,
-                            estimatedCostUsd = null
+                            estimatedCostUsd = null,
+                            localMetrics = LocalGenerationMetrics(
+                                model = model,
+                                temperature = settings.localTemperature,
+                                maxOutputTokens = settings.localMaxTokens,
+                                contextWindow = settings.localContextWindow,
+                                topP = settings.localTopP,
+                                repeatPenalty = settings.localRepeatPenalty,
+                                seed = settings.localSeed,
+                                promptTokens = response.promptEvalCount,
+                                outputTokens = response.evalCount,
+                                totalDurationNanos = response.totalDuration,
+                                loadDurationNanos = response.loadDuration,
+                                evalDurationNanos = response.evalDuration
+                            )
                         )
                     )
                 )
@@ -226,7 +236,7 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     private fun ollamaModelNotFoundMessage(model: String): String {
-        return "Модель $model не найдена в Ollama.\nУстановите её командой:\nollama pull $model"
+        return "Модель $model не установлена.\nВыполните:\nollama pull $model"
     }
 
     // This method is now handled by the ChatAgent

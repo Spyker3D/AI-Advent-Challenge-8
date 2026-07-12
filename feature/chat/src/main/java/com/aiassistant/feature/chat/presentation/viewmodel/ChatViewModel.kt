@@ -140,6 +140,8 @@ class ChatViewModel @Inject constructor(
                     temperature = settings.temperature,
                     maxTokens = settings.maxTokens,
                     systemPrompt = settings.systemPrompt,
+                    invariantsEnabled = settings.invariantsEnabled,
+                    taskPipelineEnabled = settings.taskPipelineEnabled,
                     // Day 2 fields
                     useJsonFormat = settings.useJsonFormat,
                     limitLength = settings.limitLength,
@@ -498,7 +500,7 @@ class ChatViewModel @Inject constructor(
         val hasActiveTask = _uiState.value.chats
             .find { it.id == _uiState.value.currentChatId }
             ?.activeTaskContextId != null
-        if (hasActiveTask || isTaskRequest(currentMessage)) {
+        if (_uiState.value.taskPipelineEnabled && (hasActiveTask || isTaskRequest(currentMessage))) {
             sendTaskPipelineMessage(currentMessage)
             return
         }
@@ -678,7 +680,8 @@ class ChatViewModel @Inject constructor(
                     temperature = _uiState.value.temperature,
                     maxTokens = _uiState.value.maxTokens,
                     systemPrompt = _uiState.value.systemPrompt,
-                    history = historyForLlm
+                    history = historyForLlm,
+                    invariantsEnabled = _uiState.value.invariantsEnabled
                 )
 
                 // Send message using ChatAgent with context strategy
@@ -717,6 +720,7 @@ class ChatViewModel @Inject constructor(
                             content = response.message,
                             role = MessageRole.ASSISTANT,
                             timestamp = System.currentTimeMillis(),
+                            metadata = response.metadata,
                             tokenMetrics = tokenMetrics
                         )
                         
@@ -1151,6 +1155,7 @@ class ChatViewModel @Inject constructor(
 
     private fun runTaskAction(command: String) {
         if (_uiState.value.isLoading) return
+        if (!_uiState.value.taskPipelineEnabled) return
         _uiState.value = _uiState.value.copy(currentMessage = command)
         sendTaskPipelineMessage(command)
     }

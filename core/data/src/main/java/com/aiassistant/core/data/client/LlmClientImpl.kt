@@ -8,10 +8,13 @@ import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.AiResponseMetadata
+import com.aiassistant.core.domain.entity.LocalGenerationMetrics
 import com.aiassistant.core.network.api.OpenAiApi
 import com.aiassistant.core.network.api.OllamaApiFactory
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.datastore.SettingsDataStore
+import com.aiassistant.core.data.mapper.toOllamaOptionsDto
 import com.aiassistant.core.network.dto.OpenAiInputMessageDto
 import com.aiassistant.core.network.dto.OpenAiResponseRequestDto
 import com.aiassistant.core.network.dto.OllamaGenerateRequestDto
@@ -37,8 +40,6 @@ class LlmClientImpl @Inject constructor(
         private const val OPENAI_SYSTEM_PROMPT = """Ты AI Assistant. Отвечай на языке пользователя.
 Давай точные и понятные ответы.
 Не выдумывай факты. Если информации недостаточно, скажи об этом."""
-        private const val OLLAMA_TEMPERATURE = 0.2
-        private const val OLLAMA_NUM_CTX = 8192
         private const val TAG = "OpenAiRequest"
     }
 
@@ -119,19 +120,37 @@ class LlmClientImpl @Inject constructor(
                 OllamaGenerateRequestDto(
                     model = model,
                     prompt = prompt,
-                    system = systemPrompt,
+                    system = settings.localSystemPrompt.takeIf { it.isNotBlank() } ?: systemPrompt,
                     stream = false,
-                    options = OllamaOptionsDto(
-                        temperature = OLLAMA_TEMPERATURE,
-                        numCtx = OLLAMA_NUM_CTX
-                    )
+                    options = settings.toOllamaOptionsDto()
                 )
             )
             val assistantMessage = response.response.trim()
             if (assistantMessage.isBlank()) {
                 Result.failure(Exception("Empty response from local LLM"))
             } else {
-                Result.success(ChatResponse(assistantMessage))
+                val metrics = LocalGenerationMetrics(
+                    model = model,
+                    temperature = settings.localTemperature,
+                    maxOutputTokens = settings.localMaxTokens,
+                    contextWindow = settings.localContextWindow,
+                    topP = settings.localTopP,
+                    repeatPenalty = settings.localRepeatPenalty,
+                    seed = settings.localSeed,
+                    promptTokens = response.promptEvalCount,
+                    outputTokens = response.evalCount,
+                    totalDurationNanos = response.totalDuration,
+                    loadDurationNanos = response.loadDuration,
+                    evalDurationNanos = response.evalDuration
+                )
+                Result.success(ChatResponse(
+                    assistantMessage,
+                    response.evalCount,
+                    AiResponseMetadata(model, model, response.totalDuration?.div(1_000_000) ?: 0L,
+                        response.promptEvalCount, response.evalCount,
+                        listOfNotNull(response.promptEvalCount, response.evalCount).takeIf { it.size == 2 }?.sum(),
+                        null, metrics)
+                ))
             }
         } catch (e: IllegalArgumentException) {
             Result.failure(Exception("Invalid Ollama Base URL: $baseUrl"))
@@ -166,6 +185,6 @@ class LlmClientImpl @Inject constructor(
     }
 
     private fun ollamaModelNotFoundMessage(model: String): String {
-        return "Модель $model не найдена в Ollama.\nУстановите её командой:\nollama pull $model"
+        return "Модель $model не установлена.\nВыполните:\nollama pull $model"
     }
 }
