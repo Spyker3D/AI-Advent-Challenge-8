@@ -13,6 +13,8 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 val openAiApiKey = localProperties.getProperty("OPENAI_API_KEY", "")
+fun escapedProperty(name: String, default: String = "") =
+    localProperties.getProperty(name, default).replace("\\", "\\\\").replace("\"", "\\\"")
 
 android {
     namespace = "com.aiassistant"
@@ -32,6 +34,9 @@ android {
         
         // Expose the local OpenAI API key for this educational build.
         buildConfigField("String", "OPENAI_API_KEY", "\"${openAiApiKey.replace("\"", "\\\"")}\"")
+        buildConfigField("String", "PRIVATE_VPS_BASE_URL", "\"${escapedProperty("PRIVATE_VPS_BASE_URL")}\"")
+        buildConfigField("String", "PRIVATE_VPS_API_KEY", "\"${escapedProperty("PRIVATE_VPS_API_KEY")}\"")
+        buildConfigField("String", "PRIVATE_VPS_MODEL", "\"${escapedProperty("PRIVATE_VPS_MODEL", "qwen2.5:3b")}\"")
     }
 
     buildTypes {

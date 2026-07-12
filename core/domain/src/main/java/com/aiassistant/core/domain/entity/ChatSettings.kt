@@ -18,6 +18,9 @@ data class ChatSettings(
     val localSystemPrompt: String = DEFAULT_LOCAL_SYSTEM_PROMPT,
     val invariantsEnabled: Boolean = true,
     val taskPipelineEnabled: Boolean = true,
+    val privateVpsBaseUrl: String = "",
+    val privateVpsModel: String = DEFAULT_PRIVATE_VPS_MODEL,
+    val privateVpsApiKey: String = "",
     // Day 2 fields
     val useJsonFormat: Boolean = false,
     val limitLength: Boolean = false,
@@ -34,6 +37,7 @@ data class ChatSettings(
         const val DEFAULT_LOCAL_MODEL = "qwen2.5:7b-instruct"
         const val LOCAL_MODEL_Q5 = "qwen2.5:7b-instruct-q5_K_M"
         const val DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+        const val DEFAULT_PRIVATE_VPS_MODEL = "qwen2.5:3b"
         const val DEFAULT_LOCAL_TEMPERATURE = 0.2f
         const val DEFAULT_LOCAL_MAX_TOKENS = 700
         const val DEFAULT_LOCAL_CONTEXT_WINDOW = 8192
@@ -53,6 +57,15 @@ data class ChatSettings(
                 "", "llama3.2:3b" -> DEFAULT_LOCAL_MODEL
                 else -> tag
             }
+        }
+
+        fun normalizePrivateVpsBaseUrl(value: String?): String? {
+            val raw = value?.trim().orEmpty().trimEnd('/')
+            if (raw.isBlank()) return null
+            val withoutApi = if (raw.endsWith("/api", ignoreCase = true)) raw.dropLast(4) else raw
+            val uri = runCatching { java.net.URI(withoutApi) }.getOrNull() ?: return null
+            if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) return null
+            return "$withoutApi/"
         }
 
         fun normalizeOpenAiModel(model: String?): String {

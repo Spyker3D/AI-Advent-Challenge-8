@@ -12,9 +12,14 @@ import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.LocalGenerationMetrics
 import com.aiassistant.core.network.api.OpenAiApi
 import com.aiassistant.core.network.api.OllamaApiFactory
+import com.aiassistant.core.network.api.PrivateVpsApi
+import com.aiassistant.core.network.interceptor.PrivateVpsCredentials
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.toOllamaOptionsDto
+import com.aiassistant.core.data.mapper.buildPrivateVpsRequest
+import com.aiassistant.core.data.mapper.privateVpsEndpoint
+import com.aiassistant.core.data.mapper.privateVpsHttpError
 import com.aiassistant.core.network.dto.OpenAiInputMessageDto
 import com.aiassistant.core.network.dto.OpenAiResponseRequestDto
 import com.aiassistant.core.network.dto.OllamaGenerateRequestDto
@@ -29,6 +34,8 @@ import javax.inject.Inject
 
 class LlmClientImpl @Inject constructor(
     private val openAiApi: OpenAiApi,
+    private val privateVpsApi: PrivateVpsApi,
+    private val privateVpsCredentials: PrivateVpsCredentials,
     private val ollamaApiFactory: OllamaApiFactory,
     private val settingsDataStore: SettingsDataStore,
     private val apiConfig: ApiConfig
@@ -48,6 +55,7 @@ class LlmClientImpl @Inject constructor(
         when (settings.provider) {
             AiProvider.OPENAI -> sendViaOpenAi(messages, maxTokens, model, settings)
             AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages)
+            AiProvider.PRIVATE_VPS -> sendViaPrivateVps(messages, maxTokens, settings)
         }
     }
 
@@ -167,6 +175,41 @@ class LlmClientImpl @Inject constructor(
             Result.failure(Exception(message))
         } catch (e: Exception) {
             Result.failure(Exception(localOllamaConnectionError(baseUrl), e))
+        }
+    }
+
+    private suspend fun sendViaPrivateVps(
+        messages: List<Message>, maxTokens: Int?, settings: ChatSettings
+    ): Result<ChatResponse> {
+        val url = settings.privateVpsEndpoint("api/chat/completions")
+            ?: return Result.failure(Exception("VPS URL не настроен или некорректен."))
+        if (settings.privateVpsApiKey.isBlank()) return Result.failure(Exception("API key приватного VPS не настроен."))
+        if (settings.privateVpsModel.isBlank()) return Result.failure(Exception("VPS model не настроена."))
+        privateVpsCredentials.apiKey = settings.privateVpsApiKey
+        return try {
+            val started = System.currentTimeMillis()
+            val response = privateVpsApi.createChatCompletion(url, buildPrivateVpsRequest(messages, settings, maxTokens))
+            val text = response.outputText()
+            if (text.isBlank()) return Result.failure(Exception("VPS вернул пустой ответ."))
+            val usage = response.usage
+            val metadata = AiResponseMetadata(
+                "VPS · ${response.model ?: settings.privateVpsModel}", response.model ?: settings.privateVpsModel,
+                System.currentTimeMillis() - started, usage?.effectiveInputTokens(), usage?.effectiveOutputTokens(),
+                usage?.totalTokens, null,
+                tokensPerSecond = usage?.responseTokensPerSecond
+            )
+            Result.success(ChatResponse(text, usage?.effectiveOutputTokens(), metadata))
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("VPS-модель не ответила вовремя."))
+        } catch (e: UnknownHostException) {
+            Result.failure(Exception("Не удалось подключиться к VPS. Проверьте адрес и доступность сервера."))
+        } catch (e: HttpException) {
+            Result.failure(Exception(privateVpsHttpError(e.code(), e.response()?.headers()?.get("Retry-After"))))
+        } catch (e: java.io.IOException) {
+            val msg = if (e.message.orEmpty().contains("CLEARTEXT", true))
+                "Android заблокировал HTTP-подключение. Используйте HTTPS или debug-конфигурацию."
+            else "Не удалось подключиться к VPS. Проверьте адрес и доступность сервера."
+            Result.failure(Exception(msg))
         }
     }
 

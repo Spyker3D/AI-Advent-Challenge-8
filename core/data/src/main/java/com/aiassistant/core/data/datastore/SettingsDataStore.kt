@@ -12,6 +12,7 @@ import com.aiassistant.core.domain.entity.AiProvider
 import androidx.datastore.preferences.preferencesDataStore
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.ChatSettings
+import com.aiassistant.core.data.config.ApiConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -21,7 +22,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 @Singleton
 class SettingsDataStore @Inject constructor(
-    private val context: Context
+    private val context: Context,
+    private val apiConfig: ApiConfig
 ) {
     private object PreferencesKeys {
         val PROVIDER = stringPreferencesKey("provider")
@@ -41,6 +43,9 @@ class SettingsDataStore @Inject constructor(
         val LOCAL_SYSTEM_PROMPT = stringPreferencesKey("local_system_prompt")
         val INVARIANTS_ENABLED = booleanPreferencesKey("invariants_enabled")
         val TASK_PIPELINE_ENABLED = booleanPreferencesKey("task_pipeline_enabled")
+        val PRIVATE_VPS_BASE_URL = stringPreferencesKey("private_vps_base_url")
+        val PRIVATE_VPS_MODEL = stringPreferencesKey("private_vps_model")
+        val PRIVATE_VPS_API_KEY = stringPreferencesKey("private_vps_api_key")
         // Day 2 fields
         val USE_JSON_FORMAT = androidx.datastore.preferences.core.booleanPreferencesKey("use_json_format")
         val LIMIT_LENGTH = androidx.datastore.preferences.core.booleanPreferencesKey("limit_length")
@@ -86,6 +91,12 @@ class SettingsDataStore @Inject constructor(
                 ?: ChatSettings.DEFAULT_LOCAL_SYSTEM_PROMPT,
             invariantsEnabled = preferences[PreferencesKeys.INVARIANTS_ENABLED] ?: true,
             taskPipelineEnabled = preferences[PreferencesKeys.TASK_PIPELINE_ENABLED] ?: true,
+            privateVpsBaseUrl = preferences[PreferencesKeys.PRIVATE_VPS_BASE_URL]
+                ?: apiConfig.privateVpsBaseUrl,
+            privateVpsModel = preferences[PreferencesKeys.PRIVATE_VPS_MODEL]
+                ?.takeIf { it.isNotBlank() } ?: apiConfig.privateVpsModel,
+            privateVpsApiKey = preferences[PreferencesKeys.PRIVATE_VPS_API_KEY]
+                ?: apiConfig.privateVpsApiKey,
             // Day 2 fields
             useJsonFormat = preferences[PreferencesKeys.USE_JSON_FORMAT] ?: false,
             limitLength = preferences[PreferencesKeys.LIMIT_LENGTH] ?: false,
@@ -118,6 +129,9 @@ class SettingsDataStore @Inject constructor(
             preferences[PreferencesKeys.LOCAL_SYSTEM_PROMPT] = settings.localSystemPrompt
             preferences[PreferencesKeys.INVARIANTS_ENABLED] = settings.invariantsEnabled
             preferences[PreferencesKeys.TASK_PIPELINE_ENABLED] = settings.taskPipelineEnabled
+            preferences[PreferencesKeys.PRIVATE_VPS_BASE_URL] = settings.privateVpsBaseUrl.trim()
+            preferences[PreferencesKeys.PRIVATE_VPS_MODEL] = settings.privateVpsModel.trim()
+            preferences[PreferencesKeys.PRIVATE_VPS_API_KEY] = settings.privateVpsApiKey.trim()
             // Day 2 fields
             preferences[PreferencesKeys.USE_JSON_FORMAT] = settings.useJsonFormat
             preferences[PreferencesKeys.LIMIT_LENGTH] = settings.limitLength
@@ -131,6 +145,7 @@ class SettingsDataStore @Inject constructor(
 
     internal fun migrateProvider(value: String?): AiProvider = when (value?.uppercase()) {
         "LOCAL_OLLAMA", "LOCAL" -> AiProvider.LOCAL_OLLAMA
+        "PRIVATE_VPS", "VPS" -> AiProvider.PRIVATE_VPS
         "OPENROUTER", "ONLINE_OPENROUTER", "OPENAI", "ONLINE", null -> AiProvider.OPENAI
         else -> AiProvider.OPENAI
     }

@@ -6,5 +6,6 @@ import com.aiassistant.core.domain.entity.ChatSettings
 data class SettingsUiState(
     val settings: ChatSettings = ChatSettings(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val vpsTestResult: String? = null
 )

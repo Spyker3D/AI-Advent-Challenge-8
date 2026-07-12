@@ -4,6 +4,8 @@ import android.util.Log
 import com.aiassistant.core.data.BuildConfig
 import com.aiassistant.core.network.api.OpenAiApi
 import com.aiassistant.core.network.api.OllamaApiFactory
+import com.aiassistant.core.network.api.PrivateVpsApi
+import com.aiassistant.core.network.interceptor.PrivateVpsCredentials
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.database.ChatDatabase
 import com.aiassistant.core.data.database.ChatMessageDao
@@ -12,6 +14,9 @@ import com.aiassistant.core.data.database.entity.ChatEntity
 import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.data.mapper.toOllamaOptionsDto
+import com.aiassistant.core.data.mapper.buildPrivateVpsRequest
+import com.aiassistant.core.data.mapper.privateVpsEndpoint
+import com.aiassistant.core.data.mapper.privateVpsHttpError
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiResponseMetadata
@@ -40,6 +45,8 @@ import javax.inject.Inject
 
 class ChatRepositoryImpl @Inject constructor(
     private val openAiApi: OpenAiApi,
+    private val privateVpsApi: PrivateVpsApi,
+    private val privateVpsCredentials: PrivateVpsCredentials,
     private val ollamaApiFactory: OllamaApiFactory,
     private val settingsDataStore: SettingsDataStore,
     private val chatMessageMapper: ChatMessageMapper,
@@ -66,6 +73,7 @@ class ChatRepositoryImpl @Inject constructor(
             when (settings.provider) {
                 AiProvider.OPENAI -> sendViaOpenAi(chatRequest, settings)
                 AiProvider.LOCAL_OLLAMA -> sendViaOllama(chatRequest)
+                AiProvider.PRIVATE_VPS -> sendViaPrivateVps(chatRequest, settings)
             }
         }
     }
@@ -218,6 +226,43 @@ class ChatRepositoryImpl @Inject constructor(
             Result.failure(Exception(message))
         } catch (e: Exception) {
             Result.failure(Exception(localOllamaConnectionError(baseUrl), e))
+        }
+    }
+
+    private suspend fun sendViaPrivateVps(chatRequest: ChatRequest, settings: ChatSettings): Result<AiChatResponse> {
+        val url = settings.privateVpsEndpoint("api/chat/completions")
+            ?: return Result.failure(Exception("VPS URL не настроен или некорректен."))
+        if (settings.privateVpsApiKey.isBlank()) return Result.failure(Exception("API key приватного VPS не настроен."))
+        if (settings.privateVpsModel.isBlank()) return Result.failure(Exception("VPS model не настроена."))
+        privateVpsCredentials.apiKey = settings.privateVpsApiKey
+        val history = (if (chatRequest.history.isNotEmpty()) chatRequest.history else getMessages()) + Message(
+            java.util.UUID.randomUUID().toString(), chatRequest.message, MessageRole.USER
+        )
+        return try {
+            val started = System.currentTimeMillis()
+            val response = privateVpsApi.createChatCompletion(url, buildPrivateVpsRequest(history, settings, chatRequest.maxTokens))
+            val text = response.outputText()
+            if (text.isBlank()) return Result.failure(Exception("VPS вернул пустой ответ."))
+            val usage = response.usage
+            Result.success(AiChatResponse(text, AiResponseMetadata(
+                "VPS · ${response.model ?: settings.privateVpsModel}", response.model ?: settings.privateVpsModel,
+                System.currentTimeMillis() - started, usage?.effectiveInputTokens(), usage?.effectiveOutputTokens(),
+                usage?.totalTokens, null,
+                tokensPerSecond = usage?.responseTokensPerSecond
+            )))
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("VPS-модель не ответила вовремя."))
+        } catch (e: UnknownHostException) {
+            Result.failure(Exception("Не удалось подключиться к VPS. Проверьте адрес и доступность сервера."))
+        } catch (e: HttpException) {
+            Result.failure(Exception(privateVpsHttpError(e.code(), e.response()?.headers()?.get("Retry-After"))))
+        } catch (e: java.net.ConnectException) {
+            Result.failure(Exception("Не удалось подключиться к VPS. Проверьте адрес и доступность сервера."))
+        } catch (e: java.io.IOException) {
+            val message = if (e.message.orEmpty().contains("CLEARTEXT", true))
+                "Android заблокировал HTTP-подключение. Используйте HTTPS или debug-конфигурацию."
+            else "Не удалось подключиться к VPS. Проверьте адрес и доступность сервера."
+            Result.failure(Exception(message))
         }
     }
 

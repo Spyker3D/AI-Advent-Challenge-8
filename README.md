@@ -89,5 +89,46 @@ Windows:
 .\gradlew.bat assembleDebug
 ```
 
+## Day 30 — Private LLM Service
+
+The application has three independent backends: **OpenAI**, **Local Ollama**, and
+**Private VPS**. The private path is:
+
+`Android AI Assistant → HTTP API → Nginx → Open WebUI → Ollama → Qwen 2.5 3B`
+
+Add development defaults to the untracked root `local.properties` file:
+
+```properties
+PRIVATE_VPS_BASE_URL=http://your-vps-ip/
+PRIVATE_VPS_API_KEY=your-demo-user-api-key
+PRIVATE_VPS_MODEL=qwen2.5:3b
+```
+
+These are only defaults. URL, model, and API key can be changed in Settings without
+rebuilding. **Test VPS connection** calls `GET /api/models`; chat calls
+`POST /api/chat/completions` with `stream=false`. RAG retrieval remains on Android and
+the same retrieved context is sent to whichever backend is selected.
+
+Use a key belonging to a dedicated non-admin demo user. `local.properties` is ignored
+by Git, but BuildConfig defaults are embedded in the APK and can be extracted. The API
+key override is stored locally on the device. Never use an administrator key.
+
+Plain HTTP does not protect the Bearer token. Cleartext is allowed globally only in the
+debug variant; release permits the emulator's existing `10.0.2.2` Ollama endpoint and
+otherwise requires HTTPS. Configure HTTPS before production. Revoke the demo key after
+recording the demo and create a new one.
+
+HTTP 429 means the private service rate limit was exceeded. The app does not retry
+automatically; retry manually later. `Retry-After` is shown when the server supplies it.
+
+### Manual Day 30 check
+
+1. Run the debug build and open Settings.
+2. Select **Private VPS**, enter the URL, `qwen2.5:3b`, and demo-user API key.
+3. Tap **Test VPS connection** and confirm the configured model is found.
+4. Send a chat request and confirm the answer is labelled `VPS · qwen2.5:3b`.
+5. Send requests quickly and verify readable HTTP 429 handling.
+6. Switch to **Local Ollama** and **OpenAI** and test both.
+
 Online и Local выбираются в Settings. Имя online-модели редактируется вручную;
 локальные URL и модель настраиваются отдельно.
