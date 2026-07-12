@@ -21,6 +21,10 @@ sealed class SettingsUiEvent {
     data class LocalSystemPromptChanged(val value: String) : SettingsUiEvent()
     data class InvariantsEnabledChanged(val enabled: Boolean) : SettingsUiEvent()
     data class TaskPipelineEnabledChanged(val enabled: Boolean) : SettingsUiEvent()
+    data class PrivateVpsBaseUrlChanged(val value: String) : SettingsUiEvent()
+    data class PrivateVpsModelChanged(val value: String) : SettingsUiEvent()
+    data class PrivateVpsApiKeyChanged(val value: String) : SettingsUiEvent()
+    object TestPrivateVpsConnection : SettingsUiEvent()
     object SaveSettings : SettingsUiEvent()
     object ResetToDefaults : SettingsUiEvent()
     

@@ -37,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.ChatSettings
@@ -52,6 +54,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var isProviderDropdownExpanded by remember { mutableStateOf(false) }
+    var isVpsApiKeyVisible by remember { mutableStateOf(false) }
     var infoText by remember { mutableStateOf<String?>(null) }
 
     infoText?.let { text ->
@@ -146,7 +149,7 @@ fun SettingsScreen(
                             placeholder = { Text(ChatSettings.DEFAULT_OPENAI_MODEL) },
                             modifier = Modifier.fillMaxWidth()
                         )
-                    } else {
+                    } else if (uiState.settings.provider == AiProvider.LOCAL_OLLAMA) {
                         OutlinedTextField(
                             value = uiState.settings.localBaseUrl,
                             onValueChange = {
@@ -217,6 +220,49 @@ fun SettingsScreen(
 
                         Text(
                             text = "Android Emulator: http://10.0.2.2:11434\nReal phone on same Wi-Fi: http://COMPUTER_IP:11434",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = uiState.settings.privateVpsBaseUrl,
+                            onValueChange = { viewModel.handleEvent(SettingsUiEvent.PrivateVpsBaseUrlChanged(it)) },
+                            label = { Text("VPS Base URL") },
+                            placeholder = { Text("http://123.123.123.123/") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = uiState.settings.privateVpsModel,
+                            onValueChange = { viewModel.handleEvent(SettingsUiEvent.PrivateVpsModelChanged(it)) },
+                            label = { Text("VPS Model") },
+                            placeholder = { Text(ChatSettings.DEFAULT_PRIVATE_VPS_MODEL) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = uiState.settings.privateVpsApiKey,
+                            onValueChange = { viewModel.handleEvent(SettingsUiEvent.PrivateVpsApiKeyChanged(it)) },
+                            label = { Text("VPS API Key") },
+                            singleLine = true,
+                            visualTransformation = if (isVpsApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                TextButton(onClick = { isVpsApiKeyVisible = !isVpsApiKeyVisible }) {
+                                    Text(if (isVpsApiKeyVisible) "Hide" else "Show")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = { viewModel.handleEvent(SettingsUiEvent.TestPrivateVpsConnection) },
+                            enabled = !uiState.isLoading
+                        ) {
+                            Text(if (uiState.isLoading) "Testing..." else "Test VPS connection")
+                        }
+                        uiState.vpsTestResult?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                        uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        Text(
+                            text = "HTTP sends the Bearer token without transport encryption. Use HTTPS in production.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -590,8 +636,9 @@ private fun IntSettingDropdown(
 
 private fun AiProvider.displayName(): String {
     return when (this) {
-        AiProvider.OPENAI -> "Online"
-        AiProvider.LOCAL_OLLAMA -> "Local"
+        AiProvider.OPENAI -> "OpenAI"
+        AiProvider.LOCAL_OLLAMA -> "Local Ollama"
+        AiProvider.PRIVATE_VPS -> "Private VPS"
     }
 }
 

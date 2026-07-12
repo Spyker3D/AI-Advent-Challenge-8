@@ -1544,6 +1544,19 @@ fun EnhancedMessageBubble(
                             color = contentColor.copy(alpha = 0.75f),
                             modifier = Modifier.padding(top = 6.dp).clickable { showLocalMetrics = true }
                         )
+                    } else if (!isUserMessage && message.metadata?.modelDisplayName?.startsWith("VPS ·") == true) {
+                        val metadata = requireNotNull(message.metadata)
+                        Text(
+                            text = listOfNotNull(
+                                metadata.modelDisplayName,
+                                String.format("%.1f sec", metadata.responseTimeMs / 1000.0),
+                                metadata.tokensPerSecond?.let { String.format("%.1f tok/sec", it) },
+                                metadata.completionTokens?.let { "$it tokens" }
+                            ).joinToString("  •  "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.75f),
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
 
                     // Copy button for assistant messages

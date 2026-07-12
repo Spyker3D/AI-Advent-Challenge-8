@@ -7,6 +7,7 @@ import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.feature.settings.presentation.SettingsUiEvent
 import com.aiassistant.feature.settings.presentation.SettingsUiState
+import com.aiassistant.core.domain.repository.PrivateVpsConnectionTester
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +18,8 @@ import javax.inject.Inject
 
 class SettingsViewModel @Inject constructor(
     private val getChatSettingsUseCase: GetChatSettingsUseCase,
-    private val saveChatSettingsUseCase: SaveChatSettingsUseCase
+    private val saveChatSettingsUseCase: SaveChatSettingsUseCase,
+    private val privateVpsConnectionTester: PrivateVpsConnectionTester
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -88,6 +90,10 @@ class SettingsViewModel @Inject constructor(
             is SettingsUiEvent.LocalSystemPromptChanged -> updateAndSave { it.copy(localSystemPrompt = event.value) }
             is SettingsUiEvent.InvariantsEnabledChanged -> updateAndSave { it.copy(invariantsEnabled = event.enabled) }
             is SettingsUiEvent.TaskPipelineEnabledChanged -> updateAndSave { it.copy(taskPipelineEnabled = event.enabled) }
+            is SettingsUiEvent.PrivateVpsBaseUrlChanged -> updateAndSave { it.copy(privateVpsBaseUrl = event.value) }
+            is SettingsUiEvent.PrivateVpsModelChanged -> updateAndSave { it.copy(privateVpsModel = event.value) }
+            is SettingsUiEvent.PrivateVpsApiKeyChanged -> updateAndSave { it.copy(privateVpsApiKey = event.value) }
+            SettingsUiEvent.TestPrivateVpsConnection -> testPrivateVpsConnection()
             is SettingsUiEvent.SaveSettings -> {
                 saveSettings()
             }
@@ -154,5 +160,15 @@ class SettingsViewModel @Inject constructor(
         val defaultSettings = ChatSettings()
         _uiState.value = _uiState.value.copy(settings = defaultSettings)
         saveSettings()
+    }
+
+    private fun testPrivateVpsConnection() {
+        viewModelScope.launch {
+            val settings = _uiState.value.settings
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, vpsTestResult = null)
+            privateVpsConnectionTester.test(settings.privateVpsBaseUrl, settings.privateVpsModel, settings.privateVpsApiKey)
+                .onSuccess { _uiState.value = _uiState.value.copy(isLoading = false, vpsTestResult = it) }
+                .onFailure { _uiState.value = _uiState.value.copy(isLoading = false, error = it.message) }
+        }
     }
 }

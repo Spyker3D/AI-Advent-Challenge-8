@@ -19,7 +19,10 @@ class AppModule(private val context: Context) {
     @Singleton
     fun provideApiConfig(): ApiConfig {
         return ApiConfig(
-            openAiApiKey = BuildConfig.OPENAI_API_KEY
+            openAiApiKey = BuildConfig.OPENAI_API_KEY,
+            privateVpsBaseUrl = BuildConfig.PRIVATE_VPS_BASE_URL,
+            privateVpsApiKey = BuildConfig.PRIVATE_VPS_API_KEY,
+            privateVpsModel = BuildConfig.PRIVATE_VPS_MODEL
         )
     }
 

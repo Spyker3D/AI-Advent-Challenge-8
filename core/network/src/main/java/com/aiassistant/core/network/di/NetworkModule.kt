@@ -1,6 +1,8 @@
 package com.aiassistant.core.network.di
 
 import com.aiassistant.core.network.api.OpenAiApi
+import com.aiassistant.core.network.api.PrivateVpsApi
+import com.aiassistant.core.network.interceptor.PrivateVpsAuthInterceptor
 import com.aiassistant.core.network.interceptor.OpenAiAuthInterceptor
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -81,4 +83,34 @@ class NetworkModule {
     fun provideOpenAiApi(@Named("OpenAiRetrofit") retrofit: Retrofit): OpenAiApi {
         return retrofit.create(OpenAiApi::class.java)
     }
+
+    @Provides
+    @Singleton
+    @PrivateVpsClient
+    fun providePrivateVpsOkHttpClient(auth: PrivateVpsAuthInterceptor): OkHttpClient {
+        val logger = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BASIC
+            redactHeader("Authorization")
+        }
+        return OkHttpClient.Builder()
+            .addInterceptor(auth)
+            .addInterceptor(logger)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(300, TimeUnit.SECONDS)
+            .callTimeout(330, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    @PrivateVpsRetrofit
+    fun providePrivateVpsRetrofit(@PrivateVpsClient client: OkHttpClient, gson: Gson): Retrofit =
+        Retrofit.Builder().baseUrl("https://localhost/").client(client)
+            .addConverterFactory(GsonConverterFactory.create(gson)).build()
+
+    @Provides
+    @Singleton
+    fun providePrivateVpsApi(@PrivateVpsRetrofit retrofit: Retrofit): PrivateVpsApi =
+        retrofit.create(PrivateVpsApi::class.java)
 }

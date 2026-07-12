@@ -6,6 +6,7 @@ import com.aiassistant.core.data.client.LlmClientImpl
 import com.aiassistant.core.data.database.ChatDatabase
 import com.aiassistant.core.data.database.ChatMessageDao
 import com.aiassistant.core.data.datastore.SettingsDataStore
+import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.data.mcp.McpAgentRepositoryImpl
 import com.aiassistant.core.data.rag.AndroidOllamaEmbeddingClient
@@ -24,6 +25,8 @@ import com.aiassistant.core.domain.repository.InvariantRepository
 import com.aiassistant.core.domain.repository.LongTermMemoryRepository
 import com.aiassistant.core.domain.repository.SettingsRepository
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
+import com.aiassistant.core.domain.repository.PrivateVpsConnectionTester
+import com.aiassistant.core.data.repository.PrivateVpsConnectionTesterImpl
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -77,12 +80,15 @@ abstract class DataModule {
         androidOllamaEmbeddingClient: AndroidOllamaEmbeddingClient
     ): RagEmbeddingClient
 
+    @Binds
+    abstract fun bindPrivateVpsConnectionTester(impl: PrivateVpsConnectionTesterImpl): PrivateVpsConnectionTester
+
 
     companion object {
         @Provides
         @Singleton
-        fun provideSettingsDataStore(context: Context): SettingsDataStore {
-            return SettingsDataStore(context)
+        fun provideSettingsDataStore(context: Context, apiConfig: ApiConfig): SettingsDataStore {
+            return SettingsDataStore(context, apiConfig)
         }
         
         @Provides
