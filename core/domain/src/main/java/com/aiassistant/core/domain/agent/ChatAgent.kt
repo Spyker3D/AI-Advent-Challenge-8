@@ -77,7 +77,7 @@ class ChatAgent @Inject constructor(
         taskContextId: String? = null
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
-            val invariants = loadInvariants()
+            val invariants = if (chatRequest.invariantsEnabled) loadInvariants() else emptyList()
             val memoryContext = buildMemoryContext(chatId, taskContextId, contextStrategy)
             val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext, invariants)
             logMemoryLayers(chatId, memoryContext)
@@ -174,7 +174,7 @@ class ChatAgent @Inject constructor(
         taskContextId: String? = null
     ): Result<AiChatResponse> = withContext(dispatcher) {
         try {
-            val invariants = loadInvariants()
+            val invariants = if (chatRequest.invariantsEnabled) loadInvariants() else emptyList()
             val memoryContext = buildMemoryContext(chatId, taskContextId, contextStrategy)
             val enrichedSystemPrompt = buildEnrichedSystemPrompt(chatRequest, memoryContext, invariants)
             logMemoryLayers(chatId, memoryContext)

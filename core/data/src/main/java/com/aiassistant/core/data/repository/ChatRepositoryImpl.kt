@@ -236,7 +236,7 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     private fun ollamaModelNotFoundMessage(model: String): String {
-        return "Модель $model не найдена в Ollama.\nУстановите её командой:\nollama pull $model"
+        return "Модель $model не установлена.\nВыполните:\nollama pull $model"
     }
 
     // This method is now handled by the ChatAgent

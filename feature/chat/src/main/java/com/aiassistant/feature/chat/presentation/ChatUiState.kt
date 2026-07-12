@@ -16,6 +16,8 @@ data class ChatUiState(
     val temperature: Float = 0.7f,
     val maxTokens: Int = 1000,
     val systemPrompt: String = "You are a helpful AI assistant.",
+    val invariantsEnabled: Boolean = true,
+    val taskPipelineEnabled: Boolean = true,
     val error: String? = null,
     val currentMessage: String = "",
     // Day 2 fields (loaded from settings)

@@ -86,6 +86,8 @@ class SettingsViewModel @Inject constructor(
             }
             is SettingsUiEvent.LocalSeedChanged -> updateAndSave { it.copy(localSeed = event.value) }
             is SettingsUiEvent.LocalSystemPromptChanged -> updateAndSave { it.copy(localSystemPrompt = event.value) }
+            is SettingsUiEvent.InvariantsEnabledChanged -> updateAndSave { it.copy(invariantsEnabled = event.enabled) }
+            is SettingsUiEvent.TaskPipelineEnabledChanged -> updateAndSave { it.copy(taskPipelineEnabled = event.enabled) }
             is SettingsUiEvent.SaveSettings -> {
                 saveSettings()
             }

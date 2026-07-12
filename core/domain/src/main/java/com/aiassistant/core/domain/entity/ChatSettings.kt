@@ -16,6 +16,8 @@ data class ChatSettings(
     val localRepeatPenalty: Float = DEFAULT_LOCAL_REPEAT_PENALTY,
     val localSeed: Int? = null,
     val localSystemPrompt: String = DEFAULT_LOCAL_SYSTEM_PROMPT,
+    val invariantsEnabled: Boolean = true,
+    val taskPipelineEnabled: Boolean = true,
     // Day 2 fields
     val useJsonFormat: Boolean = false,
     val limitLength: Boolean = false,
@@ -30,6 +32,7 @@ data class ChatSettings(
     companion object {
         const val DEFAULT_LOCAL_BASE_URL = "http://10.0.2.2:11434"
         const val DEFAULT_LOCAL_MODEL = "qwen2.5:7b-instruct"
+        const val LOCAL_MODEL_Q5 = "qwen2.5:7b-instruct-q5_K_M"
         const val DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
         const val DEFAULT_LOCAL_TEMPERATURE = 0.2f
         const val DEFAULT_LOCAL_MAX_TOKENS = 700
@@ -44,6 +47,13 @@ data class ChatSettings(
         fun safeLocalContextWindow(value: Int) = value.takeIf { it in LOCAL_CONTEXT_WINDOWS } ?: DEFAULT_LOCAL_CONTEXT_WINDOW
         fun safeLocalTopP(value: Float) = value.takeIf { it in 0.1f..1f } ?: DEFAULT_LOCAL_TOP_P
         fun safeLocalRepeatPenalty(value: Float) = value.takeIf { it in 0.8f..1.5f } ?: DEFAULT_LOCAL_REPEAT_PENALTY
+        fun normalizeLocalModelTag(value: String?): String {
+            val tag = value?.trim().orEmpty()
+            return when (tag) {
+                "", "llama3.2:3b" -> DEFAULT_LOCAL_MODEL
+                else -> tag
+            }
+        }
 
         fun normalizeOpenAiModel(model: String?): String {
             val normalized = model?.trim().orEmpty()

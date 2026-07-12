@@ -19,6 +19,8 @@ sealed class SettingsUiEvent {
     data class LocalRepeatPenaltyChanged(val value: Float) : SettingsUiEvent()
     data class LocalSeedChanged(val value: Int?) : SettingsUiEvent()
     data class LocalSystemPromptChanged(val value: String) : SettingsUiEvent()
+    data class InvariantsEnabledChanged(val enabled: Boolean) : SettingsUiEvent()
+    data class TaskPipelineEnabledChanged(val enabled: Boolean) : SettingsUiEvent()
     object SaveSettings : SettingsUiEvent()
     object ResetToDefaults : SettingsUiEvent()
     
