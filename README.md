@@ -1,5 +1,11 @@
 # AI Assistant
 
+## Day 31 — Developer Assistant CLI
+
+Добавлен отдельный Kotlin/JVM-инструмент `developer-assistant`: локальные embeddings и RAG-индекс строятся через Ollama `nomic-embed-text:latest`, ответ `/help` генерируется через OpenAI Responses API (`gpt-4.1-mini`), а Git-ветка получается через MCP. Инструмент не зависит от Android SDK и не входит в APK.
+
+Запуск: `gradlew.bat :developer-assistant:run --args="--project-root=."`. Подробнее: [developer-assistant/README.md](developer-assistant/README.md).
+
 ## Day 29 — Local LLM Optimization
 
 В режиме `Local` параметры Ollama меняются прямо в Settings и автоматически

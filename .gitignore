@@ -47,7 +47,7 @@ captures/
 
 # IntelliJ caches
 out/
+.developer-assistant/
 
 # Continue AI
 .continue/
-
