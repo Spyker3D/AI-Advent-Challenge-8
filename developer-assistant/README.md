@@ -28,8 +28,13 @@ node mcp-server/server.js
 ```
 
 ```powershell
-gradlew.bat :developer-assistant:run --args="--project-root=."
-gradlew.bat :developer-assistant:run --args="--project-root=C:\Projects\AnotherProject"
+./run-developer-assistant.bat
+
+# Ручной запуск через Gradle может искажать кириллицу в Windows-консоли.
+# Для прямого запуска сначала соберите distribution:
+chcp 65001
+gradlew.bat --console=plain :developer-assistant:installDist
+./developer-assistant/build/install/developer-assistant/bin/developer-assistant.bat --project-root=.
 ```
 
 Без `--project-root` используется рабочая директория. Ollama настраивается через `OLLAMA_BASE_URL` и `OLLAMA_EMBEDDING_MODEL`; значения по умолчанию — `http://localhost:11434` и `nomic-embed-text:latest`. OpenAI настраивается через `OPENAI_BASE_URL` и `OPENAI_GENERATION_MODEL`; defaults — `https://api.openai.com/v1` и `gpt-4.1-mini`.

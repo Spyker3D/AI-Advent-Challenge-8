@@ -9,8 +9,10 @@ import com.aiassistant.developer.mcp.GitMcpClient
 import com.aiassistant.rag.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.PrintStream
 import java.io.PrintWriter
 import java.nio.file.Files
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -18,6 +20,12 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
 fun main(args: Array<String>) {
+    // Gradle daemons can retain the Windows console encoding they were started
+    // with even after `chcp 65001`. Make this interactive CLI consistently emit
+    // UTF-8 so Russian questions, answers, and labels are not corrupted.
+    System.setOut(PrintStream(System.out, true, StandardCharsets.UTF_8))
+    System.setErr(PrintStream(System.err, true, StandardCharsets.UTF_8))
+
     val config = try { ConfigLoader.load(args) } catch (error: Exception) {
         System.err.println("Error: ${error.message}"); exitProcess(2)
     }
@@ -52,7 +60,9 @@ fun main(args: Array<String>) {
 
     val service = DeveloperAssistantService(config.projectRoot, indexStorage, ProjectRetriever(embedding, config.topK), git,
         OpenAiResponsesClient(OpenAiConfig(config.openAiBaseUrl, config.openAiModel, config.openAiApiKey)))
-    val loop = CommandLoop(BufferedReader(InputStreamReader(System.`in`)), PrintWriter(System.out, true),
+    val loop = CommandLoop(
+        BufferedReader(InputStreamReader(System.`in`, StandardCharsets.UTF_8)),
+        PrintWriter(System.out, true, StandardCharsets.UTF_8),
         { question -> runBlocking { service.answer(question) } }, {
         val manifest = manifestStorage.load(); val chunks = indexStorage.load(); val currentBranch = git.currentBranch()
         """Project: ${config.projectRoot}
