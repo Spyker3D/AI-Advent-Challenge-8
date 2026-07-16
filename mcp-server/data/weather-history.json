@@ -1,1 +1,261 @@
-[]
+[
+  {
+    "timestamp": "2026-07-16T20:54:39.676Z",
+    "temperature": 12.6,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T20:55:40.710Z",
+    "temperature": 12.6,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T20:56:40.595Z",
+    "temperature": 12.6,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T20:57:40.718Z",
+    "temperature": 12.6,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T20:58:40.631Z",
+    "temperature": 12.6,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T20:59:40.667Z",
+    "temperature": 12.6,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:00:40.667Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:01:45.778Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:02:40.701Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:03:40.734Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:04:40.747Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:05:40.781Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:06:40.683Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:07:40.739Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:08:40.776Z",
+    "temperature": 12.5,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:15:34.417Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:16:34.319Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:17:34.370Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:18:34.423Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:19:34.347Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:20:34.464Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:21:34.361Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:22:34.394Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:23:34.385Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:24:34.373Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:25:34.716Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:26:34.480Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:27:41.563Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:28:41.695Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:29:41.589Z",
+    "temperature": 12.4,
+    "windSpeed": 5.9,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:30:41.552Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:31:41.583Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:32:41.614Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:33:42.685Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:34:41.567Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:35:41.644Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-16T21:36:41.646Z",
+    "temperature": 12.3,
+    "windSpeed": 6.3,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  }
+]

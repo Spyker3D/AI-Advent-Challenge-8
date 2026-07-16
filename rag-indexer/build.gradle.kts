@@ -11,6 +11,11 @@ kotlin {
     jvmToolchain(17)
 }
 
+dependencies {
+    implementation(project(":rag-core"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+}
+
 tasks.register<JavaExec>("searchDemo") {
     group = "rag"
     description = "Runs a cosine-similarity search over output/structure_index.json. Pass -Pquery=\"your text\"."

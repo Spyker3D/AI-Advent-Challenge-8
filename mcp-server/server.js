@@ -1,6 +1,8 @@
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 
 const PORT = 3000;
 const SERVER_ID = "weather";
@@ -10,6 +12,8 @@ const CURRENT_FIELDS = "temperature_2m,wind_speed_10m,precipitation";
 const DATA_DIR = path.join(__dirname, "data");
 const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const WEATHER_HISTORY_FILE = path.join(DATA_DIR, "weather-history.json");
+const PROJECT_ROOT = path.resolve(process.env.MCP_PROJECT_ROOT || path.join(__dirname, ".."));
+const execFileAsync = promisify(execFile);
 
 const tasks = {
   "AI-17": { status: "In Progress", title: "Implement first custom MCP tool" },
@@ -278,6 +282,11 @@ function handleToolsList(id) {
   return createJsonRpcResponse(id, {
     tools: [
       {
+        name: "get_current_git_branch",
+        description: "Returns the current Git branch of the configured local project repository.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      },
+      {
         name: "get_weather_by_city",
         description: "Returns current weather by city. Supported: Moscow, Saint Petersburg, Kazan, Sochi.",
         inputSchema: {
@@ -361,6 +370,21 @@ async function handleToolsCall(id, params) {
     console.log(`[MCP tools/call] server=${SERVER_ID} success tool=${toolName}`);
     return response;
   };
+
+  if (toolName === "get_current_git_branch") {
+    try {
+      const { stdout } = await execFileAsync("git", ["branch", "--show-current"], {
+        cwd: PROJECT_ROOT,
+        windowsHide: true,
+        timeout: 5000,
+      });
+      const branch = stdout.trim();
+      if (!branch) return createJsonRpcError(id, -32000, "Git repository is in detached HEAD state or has no current branch.");
+      return success(createJsonRpcResponse(id, textResult(branch)));
+    } catch (error) {
+      return createJsonRpcError(id, -32000, `Cannot read Git branch for configured project: ${error.message}`);
+    }
+  }
 
   if (toolName === "get_task_status") {
     const taskId = args.taskId;

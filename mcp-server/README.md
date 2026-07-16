@@ -1,5 +1,16 @@
 # Local MCP Server
 
+## Git branch tool (Day 31)
+
+`get_current_git_branch` без аргументов выполняет только `git branch --show-current` в каталоге `MCP_PROJECT_ROOT` (по умолчанию — корень репозитория):
+
+```powershell
+$env:MCP_PROJECT_ROOT = "C:\Projects\AI-Advent-Challenge-8"
+node server.js
+```
+
+Произвольные shell-команды tool не принимает.
+
 Локальный MCP-сервер для задания Day 17.
 
 ## Что реализовано
