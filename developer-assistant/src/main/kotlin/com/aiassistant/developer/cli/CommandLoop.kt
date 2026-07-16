@@ -13,21 +13,39 @@ class CommandLoop(
 ) {
     fun run() {
         while (true) {
-            output.print("> "); output.flush()
+            printPrompt()
             val line = input.readLine() ?: return
             try {
                 when (val command = CommandParser.parse(line)) {
-                    is CliCommand.Help -> output.println(help(command.question))
-                    CliCommand.Status -> output.println(status())
-                    CliCommand.Reindex -> output.println(reindex())
+                    is CliCommand.Help -> printBlock("АССИСТЕНТ", help(command.question))
+                    CliCommand.Status -> printBlock("СТАТУС", status())
+                    CliCommand.Reindex -> printBlock("ПЕРЕИНДЕКСАЦИЯ", reindex())
                     CliCommand.Exit -> return
-                    is CliCommand.Invalid -> if (command.message.isNotEmpty()) output.println(command.message)
+                    is CliCommand.Invalid -> if (command.message.isNotEmpty()) printBlock("СИСТЕМА", command.message)
                 }
             } catch (error: Exception) {
-                output.println("Error: ${error.message ?: error::class.simpleName}")
+                printBlock("ОШИБКА", error.message ?: error::class.simpleName.orEmpty())
                 if (debug) error.printStackTrace(output)
             }
             output.flush()
         }
+    }
+
+    private fun printPrompt() {
+        output.println(SEPARATOR)
+        output.println("ВЫ:")
+        output.print("> ")
+        output.flush()
+    }
+
+    private fun printBlock(title: String, text: String) {
+        output.println()
+        output.println("$title:")
+        output.println(text)
+        output.println()
+    }
+
+    private companion object {
+        const val SEPARATOR = "────────────────────────────────────────"
     }
 }
