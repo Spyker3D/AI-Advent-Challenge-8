@@ -2,28 +2,23 @@ package com.aiassistant.developer.review
 
 import com.aiassistant.developer.llm.LlmClient
 import com.aiassistant.developer.mcp.GitReviewProvider
-import com.aiassistant.rag.IndexStorage
-import com.aiassistant.rag.ProjectRetriever
 import java.nio.file.Files
-import java.nio.file.Path
-
-data class ReviewRequest(val baseRef: String, val headRef: String, val output: Path)
 
 class PullRequestReviewService(
     private val git: GitReviewProvider,
-    private val storage: IndexStorage,
-    private val retriever: ProjectRetriever,
+    private val ragContextProvider: ReviewRagContextProvider,
     private val llm: LlmClient,
     private val maxDiffChars: Int = 120_000
 ) {
     suspend fun execute(request: ReviewRequest): String {
+        ragContextProvider.announce()
         val changedFiles = git.changedFiles(request.baseRef, request.headRef)
         val fullDiff = git.diff(request.baseRef, request.headRef)
         val review = if (fullDiff.isBlank()) emptyDiffReview(request) else {
             val truncated = fullDiff.length > maxDiffChars
             val diff = fullDiff.take(maxDiffChars)
             val query = "Code review architecture API models errors tests for changed files:\n$changedFiles"
-            val chunks = retriever.retrieve(query, storage.load())
+            val chunks = ragContextProvider.retrieve(query)
             val rag = chunks.joinToString("\n\n") {
                 "SOURCE ${it.sourcePath}:${it.startLine ?: "?"}-${it.endLine ?: "?"}\n${it.content}"
             }
@@ -42,19 +37,27 @@ class PullRequestReviewService(
         rag: String,
         truncated: Boolean,
         originalDiffChars: Int
-    ): String = """Base SHA/ref: ${request.baseRef}
-Head SHA/ref: ${request.headRef}
-Changed files (MCP get_changed_files):
-$changedFiles
-
-Unified diff (MCP get_git_diff):
-$diff
-
-Relevant project RAG context:
-$rag
-
-Diff truncated: $truncated${if (truncated) " (reviewed $maxDiffChars of $originalDiffChars characters)" else ""}
-Produce the required Markdown PR review. Findings must be supported by the diff or RAG context."""
+    ): String = buildString {
+        appendLine("Base SHA/ref: ${request.baseRef}")
+        appendLine("Head SHA/ref: ${request.headRef}")
+        appendLine("Changed files (MCP get_changed_files):")
+        appendLine(changedFiles)
+        appendLine()
+        appendLine("Unified diff (MCP get_git_diff):")
+        appendLine(diff)
+        if (rag.isNotBlank()) {
+            appendLine()
+            appendLine("Relevant project context:")
+            appendLine(rag)
+        }
+        appendLine()
+        append("Diff truncated: $truncated")
+        if (truncated) append(" (reviewed $maxDiffChars of $originalDiffChars characters)")
+        appendLine()
+        append("Produce the required Markdown PR review. Findings must be supported by the diff")
+        if (rag.isNotBlank()) append(" or RAG context")
+        append('.')
+    }
 
     private fun ensureMarker(response: String, truncated: Boolean): String = buildString {
         if (!response.contains(MARKER)) appendLine(MARKER)

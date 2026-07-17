@@ -58,6 +58,22 @@ Environment имеет приоритет. Если ключ не найден, 
 
 Индекс хранится в `<project-root>/.developer-assistant/index.json`, manifest — в `manifest.json`. Metadata индекса содержит `embeddingProvider`, `embeddingModel` и фактическую `embeddingDimensions`, определённую по первому ответу Ollama. При смене модели или старом index-формате выполняется полная переиндексация. Embeddings и индекс не отправляются в OpenAI.
 
+## RAG modes
+
+`review-pr` поддерживает три режима RAG:
+
+- `off` — пропускает RAG и выполняет review только по PR metadata, changed files и git diff; Ollama не требуется;
+- `existing` — использует существующий индекс, но никогда не строит и не обновляет его; если индекса нет, review продолжается без RAG;
+- `update` — строит или инкрементально обновляет индекс перед поиском.
+
+Режим по умолчанию — `update` для обратной совместимости.
+
+```powershell
+./gradlew.bat :developer-assistant:run --args="review-pr --project-root=. --base-ref=main --head-ref=HEAD --output=build/ai-review.md --rag-mode=off"
+```
+
+GitHub Actions использует `--rag-mode=off`, чтобы не устанавливать Ollama и не тратить время на полную индексацию проекта.
+
 ## Фильтры и безопасность
 
 Поддерживаются `.md`, `.txt`, `.kt`, `.kts`, `.java`, `.gradle`, `.toml`, `.xml`, `.json`, `.yaml`, `.yml`, `.js`, `.ts`. Исключаются `.git`, `.gradle`, `.idea`, `.developer-assistant`, `build` на любой глубине, `out`, `node_modules`, `dist`, `generated`, `captures`, `.externalNativeBuild`, `.cxx`, `secrets`. Не читаются `.env`, `local.properties`, `secrets.properties`, ключи, архивы, Android-пакеты, media и бинарные файлы. Лимит по умолчанию — 1 MiB; ошибка отдельного пути не прекращает сканирование.

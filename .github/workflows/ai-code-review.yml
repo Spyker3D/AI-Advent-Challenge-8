@@ -16,6 +16,7 @@ jobs:
   review:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       MCP_PROJECT_ROOT: ${{ github.workspace }}
@@ -50,33 +51,56 @@ jobs:
         run: npm ci --prefix mcp-server
 
       - name: Start MCP server
+        shell: bash
         run: |
+          set -euo pipefail
+
           node mcp-server/server.js > build-mcp.log 2>&1 &
+          MCP_PID=$!
+
           for attempt in {1..30}; do
             if curl --fail --silent --show-error \
-              -H 'Content-Type: application/json' \
+              -H "Content-Type: application/json" \
               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
               http://localhost:3000/mcp > /dev/null; then
+              echo "MCP server is ready"
               exit 0
             fi
+
+            if ! kill -0 "$MCP_PID" 2>/dev/null; then
+              echo "MCP server stopped unexpectedly"
+              cat build-mcp.log
+              exit 1
+            fi
+
             sleep 1
           done
+
+          echo "MCP server did not start in time"
           cat build-mcp.log
           exit 1
 
-      - name: Install and start Ollama
-        run: |
-          curl --fail --silent --show-error https://ollama.com/install.sh | sh
-          ollama serve > build-ollama.log 2>&1 &
-          for attempt in {1..30}; do
-            curl --fail --silent http://localhost:11434/api/tags > /dev/null && break
-            sleep 1
-          done
-          ollama pull nomic-embed-text:latest
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
 
       - name: Generate AI review
+        shell: bash
         run: |
-          ./gradlew --console=plain :developer-assistant:run --args="review-pr --project-root=. --base-ref=${{ github.event.pull_request.base.sha }} --head-ref=${{ github.event.pull_request.head.sha }} --output=build/ai-review.md"
+          set -euo pipefail
+
+          mkdir -p build
+
+          ./gradlew \
+            --console=plain \
+            :developer-assistant:run \
+            --args="review-pr \
+              --project-root=. \
+              --base-ref=${{ github.event.pull_request.base.sha }} \
+              --head-ref=${{ github.event.pull_request.head.sha }} \
+              --output=build/ai-review.md \
+              --rag-mode=off"
+
+          test -f build/ai-review.md
 
       - name: Create or update PR comment
         run: node scripts/upsert-ai-review.js

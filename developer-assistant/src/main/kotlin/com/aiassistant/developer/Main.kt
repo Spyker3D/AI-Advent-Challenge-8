@@ -7,7 +7,8 @@ import com.aiassistant.developer.llm.OpenAiConfig
 import com.aiassistant.developer.llm.OpenAiResponsesClient
 import com.aiassistant.developer.mcp.GitMcpClient
 import com.aiassistant.developer.review.PullRequestReviewService
-import com.aiassistant.developer.review.ReviewRequest
+import com.aiassistant.developer.review.ReviewCommandParser
+import com.aiassistant.developer.review.ReviewRagContextProvider
 import com.aiassistant.rag.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -37,32 +38,41 @@ fun main(args: Array<String>) {
     val manifestPath = stateDir.resolve("manifest.json")
     val indexStorage = IndexStorage(indexPath)
     val manifestStorage = ManifestStorage(manifestPath)
-    val embedding = OllamaEmbeddingClient(OllamaEmbeddingConfig(config.embeddingBaseUrl, config.embeddingModel))
     val git = GitMcpClient(config.mcpUrl)
-    val indexer = ProjectIndexer(
-        config.projectRoot,
-        ProjectScanner(ScannerConfig(maxFileSizeBytes = config.maxFileSizeBytes)),
-        ProjectChunker(config.chunkSize, config.chunkOverlap), embedding, "ollama", config.embeddingModel, indexStorage, manifestStorage
-    )
+    val llm = OpenAiResponsesClient(OpenAiConfig(config.openAiBaseUrl, config.openAiModel, config.openAiApiKey))
 
     println("Developer Assistant\n")
     println("Project: ${config.projectRoot}")
-    if (!Files.exists(indexPath)) println("Index not found.\nBuilding project index...") else println("Scanning project...")
-    try {
-        val update = runBlocking { indexer.update(progress = ::println) }
-        printUpdate(update)
-    } catch (error: Exception) {
-        System.err.println("Index update failed: ${error.message}")
-        if (config.debug) error.printStackTrace()
-        if (reviewMode) exitProcess(1)
-        if (!Files.exists(indexPath)) println("/help will be unavailable until indexing succeeds.")
-    }
-
-    val llm = OpenAiResponsesClient(OpenAiConfig(config.openAiBaseUrl, config.openAiModel, config.openAiApiKey))
     if (reviewMode) {
         try {
-            val request = parseReviewRequest(args, config.projectRoot)
-            val service = PullRequestReviewService(git, indexStorage, ProjectRetriever(embedding, config.topK), llm)
+            val request = ReviewCommandParser.parse(args, config.projectRoot)
+            val embedding by lazy {
+                OllamaEmbeddingClient(OllamaEmbeddingConfig(config.embeddingBaseUrl, config.embeddingModel))
+            }
+            val indexer by lazy {
+                ProjectIndexer(
+                    config.projectRoot,
+                    ProjectScanner(ScannerConfig(maxFileSizeBytes = config.maxFileSizeBytes)),
+                    ProjectChunker(config.chunkSize, config.chunkOverlap),
+                    embedding,
+                    "ollama",
+                    config.embeddingModel,
+                    indexStorage,
+                    manifestStorage
+                )
+            }
+            val retriever by lazy { ProjectRetriever(embedding, config.topK) }
+            val ragContextProvider = ReviewRagContextProvider(
+                mode = request.ragMode,
+                indexExists = indexStorage::exists,
+                updateIndex = {
+                    if (!indexStorage.exists()) println("Index not found.\nBuilding project index...")
+                    else println("Scanning project...")
+                    printUpdate(indexer.update(progress = ::println))
+                },
+                search = { query -> retriever.retrieve(query, indexStorage.load()) }
+            )
+            val service = PullRequestReviewService(git, ragContextProvider, llm)
             runBlocking { service.execute(request) }
             println("AI review written to ${request.output.toAbsolutePath().normalize()}")
             return
@@ -71,6 +81,22 @@ fun main(args: Array<String>) {
             if (config.debug) error.printStackTrace()
             exitProcess(1)
         }
+    }
+
+    val embedding = OllamaEmbeddingClient(OllamaEmbeddingConfig(config.embeddingBaseUrl, config.embeddingModel))
+    val indexer = ProjectIndexer(
+        config.projectRoot,
+        ProjectScanner(ScannerConfig(maxFileSizeBytes = config.maxFileSizeBytes)),
+        ProjectChunker(config.chunkSize, config.chunkOverlap), embedding, "ollama", config.embeddingModel, indexStorage, manifestStorage
+    )
+    if (!Files.exists(indexPath)) println("Index not found.\nBuilding project index...") else println("Scanning project...")
+    try {
+        val update = runBlocking { indexer.update(progress = ::println) }
+        printUpdate(update)
+    } catch (error: Exception) {
+        System.err.println("Index update failed: ${error.message}")
+        if (config.debug) error.printStackTrace()
+        if (!Files.exists(indexPath)) println("/help will be unavailable until indexing succeeds.")
     }
     val branch = git.currentBranch()
     println("Branch: ${branch.branch ?: "unavailable"}")
@@ -97,22 +123,6 @@ Embedding service: ${if (runBlocking { runCatching { embedding.embed(listOf("hea
         updateText(result)
     }, config.debug)
     loop.run()
-}
-
-private fun parseReviewRequest(args: Array<String>, projectRoot: java.nio.file.Path): ReviewRequest {
-    val options = args.drop(1).filter { it.startsWith("--") }.associate {
-        val pair = it.removePrefix("--").split('=', limit = 2)
-        pair[0] to pair.getOrElse(1) { "" }
-    }
-    val base = options["base-ref"]?.takeIf(String::isNotBlank)
-        ?: throw IllegalArgumentException("review-pr requires --base-ref=<sha-or-ref>")
-    val head = options["head-ref"]?.takeIf(String::isNotBlank)
-        ?: throw IllegalArgumentException("review-pr requires --head-ref=<sha-or-ref>")
-    val outputValue = options["output"]?.takeIf(String::isNotBlank)
-        ?: throw IllegalArgumentException("review-pr requires --output=<file>")
-    val rawOutput = java.nio.file.Paths.get(outputValue)
-    val output = if (rawOutput.isAbsolute) rawOutput else projectRoot.resolve(rawOutput)
-    return ReviewRequest(base, head, output.normalize())
 }
 
 private fun printUpdate(update: IndexUpdate) = println(updateText(update))

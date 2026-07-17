@@ -2,17 +2,14 @@ package com.aiassistant.developer.review
 
 import com.aiassistant.developer.llm.LlmClient
 import com.aiassistant.developer.mcp.GitReviewProvider
-import com.aiassistant.rag.EmbeddingClient
-import com.aiassistant.rag.IndexStorage
-import com.aiassistant.rag.LocalVectorIndex
 import com.aiassistant.rag.ProjectChunk
-import com.aiassistant.rag.ProjectRetriever
 import java.nio.file.Files
 import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class PullRequestReviewServiceTest {
@@ -39,24 +36,30 @@ class PullRequestReviewServiceTest {
         assertContains(result, "частичное ревью")
     }
 
-    private fun fixture(diff: String, maxDiffChars: Int = 120_000): Fixture {
+    @Test fun `off mode creates review without empty RAG section`() = runBlocking {
+        val fixture = fixture(diff = "+change", withRag = false)
+        fixture.service.execute(fixture.request)
+        assertFalse(fixture.llm.input.contains("Relevant project context"))
+        assertTrue(Files.exists(fixture.request.output))
+    }
+
+    private fun fixture(diff: String, maxDiffChars: Int = 120_000, withRag: Boolean = true): Fixture {
         val root = Files.createTempDirectory("review-service")
-        val storage = IndexStorage(root.resolve("index.json"))
-        storage.save(LocalVectorIndex(chunks = listOf(ProjectChunk(
+        val chunk = ProjectChunk(
             id = "1", sourcePath = "docs/architecture.md", content = "Architecture rule from docs",
             fileExtension = "md", startLine = 1, endLine = 2, symbolName = null,
             contentHash = "hash", embedding = listOf(1f, 0f)
-        ))))
+        )
         val git = object : GitReviewProvider {
             override fun changedFiles(baseRef: String, headRef: String) = "M\tA.kt"
             override fun diff(baseRef: String, headRef: String) = diff
         }
         val llm = CapturingLlm()
-        val retriever = ProjectRetriever(object : EmbeddingClient {
-            override suspend fun embed(texts: List<String>) = texts.map { listOf(1f, 0f) }
-        })
         val request = ReviewRequest("base", "head", root.resolve("build/ai-review.md"))
-        return Fixture(PullRequestReviewService(git, storage, retriever, llm, maxDiffChars), request, llm)
+        val rag = if (withRag) ReviewRagContextProvider(RagMode.EXISTING, { true }, {}, { listOf(chunk) }, {})
+        else ReviewRagContextProvider(RagMode.OFF, { error("must not check index") }, { error("must not update") },
+            { error("must not search") }, {})
+        return Fixture(PullRequestReviewService(git, rag, llm, maxDiffChars), request, llm)
     }
 
     private data class Fixture(val service: PullRequestReviewService, val request: ReviewRequest, val llm: CapturingLlm)
