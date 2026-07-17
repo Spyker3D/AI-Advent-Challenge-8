@@ -6,6 +6,8 @@ import com.aiassistant.developer.llm.DeveloperAssistantService
 import com.aiassistant.developer.llm.OpenAiConfig
 import com.aiassistant.developer.llm.OpenAiResponsesClient
 import com.aiassistant.developer.mcp.GitMcpClient
+import com.aiassistant.developer.review.PullRequestReviewService
+import com.aiassistant.developer.review.ReviewRequest
 import com.aiassistant.rag.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -26,6 +28,7 @@ fun main(args: Array<String>) {
     System.setOut(PrintStream(System.out, true, StandardCharsets.UTF_8))
     System.setErr(PrintStream(System.err, true, StandardCharsets.UTF_8))
 
+    val reviewMode = args.firstOrNull() == "review-pr"
     val config = try { ConfigLoader.load(args) } catch (error: Exception) {
         System.err.println("Error: ${error.message}"); exitProcess(2)
     }
@@ -51,15 +54,30 @@ fun main(args: Array<String>) {
     } catch (error: Exception) {
         System.err.println("Index update failed: ${error.message}")
         if (config.debug) error.printStackTrace()
+        if (reviewMode) exitProcess(1)
         if (!Files.exists(indexPath)) println("/help will be unavailable until indexing succeeds.")
+    }
+
+    val llm = OpenAiResponsesClient(OpenAiConfig(config.openAiBaseUrl, config.openAiModel, config.openAiApiKey))
+    if (reviewMode) {
+        try {
+            val request = parseReviewRequest(args, config.projectRoot)
+            val service = PullRequestReviewService(git, indexStorage, ProjectRetriever(embedding, config.topK), llm)
+            runBlocking { service.execute(request) }
+            println("AI review written to ${request.output.toAbsolutePath().normalize()}")
+            return
+        } catch (error: Exception) {
+            System.err.println("PR review failed: ${error.message}")
+            if (config.debug) error.printStackTrace()
+            exitProcess(1)
+        }
     }
     val branch = git.currentBranch()
     println("Branch: ${branch.branch ?: "unavailable"}")
     println("MCP: ${if (branch.connected) "connected" else "disconnected"}")
     println("\nCommands:\n  /help <question>\n  /status\n  /reindex\n  /exit\n")
 
-    val service = DeveloperAssistantService(config.projectRoot, indexStorage, ProjectRetriever(embedding, config.topK), git,
-        OpenAiResponsesClient(OpenAiConfig(config.openAiBaseUrl, config.openAiModel, config.openAiApiKey)))
+    val service = DeveloperAssistantService(config.projectRoot, indexStorage, ProjectRetriever(embedding, config.topK), git, llm)
     val loop = CommandLoop(
         BufferedReader(InputStreamReader(System.`in`, StandardCharsets.UTF_8)),
         PrintWriter(System.out, true, StandardCharsets.UTF_8),
@@ -79,6 +97,22 @@ Embedding service: ${if (runBlocking { runCatching { embedding.embed(listOf("hea
         updateText(result)
     }, config.debug)
     loop.run()
+}
+
+private fun parseReviewRequest(args: Array<String>, projectRoot: java.nio.file.Path): ReviewRequest {
+    val options = args.drop(1).filter { it.startsWith("--") }.associate {
+        val pair = it.removePrefix("--").split('=', limit = 2)
+        pair[0] to pair.getOrElse(1) { "" }
+    }
+    val base = options["base-ref"]?.takeIf(String::isNotBlank)
+        ?: throw IllegalArgumentException("review-pr requires --base-ref=<sha-or-ref>")
+    val head = options["head-ref"]?.takeIf(String::isNotBlank)
+        ?: throw IllegalArgumentException("review-pr requires --head-ref=<sha-or-ref>")
+    val outputValue = options["output"]?.takeIf(String::isNotBlank)
+        ?: throw IllegalArgumentException("review-pr requires --output=<file>")
+    val rawOutput = java.nio.file.Paths.get(outputValue)
+    val output = if (rawOutput.isAbsolute) rawOutput else projectRoot.resolve(rawOutput)
+    return ReviewRequest(base, head, output.normalize())
 }
 
 private fun printUpdate(update: IndexUpdate) = println(updateText(update))

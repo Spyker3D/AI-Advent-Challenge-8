@@ -4,7 +4,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 
-const PORT = 3000;
+const PORT = Number(process.env.MCP_PORT || 3000);
 const SERVER_ID = "weather";
 const PUBLIC_BASE_URL = "http://31.129.110.10:3000";
 const WEATHER_INTERVAL_MS = 60_000;
@@ -46,6 +46,31 @@ function createJsonRpcError(id, code, message) {
 
 function textResult(text) {
   return { content: [{ type: "text", text }] };
+}
+
+function validateGitRef(value, fieldName) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 200) {
+    throw new Error(`${fieldName} must be a non-empty Git ref (max 200 characters).`);
+  }
+  if (value.startsWith("-") || value.includes("..") || !/^[A-Za-z0-9._/-]+$/.test(value)) {
+    throw new Error(`${fieldName} contains unsafe characters.`);
+  }
+  return value;
+}
+
+async function runGitDiff(projectRoot, baseRef, headRef, changedFilesOnly = false) {
+  const base = validateGitRef(baseRef, "baseRef");
+  const head = validateGitRef(headRef, "headRef");
+  const args = changedFilesOnly
+    ? ["diff", "--name-status", base, head]
+    : ["diff", "--unified=3", "--no-ext-diff", base, head];
+  const { stdout } = await execFileAsync("git", args, {
+    cwd: projectRoot,
+    windowsHide: true,
+    timeout: 30_000,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return stdout;
 }
 
 function safeLogArguments(args) {
@@ -287,6 +312,26 @@ function handleToolsList(id) {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
       },
       {
+        name: "get_changed_files",
+        description: "Returns git name-status entries changed between two refs.",
+        inputSchema: {
+          type: "object",
+          properties: { baseRef: { type: "string" }, headRef: { type: "string" } },
+          required: ["baseRef", "headRef"],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "get_git_diff",
+        description: "Returns a unified Git diff between two refs.",
+        inputSchema: {
+          type: "object",
+          properties: { baseRef: { type: "string" }, headRef: { type: "string" } },
+          required: ["baseRef", "headRef"],
+          additionalProperties: false,
+        },
+      },
+      {
         name: "get_weather_by_city",
         description: "Returns current weather by city. Supported: Moscow, Saint Petersburg, Kazan, Sochi.",
         inputSchema: {
@@ -383,6 +428,16 @@ async function handleToolsCall(id, params) {
       return success(createJsonRpcResponse(id, textResult(branch)));
     } catch (error) {
       return createJsonRpcError(id, -32000, `Cannot read Git branch for configured project: ${error.message}`);
+    }
+  }
+
+  if (toolName === "get_changed_files" || toolName === "get_git_diff") {
+    try {
+      const output = await runGitDiff(PROJECT_ROOT, args.baseRef, args.headRef, toolName === "get_changed_files");
+      return success(createJsonRpcResponse(id, textResult(output)));
+    } catch (error) {
+      const code = error.message && error.message.includes("unsafe") ? -32602 : -32000;
+      return createJsonRpcError(id, code, `Cannot get Git diff: ${error.message}`);
     }
   }
 
@@ -485,11 +540,16 @@ const server = http.createServer((req, res) => {
   });
 });
 
-ensureDataStorage();
-collectWeatherSafely();
-setInterval(collectWeatherSafely, WEATHER_INTERVAL_MS);
+if (require.main === module) {
+  ensureDataStorage();
+  if (process.env.MCP_DISABLE_WEATHER !== "true") {
+    collectWeatherSafely();
+    setInterval(collectWeatherSafely, WEATHER_INTERVAL_MS);
+  }
+  server.listen(PORT, () => {
+    console.log(`MCP server is running on http://localhost:${PORT}/mcp`);
+    console.log(`Project root: ${PROJECT_ROOT}`);
+  });
+}
 
-server.listen(PORT, () => {
-  console.log(`MCP server is running on http://localhost:${PORT}/mcp`);
-  console.log(`Weather scheduler interval: ${WEATHER_INTERVAL_MS / 1000} seconds`);
-});
+module.exports = { handleMcpRequest, handleToolsCall, runGitDiff, validateGitRef };
