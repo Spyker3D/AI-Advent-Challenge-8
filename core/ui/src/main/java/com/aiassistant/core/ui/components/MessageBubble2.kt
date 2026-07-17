@@ -1,0 +1,141 @@
+package com.aiassistant.core.ui.components
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.aiassistant.core.domain.entity.Message
+import com.aiassistant.core.domain.entity.MessageRole
+import com.aiassistant.core.domain.entity.TokenMetrics
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun MessageBubble2(
+    message: Message,
+    modifier: Modifier = Modifier
+) {
+    val isUserMessage = message.role == MessageRole.USER
+    val backgroundColor = if (isUserMessage) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = if (isUserMessage) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUserMessage) Arrangement.End else Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 16.dp,
+                        bottomStart = if (isUserMessage) 16.dp else 4.dp,
+                        bottomEnd = if (isUserMessage) 4.dp else 16.dp
+                    )
+                )
+                .background(backgroundColor)
+                .padding(12.dp)
+                .let {
+                    if (isUserMessage) it else it.fillMaxWidth(0.85f)
+                }
+        ) {
+            val context = LocalContext.current
+            Column {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = message.content,
+                        color = contentColor,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    // Show compression info for assistant messages
+                    val tokenMetrics = message.tokenMetrics
+                    if (!isUserMessage && tokenMetrics != null) {
+                        Text(
+                            text = buildCompressionInfoText(tokenMetrics),
+                            color = contentColor.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
+                    }
+                    
+                    // Copy button for assistant messages
+                    if (!isUserMessage) {
+                        IconButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Message", message.content)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy message",
+                                tint = contentColor.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = formatTimestamp(message.timestamp),
+                    color = contentColor.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Light,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    return formatter.format(Date(timestamp))
+}
+
+private fun buildCompressionInfoText(tokenMetrics: TokenMetrics): String {
+    // This function will be called from the context where we have access to the compression info
+    // For now, we'll just show basic token metrics
+    val completionTokens = tokenMetrics.completionTokens?.toString() ?: "unavailable"
+    return "Compression: OFF | History Tokens: ${tokenMetrics.historyTokens} | Completion Tokens: $completionTokens"
+}
