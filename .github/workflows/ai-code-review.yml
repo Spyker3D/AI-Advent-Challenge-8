@@ -65,13 +65,41 @@ jobs:
           exit 1
 
       - name: Install and start Ollama
+        shell: bash
         run: |
-          curl --fail --silent --show-error https://ollama.com/install.sh | sh
+          set -euo pipefail
+
+          curl -fsSL https://ollama.com/install.sh -o /tmp/install-ollama.sh
+          sudo sh /tmp/install-ollama.sh
+
+          echo "Ollama location:"
+          command -v ollama
+          ollama --version
+
           ollama serve > build-ollama.log 2>&1 &
-          for attempt in {1..30}; do
-            curl --fail --silent http://localhost:11434/api/tags > /dev/null && break
+          OLLAMA_PID=$!
+
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:11434/api/tags > /dev/null; then
+              echo "Ollama server is ready"
+              break
+            fi
+
+            if ! kill -0 "$OLLAMA_PID" 2>/dev/null; then
+              echo "Ollama process stopped unexpectedly"
+              cat build-ollama.log
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 60 ]; then
+              echo "Ollama did not start in time"
+              cat build-ollama.log
+              exit 1
+            fi
+
             sleep 1
           done
+
           ollama pull nomic-embed-text:latest
 
       - name: Generate AI review
