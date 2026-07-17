@@ -831,5 +831,47 @@
     "windSpeed": 4.2,
     "precipitation": 0,
     "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-17T18:36:55.793Z",
+    "temperature": 18,
+    "windSpeed": 4.2,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-17T18:37:55.867Z",
+    "temperature": 18,
+    "windSpeed": 4.2,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-17T18:38:55.793Z",
+    "temperature": 18,
+    "windSpeed": 4.2,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-17T18:39:55.801Z",
+    "temperature": 18,
+    "windSpeed": 4.2,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-17T18:40:55.787Z",
+    "temperature": 18,
+    "windSpeed": 4.2,
+    "precipitation": 0,
+    "source": "Open-Meteo"
+  },
+  {
+    "timestamp": "2026-07-17T18:41:55.850Z",
+    "temperature": 18,
+    "windSpeed": 4.2,
+    "precipitation": 0,
+    "source": "Open-Meteo"
   }
 ]

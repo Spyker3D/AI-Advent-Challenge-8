@@ -542,13 +542,15 @@ const server = http.createServer((req, res) => {
 
 if (require.main === module) {
   ensureDataStorage();
-  if (process.env.MCP_DISABLE_WEATHER !== "true") {
+  const weatherEnabled = process.env.MCP_ENABLE_WEATHER === "true";
+  if (weatherEnabled) {
     collectWeatherSafely();
     setInterval(collectWeatherSafely, WEATHER_INTERVAL_MS);
   }
   server.listen(PORT, () => {
     console.log(`MCP server is running on http://localhost:${PORT}/mcp`);
     console.log(`Project root: ${PROJECT_ROOT}`);
+    console.log(`Weather collection: ${weatherEnabled ? "enabled" : "disabled"}`);
   });
 }
 
