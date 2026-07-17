@@ -46,7 +46,6 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -96,6 +95,7 @@ import com.aiassistant.core.domain.mcp.McpExecutionStatus
 import com.aiassistant.core.ui.components.LoadingIndicator
 import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
+import com.aiassistant.feature.chat.presentation.MAX_MESSAGE_LENGTH
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
@@ -759,7 +759,11 @@ fun ChatScreen(
 
                     OutlinedTextField(
                         value = uiState.currentMessage,
-                        onValueChange = { viewModel.handleEvent(ChatUiEvent.MessageChanged(it)) },
+                        onValueChange = { value ->
+                            if (value.length <= MAX_MESSAGE_LENGTH) {
+                                viewModel.handleEvent(ChatUiEvent.MessageChanged(value))
+                            }
+                        },
                         modifier = Modifier.weight(1f),
                         placeholder = {
                             Text(
@@ -775,22 +779,30 @@ fun ChatScreen(
                                 // keyboardController?.hide()
                             }
                         ),
+                        isError = uiState.inputError != null,
+                        supportingText = {
+                            Text(
+                                text = uiState.inputError
+                                    ?: "${uiState.currentMessage.length} / $MAX_MESSAGE_LENGTH"
+                            )
+                        },
                         shape = RoundedCornerShape(24.dp),
                         maxLines = 3,
                         textStyle = MaterialTheme.typography.bodyMedium
                     )
 
-                    FloatingActionButton(
+                    IconButton(
                         onClick = {
                             viewModel.handleEvent(ChatUiEvent.SendMessage)
                             // keyboardController?.hide()
                         },
                         modifier = Modifier.padding(bottom = 4.dp),
-                        containerColor = MaterialTheme.colorScheme.primary
+                        enabled = !uiState.isLoading
                     ) {
                         Icon(
                             imageVector = Icons.Default.Send,
-                            contentDescription = "Send message"
+                            contentDescription = "Send message",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
