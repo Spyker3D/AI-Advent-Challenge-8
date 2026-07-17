@@ -33,27 +33,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Restore RAG index
-        id: rag-cache
-        uses: actions/cache@v4
-        with:
-          path: .developer-assistant
-          key: rag-index-v1-${{ runner.os }}-${{ github.head_ref }}-${{ github.event.pull_request.head.sha }}
-          restore-keys: |
-            rag-index-v1-${{ runner.os }}-${{ github.head_ref }}-
-            rag-index-v1-${{ runner.os }}-
-
-      - name: Show RAG cache status
-        shell: bash
-        run: |
-          if [ "${{ steps.rag-cache.outputs.cache-hit }}" = "true" ]; then
-            echo "Exact RAG cache restored"
-          elif [ -f ".developer-assistant/index.json" ]; then
-            echo "Previous RAG index restored for incremental update"
-          else
-            echo "No RAG cache found; full index will be created"
-          fi
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -101,41 +80,6 @@ jobs:
           cat build-mcp.log
           exit 1
 
-      - name: Install and start Ollama
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          curl -fsSL https://ollama.com/install.sh -o /tmp/install-ollama.sh
-          sudo sh /tmp/install-ollama.sh
-
-          ollama serve > build-ollama.log 2>&1 &
-          OLLAMA_PID=$!
-
-          for attempt in {1..60}; do
-            if curl --fail --silent \
-              http://localhost:11434/api/tags > /dev/null; then
-              echo "Ollama server is ready"
-              break
-            fi
-
-            if ! kill -0 "$OLLAMA_PID" 2>/dev/null; then
-              echo "Ollama process stopped unexpectedly"
-              cat build-ollama.log
-              exit 1
-            fi
-
-            if [ "$attempt" -eq 60 ]; then
-              echo "Ollama did not start in time"
-              cat build-ollama.log
-              exit 1
-            fi
-
-            sleep 1
-          done
-
-          ollama pull nomic-embed-text:latest
-
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
@@ -153,7 +97,8 @@ jobs:
               --project-root=. \
               --base-ref=${{ github.event.pull_request.base.sha }} \
               --head-ref=${{ github.event.pull_request.head.sha }} \
-              --output=build/ai-review.md"
+              --output=build/ai-review.md \
+              --rag-mode=off"
 
           test -f build/ai-review.md
 

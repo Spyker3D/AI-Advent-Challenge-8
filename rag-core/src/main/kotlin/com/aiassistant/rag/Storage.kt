@@ -7,6 +7,7 @@ import java.nio.file.Path
 
 class IndexStorage(private val path: Path) {
     private val gson = GsonBuilder().setPrettyPrinting().create()
+    fun exists(): Boolean = Files.isRegularFile(path)
     fun loadIndex(): LocalVectorIndex = if (!Files.exists(path)) LocalVectorIndex() else Files.newBufferedReader(path).use {
         val json = com.google.gson.JsonParser.parseReader(it)
         if (json.isJsonArray) LocalVectorIndex(chunks = gson.fromJson(json, object : TypeToken<List<ProjectChunk>>() {}.type))

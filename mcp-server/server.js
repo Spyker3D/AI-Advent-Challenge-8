@@ -14,6 +14,14 @@ const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const WEATHER_HISTORY_FILE = path.join(DATA_DIR, "weather-history.json");
 const PROJECT_ROOT = path.resolve(process.env.MCP_PROJECT_ROOT || path.join(__dirname, ".."));
 const execFileAsync = promisify(execFile);
+const WEATHER_TOOL_NAMES = new Set([
+  "get_weather_by_city", "create_weather_report", "save_report_to_file",
+  "get_weather_summary", "get_weather_history", "collect_weather_now",
+]);
+
+function isWeatherDisabled() {
+  return process.env.MCP_DISABLE_WEATHER === "true" || process.env.MCP_ENABLE_WEATHER !== "true";
+}
 
 const tasks = {
   "AI-17": { status: "In Progress", title: "Implement first custom MCP tool" },
@@ -304,8 +312,7 @@ function handleReportsGet(req, res) {
 }
 
 function handleToolsList(id) {
-  return createJsonRpcResponse(id, {
-    tools: [
+  const tools = [
       {
         name: "get_current_git_branch",
         description: "Returns the current Git branch of the configured local project repository.",
@@ -402,7 +409,9 @@ function handleToolsList(id) {
         description: "Manually triggers weather collection and stores result in JSON.",
         inputSchema: { type: "object", properties: {} },
       },
-    ],
+    ];
+  return createJsonRpcResponse(id, {
+    tools: isWeatherDisabled() ? tools.filter((tool) => !WEATHER_TOOL_NAMES.has(tool.name)) : tools,
   });
 }
 
@@ -415,6 +424,10 @@ async function handleToolsCall(id, params) {
     console.log(`[MCP tools/call] server=${SERVER_ID} success tool=${toolName}`);
     return response;
   };
+
+  if (WEATHER_TOOL_NAMES.has(toolName) && isWeatherDisabled()) {
+    return createJsonRpcError(id, -32601, `Weather tool is disabled: ${toolName}`);
+  }
 
   if (toolName === "get_current_git_branch") {
     try {
@@ -541,9 +554,9 @@ const server = http.createServer((req, res) => {
 });
 
 if (require.main === module) {
-  ensureDataStorage();
-  const weatherEnabled = process.env.MCP_ENABLE_WEATHER === "true";
+  const weatherEnabled = !isWeatherDisabled();
   if (weatherEnabled) {
+    ensureDataStorage();
     collectWeatherSafely();
     setInterval(collectWeatherSafely, WEATHER_INTERVAL_MS);
   }
@@ -554,4 +567,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { handleMcpRequest, handleToolsCall, runGitDiff, validateGitRef };
+module.exports = { handleMcpRequest, handleToolsCall, runGitDiff, validateGitRef, isWeatherDisabled };

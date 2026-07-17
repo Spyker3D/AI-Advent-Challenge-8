@@ -40,7 +40,7 @@ Review содержит итог/риск, потенциальные баги, 
 OPENAI_API_KEY=<OpenAI API key>
 ```
 
-Workflow устанавливает Java 17, Node.js 20, Ollama, скачивает `nomic-embed-text:latest`, запускает MCP и review pipeline.
+Workflow устанавливает Java 17 и Node.js 20, запускает MCP и выполняет review с `--rag-mode=off`. Ollama и embedding-модель в CI не устанавливаются.
 
 ## Локальная отладка
 
@@ -63,7 +63,7 @@ node mcp-server/server.js
 
 ```powershell
 $env:OPENAI_API_KEY = "..."
-./gradlew.bat --console=plain :developer-assistant:run --args="review-pr --project-root=. --base-ref=day_31 --head-ref=HEAD --output=build/ai-review.md"
+./gradlew.bat --console=plain :developer-assistant:run --args="review-pr --project-root=. --base-ref=day_31 --head-ref=HEAD --output=build/ai-review.md --rag-mode=update"
 ```
 
 Локальный режим предназначен для отладки и не заменяет PR trigger. Fork PR в первой версии пропускаются, чтобы секреты не передавались чужому коду.
