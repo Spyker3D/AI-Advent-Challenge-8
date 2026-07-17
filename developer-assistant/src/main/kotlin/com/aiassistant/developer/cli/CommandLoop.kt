@@ -49,3 +49,4 @@ class CommandLoop(
         const val SEPARATOR = "────────────────────────────────────────"
     }
 }
+
