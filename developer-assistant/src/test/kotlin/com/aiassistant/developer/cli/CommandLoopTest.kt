@@ -37,9 +37,9 @@ class CommandLoopTest {
         loop.run()
 
         val output = text.toString()
-        assertEquals(3, "────────────────────────────────────────".toRegex().findAll(output).count())
-        assertEquals(3, "ВЫ:".toRegex().findAll(output).count())
-        assertEquals(2, "АССИСТЕНТ:".toRegex().findAll(output).count())
+        assertEquals(3, "----------------------------------------".toRegex().findAll(output).count())
+        assertEquals(3, "YOU:".toRegex().findAll(output).count())
+        assertEquals(2, "ASSISTANT:".toRegex().findAll(output).count())
         assertContains(output, "Answer to: First question")
         assertContains(output, "Answer to: Second question")
     }

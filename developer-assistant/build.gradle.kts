@@ -11,6 +11,7 @@ tasks.named<JavaExec>("run") {
     // not from the developer-assistant module directory.
     workingDir = rootProject.projectDir
     standardInput = System.`in`
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dsun.stdout.encoding=UTF-8", "-Dsun.stderr.encoding=UTF-8")
 }
 
 dependencies {

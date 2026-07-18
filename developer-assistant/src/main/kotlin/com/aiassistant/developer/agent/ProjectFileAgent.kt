@@ -1,6 +1,8 @@
 package com.aiassistant.developer.agent
 
 import com.aiassistant.developer.files.ProjectFileTools
+import com.aiassistant.developer.llm.LlmClient
+import com.google.gson.JsonParser
 import java.nio.file.Path
 import java.time.LocalDate
 
@@ -10,6 +12,7 @@ class ProjectFileAgent(
     private val root: Path,
     private val tools: ProjectFileTools,
     private val dryRun: Boolean,
+    private val llm: LlmClient? = null,
     private val logger: OperationLogger = OperationLogger(root),
     private val maxIterations: Int = 10
 ) {
@@ -17,24 +20,23 @@ class ProjectFileAgent(
     private val read = linkedSetOf<String>()
     private var iterations = 0
 
-    fun execute(goal: String, confirm: (String) -> Boolean): AgentResult {
+    suspend fun execute(goal: String, confirm: (String) -> Boolean): AgentResult {
         used.clear(); read.clear(); iterations = 0; tools.clear()
-        val subject = GoalSubjectExtractor.extract(goal)
-        val scenario: () -> Unit = when {
-            goal.contains("инвариант", true) || goal.contains("CRM", true) || goal.contains("проверь файлы поддержки", true) -> ::validationReport
-            goal.contains("документ", true) || goal.contains("README", true) -> { { documentationUpdate(subject) } }
-            isUsageGoal(goal) -> { { usageReport(subject) } }
-            else -> throw IllegalArgumentException("Цель не распознана. Укажите желаемый результат: найти использования компонента/API, обновить документацию или проверить инварианты.")
+        val plan = resolveSubject(goal)
+        val scenario: suspend () -> Unit = when {
+            goal.contains("инвариант", true) || goal.contains("CRM", true) || goal.contains("проверь файлы поддержки", true) -> { { validationReport() } }
+            goal.contains("документ", true) || goal.contains("README", true) -> { { documentationUpdate(goal, plan) } }
+            else -> { { usageReport(plan.subject) } }
         }
         scenario()
         val proposed = tools.proposedChanges()
         val diff = tools.getDiff()
-        if (proposed.isEmpty()) return finish(goal, "no_changes", emptyList(), "Изменения не требуются.", diff)
-        val summary = "Планируется изменить ${proposed.count { it.original != null }} файла(ов) и создать ${proposed.count { it.original == null }} файла(ов)."
-        val confirmed = !dryRun && confirm("$summary\n\n$diff\n\nПрименить изменения?")
+        if (proposed.isEmpty()) return finish(goal, "no_changes", emptyList(), "No changes required.", diff)
+        val summary = "Planned changes: modify ${proposed.count { it.original != null }} file(s), create ${proposed.count { it.original == null }} file(s)."
+        val confirmed = !dryRun && confirm("$summary\n\n$diff\n\nApply changes?")
         val changed = tools.applyConfirmed(confirmed, dryRun)
         val status = when { dryRun -> "dry_run"; confirmed -> "completed"; else -> "cancelled" }
-        val message = when { dryRun -> "$summary\nDry-run: файлы не записаны."; confirmed -> "Изменения сохранены и проверены: ${changed.joinToString()}. Индекс следует обновить командой /reindex."; else -> "Изменения отменены; файлы не записаны." }
+        val message = when { dryRun -> "$summary\n\n$diff\n\nDry-run: no files were written."; confirmed -> "Changes saved and verified: ${changed.joinToString()}. Run /reindex to refresh the index."; else -> "Changes cancelled; no files were written." }
         return finish(goal, status, changed, message, diff)
     }
 
@@ -42,31 +44,35 @@ class ProjectFileAgent(
         tool("list_files"); tools.listFiles(".", 4)
         tool("search_in_files"); val matches = searchSubject(subject, setOf(".kt", ".kts", ".java", ".js", ".ts", ".md"))
         require(matches.isNotEmpty()) { "$subject was not found." }
-        val paths = matches.map { it.path }.distinct().take(3)
+        val relevantMatches = matches.filterNot { isGeneratedOrTest(it.path) }
+            .sortedBy { productionRank(it.path) }.take(30).ifEmpty { matches.take(30) }
+        val paths = relevantMatches.map { it.path }.distinct().take(3)
         paths.forEach { tool("read_file"); tools.readFile(it, 1, 240); read += it }
-        val definition = matches.firstOrNull { Regex("(?:class|interface|object)\\s+", RegexOption.IGNORE_CASE).containsMatchIn(it.text) } ?: matches.first()
-        val usages = matches.filterNot { it == definition }.joinToString("\n") { "### ${it.path}\n\n- строка ${it.line};\n- найденный вызов: `${it.text.replace("`", "'")}`." }
-        val report = """# Использование $subject
+        val definition = relevantMatches.firstOrNull { Regex("(?:class|interface|object)\\s+", RegexOption.IGNORE_CASE).containsMatchIn(it.text) } ?: relevantMatches.first()
+        val usages = relevantMatches.filterNot { it == definition }.groupBy { it.path }.entries.joinToString("\n\n") { (path, found) ->
+            "### $path\n\n" + found.take(8).joinToString("\n") { "- line ${it.line}: confirmed reference." }
+        }
+        val report = """# $subject Usage Report
 
-## Определение
+## Definition
 
-- путь: `${definition.path}:${definition.line}`;
-- назначение: компонент или API, обнаруженный точным поиском по проекту;
-- публичные методы следует проверять в актуальном исходном файле.
+- Path: `${definition.path}:${definition.line}`.
+- Role: component or API found by exact project search.
+- Public behavior was verified from current files on disk.
 
-## Использования
+## Usages
 
-${usages.ifBlank { "Прямые использования вне определения не найдены." }}
+${usages.ifBlank { "No direct references outside the definition were found." }}
 
-## Зависимости
+## Evidence
 
-- Отчёт построен по точному текстовому поиску и чтению ${paths.size} актуальных файлов.
+- Exact search was followed by reading ${paths.size} relevant production files.
 
-## Риски при изменении
+## Change Risks
 
-- Изменение публичного API требует повторной проверки перечисленных мест и тестов.
+- Public API changes require rechecking the listed references and tests.
 
-## Дата генерации
+## Generated
 
 ${LocalDate.now()}
 """
@@ -75,28 +81,25 @@ ${LocalDate.now()}
         tool("get_diff")
     }
 
-    private fun documentationUpdate(subject: String) {
-        tool("search_in_files"); val matches = searchSubject(subject, setOf(".kt", ".kts", ".java", ".js", ".ts", ".md"), 60)
-        require(matches.isNotEmpty()) { "Не найден код или документация по теме: $subject" }
-        val sourcePaths = matches.map { it.path }.filterNot { it == "README.md" }.distinct().take(3)
+    private suspend fun documentationUpdate(goal: String, plan: SubjectPlan) {
+        val subject = plan.subject
+        tool("search_in_files"); val matches = plan.searchTerms.flatMap {
+            tools.searchInFiles(it, ".", setOf(".kt", ".kts", ".java", ".js", ".ts", ".json", ".xml", ".md"), limit = 60)
+        }.distinctBy { Triple(it.path, it.line, it.text) }.take(80)
+        require(matches.isNotEmpty()) { "No code or documentation found for: $subject" }
+        val sourcePaths = matches.map { it.path }.filterNot { it == "README.md" || isGeneratedOrTest(it) }
+            .distinct().sortedBy(::productionRank).take(5).ifEmpty { matches.map { it.path }.filterNot { it == "README.md" }.distinct().take(5) }
+        val contents = linkedMapOf<String, String>()
         listOf("README.md").plus(sourcePaths).forEach {
-            tool("read_file"); tools.readFile(it, 1, 260); read += it
+            tool("read_file"); contents[it] = tools.readFile(it, 1, 320); read += it
         }
         val current = rawText("README.md")
         val marker = slug(subject)
         val start = "<!-- day34-$marker-doc:start -->"; val end = "<!-- day34-$marker-doc:end -->"
-        val evidence = matches.filter { it.path in sourcePaths }.groupBy { it.path }.entries.joinToString("\n") { (path, found) ->
-            "- `$path` — совпадения на строках ${found.map { it.line }.distinct().take(8).joinToString()}."
-        }
-        val block = """$start
-### Фактическая реализация: $subject
-
-Раздел сформирован по актуальному коду проекта:
-
-$evidence
-
-Перечислены только файлы и строки, подтверждённые точным поиском и чтением с диска.
-$end"""
+        val generated = llm?.generate(DOCUMENTATION_PROMPT, buildDocumentationInput(goal, subject, contents))
+            ?.trim()?.removePrefix("```markdown")?.removeSuffix("```")?.trim()
+        val body = generated?.takeIf { it.isNotBlank() } ?: fallbackDocumentation(subject, matches, sourcePaths)
+        val block = "$start\n$body\n$end"
         val updated = if (current.contains(start) && current.contains(end)) current.replace(Regex("(?s)${Regex.escape(start)}.*?${Regex.escape(end)}"), block) else current.trimEnd() + "\n\n" + block + "\n"
         tool("apply_patch"); tools.proposeWrite("README.md", updated); tool("get_diff")
     }
@@ -127,9 +130,35 @@ $end"""
     private fun searchSubject(subject: String, extensions: Set<String>, limit: Int = 80) =
         GoalSubjectExtractor.searchTerms(subject).flatMap { tools.searchInFiles(it, ".", extensions, limit = limit) }
             .distinctBy { Triple(it.path, it.line, it.text) }.take(limit)
-    private fun isUsageGoal(goal: String) = Regex("(?i)использ|упомин|места|references?|usages?").containsMatchIn(goal) &&
-        Regex("(?i)отч[её]т|найди|проанализируй|покажи|подготовь").containsMatchIn(goal)
     private fun slug(value: String) = value.lowercase().replace(Regex("[^a-zа-я0-9]+"), "-").trim('-').ifBlank { "component" }
+    private fun isGeneratedOrTest(path: String) = path.contains("/test/") || path.contains("/build/") ||
+        path.startsWith("rag-indexer/input/") || path.startsWith("docs/") || path == "README.md" || path == "API_KEY_SETUP.md"
+    private fun productionRank(path: String) = when {
+        path.contains("/src/main/") -> 0
+        path.endsWith("build.gradle.kts") -> 1
+        else -> 2
+    }
+    private suspend fun resolveSubject(goal: String): SubjectPlan {
+        if (llm == null) return GoalSubjectExtractor.localPlan(goal)
+        val response = llm.generate(SUBJECT_PROMPT, goal)
+        return runCatching {
+            val json = JsonParser.parseString(response.substringAfter('{').substringBeforeLast('}') .let { "{$it}" }).asJsonObject
+            val subject = json.get("subject").asString.trim()
+            val terms = json.getAsJsonArray("searchTerms").map { it.asString.trim() }.filter { it.isNotBlank() }
+            SubjectPlan(subject, terms.ifEmpty { listOf(subject) })
+        }.getOrElse { GoalSubjectExtractor.localPlan(goal) }
+    }
+    private fun buildDocumentationInput(goal: String, subject: String, contents: Map<String, String>) = buildString {
+        appendLine("USER GOAL: $goal"); appendLine("SUBJECT: $subject")
+        appendLine("CURRENT FILES (line-numbered; the only allowed evidence):")
+        contents.forEach { (path, content) -> appendLine("\nFILE $path\n${content.take(18_000)}") }
+    }
+    private fun fallbackDocumentation(subject: String, matches: List<com.aiassistant.developer.files.SearchMatch>, paths: List<String>): String {
+        val evidence = matches.filter { it.path in paths }.groupBy { it.path }.entries.joinToString("\n") { (path, found) ->
+            "- `$path`: matches at lines ${found.map { it.line }.distinct().take(8).joinToString()}."
+        }
+        return "### Current implementation: $subject\n\nAutomated semantic generation was unavailable. Confirmed evidence:\n\n$evidence"
+    }
     private fun tool(name: String) { check(++iterations <= maxIterations) { "Exceeded MAX_TOOL_ITERATIONS=$maxIterations; partial analysis stopped." }; used += name }
     private fun finish(goal: String, status: String, changed: List<String>, message: String, diff: String): AgentResult {
         logger.save(OperationRecord(goal = goal, toolsUsed = used.toList(), filesRead = read.toList(), filesChanged = changed, status = status, iterations = iterations))
@@ -138,8 +167,12 @@ $end"""
 
     companion object {
         const val SYSTEM_PROMPT = """You are a project file assistant. The user provides a goal rather than individual file operations. Inspect the project and select tools yourself. Search and read actual files before conclusions. Never invent content, APIs, classes, or features. Prepare and show a diff, request confirmation, write only after confirmation, then verify. Never leave the configured project root, expose secrets, or execute destructive Git commands."""
+        const val SUBJECT_PROMPT = """Extract the software component or subsystem that the user wants documented. Return JSON only: {"subject":"short display name","searchTerms":["exact source term", "alternative identifier"]}. Use 1-4 precise terms likely to occur in code. Never include file paths or secrets."""
+        const val DOCUMENTATION_PROMPT = """Write a concise Markdown section documenting the requested component from CURRENT FILES only. Start with `### Current implementation: <subject>`. Explain in prose: purpose, main components and responsibilities, end-to-end data/control flow, configuration, dependencies, error handling, and important security or maintenance limitations when evidenced. Cite every paragraph or bullet with relative file paths and line numbers. Do not merely list search matches. Do not invent behavior. Do not mention unavailable categories. Do not include marker comments or fenced code around the whole response."""
     }
 }
+
+data class SubjectPlan(val subject: String, val searchTerms: List<String>)
 
 object GoalSubjectExtractor {
     private val known = listOf("OpenAI API", "SupportAssistantService", "MCP", "RAG", "OpenRouter API", "Ollama")
@@ -148,8 +181,10 @@ object GoalSubjectExtractor {
         known.firstOrNull { goal.contains(it, true) }?.let { return it }
         Regex("`([^`]{2,80})`").find(goal)?.groupValues?.get(1)?.let { return it }
         Regex("\\b([A-Z][A-Za-z0-9_]*(?:Service|Client|Repository|ViewModel|API))\\b").find(goal)?.groupValues?.get(1)?.let { return it }
-        throw IllegalArgumentException("Не удалось определить компонент или API из цели. Назовите предмет анализа, но не конкретные файлы.")
+        throw IllegalArgumentException("Could not identify a component or API in the goal. Name the subject, but not individual files.")
     }
+
+    fun localPlan(goal: String): SubjectPlan = extract(goal).let { SubjectPlan(it, searchTerms(it)) }
 
     fun searchTerms(subject: String): List<String> = when {
         subject.equals("OpenAI API", true) -> listOf("OpenAI", "openai", "api.openai.com")
