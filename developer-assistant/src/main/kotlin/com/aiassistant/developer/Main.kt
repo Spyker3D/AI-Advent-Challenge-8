@@ -9,10 +9,11 @@ import com.aiassistant.developer.mcp.GitMcpClient
 import com.aiassistant.developer.review.PullRequestReviewService
 import com.aiassistant.developer.review.ReviewCommandParser
 import com.aiassistant.developer.review.ReviewRagContextProvider
+import com.aiassistant.developer.agent.ProjectFileAgent
+import com.aiassistant.developer.files.ProjectFileTools
 import com.aiassistant.rag.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.PrintStream
 import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets
@@ -23,12 +24,6 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
 fun main(args: Array<String>) {
-    // Gradle daemons can retain the Windows console encoding they were started
-    // with even after `chcp 65001`. Make this interactive CLI consistently emit
-    // UTF-8 so Russian questions, answers, and labels are not corrupted.
-    System.setOut(PrintStream(System.out, true, StandardCharsets.UTF_8))
-    System.setErr(PrintStream(System.err, true, StandardCharsets.UTF_8))
-
     val reviewMode = args.firstOrNull() == "review-pr"
     val config = try { ConfigLoader.load(args) } catch (error: Exception) {
         System.err.println("Error: ${error.message}"); exitProcess(2)
@@ -113,9 +108,13 @@ fun main(args: Array<String>) {
     val branch = git.currentBranch()
     println("Branch: ${branch.branch ?: "unavailable"}")
     println("MCP: ${if (branch.connected) "connected" else "disconnected"}")
-    println("\nCommands:\n  /help <question>\n  /status\n  /reindex\n  /exit\n")
+    println("Mode: ${if (config.dryRun) "dry-run (writes disabled)" else "interactive writes with confirmation"}")
+    println("\nEnter a project goal, or use:\n  /help <question>\n  /status\n  /reindex\n  /diff\n  /exit\n")
 
     val service = DeveloperAssistantService(config.projectRoot, indexStorage, ProjectRetriever(embedding, config.topK), git, llm)
+    val fileTools = ProjectFileTools(config.projectRoot, config.maxFileSizeBytes)
+    val fileAgent = ProjectFileAgent(config.projectRoot, fileTools, config.dryRun, llm)
+    var lastDiff = "No proposed changes."
     val loop = CommandLoop(
         BufferedReader(InputStreamReader(System.`in`, StandardCharsets.UTF_8)),
         PrintWriter(System.out, true, StandardCharsets.UTF_8),
@@ -133,7 +132,11 @@ Embedding service: ${if (runBlocking { runCatching { embedding.embed(listOf("hea
         println("Force rebuilding project index...")
         val result = runBlocking { indexer.update(force = true, progress = ::println) }
         updateText(result)
-    }, config.debug)
+    }, goal = { goal, confirm ->
+        val result = runBlocking { fileAgent.execute(goal, confirm) }
+        lastDiff = result.diff
+        result.message
+    }, diff = { lastDiff }, debug = config.debug)
     loop.run()
 }
 

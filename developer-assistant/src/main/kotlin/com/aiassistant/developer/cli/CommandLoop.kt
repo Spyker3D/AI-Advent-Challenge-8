@@ -9,6 +9,8 @@ class CommandLoop(
     private val help: (String) -> String,
     private val status: () -> String,
     private val reindex: () -> String,
+    private val goal: (String, (String) -> Boolean) -> String = { _, _ -> "Project file assistant is not configured." },
+    private val diff: () -> String = { "No proposed changes." },
     private val debug: Boolean = false
 ) {
     fun run() {
@@ -17,23 +19,31 @@ class CommandLoop(
             val line = input.readLine() ?: return
             try {
                 when (val command = CommandParser.parse(line)) {
-                    is CliCommand.Help -> printBlock("АССИСТЕНТ", help(command.question))
-                    CliCommand.Status -> printBlock("СТАТУС", status())
-                    CliCommand.Reindex -> printBlock("ПЕРЕИНДЕКСАЦИЯ", reindex())
+                    is CliCommand.Help -> printBlock("ASSISTANT", help(command.question))
+                    CliCommand.Status -> printBlock("STATUS", status())
+                    CliCommand.Reindex -> printBlock("REINDEX", reindex())
+                    CliCommand.Diff -> printBlock("DIFF", diff())
+                    is CliCommand.Goal -> printBlock("ASSISTANT", goal(command.text, ::confirm))
                     CliCommand.Exit -> return
                     is CliCommand.Invalid -> if (command.message.isNotEmpty()) printBlock("СИСТЕМА", command.message)
                 }
             } catch (error: Exception) {
-                printBlock("ОШИБКА", error.message ?: error::class.simpleName.orEmpty())
+                printBlock("ERROR", error.message ?: error::class.simpleName.orEmpty())
                 if (debug) error.printStackTrace(output)
             }
             output.flush()
         }
     }
 
+    private fun confirm(prompt: String): Boolean {
+        output.print("$prompt [y/N] ")
+        output.flush()
+        return input.readLine()?.trim()?.lowercase() in setOf("y", "yes")
+    }
+
     private fun printPrompt() {
         output.println(SEPARATOR)
-        output.println("ВЫ:")
+        output.println("YOU:")
         output.print("> ")
         output.flush()
     }
@@ -46,7 +56,6 @@ class CommandLoop(
     }
 
     private companion object {
-        const val SEPARATOR = "────────────────────────────────────────"
+        const val SEPARATOR = "----------------------------------------"
     }
 }
-

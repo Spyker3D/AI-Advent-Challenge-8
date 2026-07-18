@@ -17,6 +17,8 @@ class CommandLoopTest {
         assertIs<CliCommand.Status>(CommandParser.parse("/status"))
         assertIs<CliCommand.Reindex>(CommandParser.parse("/reindex"))
         assertIs<CliCommand.Exit>(CommandParser.parse("/exit"))
+        assertIs<CliCommand.Diff>(CommandParser.parse("/diff"))
+        assertEquals(CliCommand.Goal("Create a report"), CommandParser.parse("Create a report"))
     }
     @Test fun `rejects empty help`() {
         assertEquals(CliCommand.Invalid("Usage: /help <question>"), CommandParser.parse("/help  "))
@@ -35,9 +37,9 @@ class CommandLoopTest {
         loop.run()
 
         val output = text.toString()
-        assertEquals(3, "────────────────────────────────────────".toRegex().findAll(output).count())
-        assertEquals(3, "ВЫ:".toRegex().findAll(output).count())
-        assertEquals(2, "АССИСТЕНТ:".toRegex().findAll(output).count())
+        assertEquals(3, "----------------------------------------".toRegex().findAll(output).count())
+        assertEquals(3, "YOU:".toRegex().findAll(output).count())
+        assertEquals(2, "ASSISTANT:".toRegex().findAll(output).count())
         assertContains(output, "Answer to: First question")
         assertContains(output, "Answer to: Second question")
     }

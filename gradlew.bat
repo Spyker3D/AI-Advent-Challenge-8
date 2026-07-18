@@ -17,6 +17,9 @@
 @rem
 
 @if "%DEBUG%"=="" @echo off
+@rem Developer Assistant emits UTF-8 Russian text. Switch the shared Windows
+@rem console before Gradle starts so JavaExec output is not decoded as CP866.
+@echo %* | %SystemRoot%\System32\findstr.exe /C:":developer-assistant:run" >nul && chcp 65001 >nul
 @rem ##########################################################################
 @rem
 @rem  Gradle startup script for Windows

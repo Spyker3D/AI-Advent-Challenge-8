@@ -6,6 +6,50 @@
 
 Запуск: `gradlew.bat :developer-assistant:run --args="--project-root=."`. Подробнее: [developer-assistant/README.md](developer-assistant/README.md).
 
+## Day 34 — Project File Assistant
+
+Терминальный `developer-assistant` расширен агентным режимом работы с файлами проекта. Пользователь вводит цель обычным языком, а ограниченный цикл (не более 10 tool-итераций) сам просматривает дерево, выполняет точный поиск, читает актуальные файлы, готовит изменение в памяти и показывает diff. Существующие `/help` с RAG, PR review Day 32 и индекс поддержки Day 33 сохранены.
+
+```mermaid
+flowchart TD
+    U[User goal] --> A[Developer Assistant]
+    A --> P[Planner]
+    P --> S[Search files]
+    P --> R[Read files]
+    S --> P
+    R --> P
+    P --> D[Prepare diff]
+    D --> C{User confirms?}
+    C -->|No| X[Cancel]
+    C -->|Yes| W[Write or patch files]
+    W --> V[Verify result]
+    V --> O[Final report]
+```
+
+Доступные локальные tools: `list_files`, `search_in_files`, `read_file`, `write_file`, `apply_patch`, `get_diff`. RAG используется для существующих вопросов и предварительного отбора контекста; перед изменением содержимое всегда читается с диска. Proposed changes не затрагивают рабочее дерево до ответа `y` или `yes`; любое другое значение отменяет запись. `--dry-run` выполняет анализ и показывает diff, но никогда не пишет файлы.
+
+```powershell
+# Интерактивный запуск
+.\gradlew.bat :developer-assistant:run --args="--project-root=."
+
+# Без записи
+.\gradlew.bat :developer-assistant:run --args="--project-root=. --dry-run"
+```
+
+Перед запуском задайте `OPENAI_API_KEY` и запустите Ollama, как описано в [developer-assistant/README.md](developer-assistant/README.md). Индекс строится инкрементально при запуске; `/reindex` выполняет принудительную полную переиндексацию. После записи ассистент явно предлагает переиндексировать изменённые файлы. Команды интерактивного режима: `/help <question>`, `/status`, `/reindex`, `/diff`, `/exit`.
+
+Демонстрационные цели:
+
+- `Найди все места, где используется SupportAssistantService, и создай отчёт.` — создаёт `docs/generated/support-assistant-usage.md`.
+- `Проверь реализацию поддержки и обнови документацию, чтобы она соответствовала коду.` — идемпотентно обновляет помеченный раздел README.
+- `Проверь инварианты CRM и MCP и создай отчёт.` — создаёт `reports/day-34-project-validation.md`.
+
+Пример предварительного diff начинается с `diff --git a/... b/...`, содержит `---`, `+++`, удалённые строки с `-` и добавленные с `+`. Повторный запуск сравнивает итоговое содержимое: одинаковый файл не записывается, а управляемый раздел README заменяется, поэтому дубликаты не накапливаются.
+
+Безопасность: нормализованный путь обязан оставаться внутри абсолютного project root; внешние symlink, служебные каталоги, бинарные/слишком большие файлы и `.env*`, `local.properties`, keystore и credential JSON запрещены. Запись выполняется через временный файл и atomic move, patch требует единственного точного совпадения. Git commit/push/reset/clean и смена веток не выполняются. Журнал последней операции без содержимого файлов и ключей сохраняется в `developer-assistant/logs/last-operation.json`.
+
+Ограничения: агент извлекает известный API или компонент из естественной формулировки цели либо из имени в обратных кавычках; полностью произвольное рефакторинг-планирование пока не поддерживается. Локальный unified diff показывает изменённую область с тремя строками контекста. Один запуск обрабатывает не более 10 tool calls.
+
 ## Day 29 — Local LLM Optimization
 
 В режиме `Local` параметры Ollama меняются прямо в Settings и автоматически
@@ -188,3 +232,70 @@ git diff --check
 ```
 
 Ограничения: CRM и диагностические коды демонстрационные; Support Assistant read-only и не связывается с реальным оператором; OpenAI/MCP/Ollama требуют доступной локальной конфигурации; восстановление удалённой локальной истории невозможно.
+
+<!-- day34-openai-api-doc:start -->
+### Current implementation: OpenAI API integration
+
+The project integrates the OpenAI API for AI assistant chat completions as one of several LLM backend providers alongside Local Ollama and a Private VPS service. This integration is primarily implemented in `core/data/src/main/java/com/aiassistant/core/data/client/LlmClientImpl.kt` and supported by dependency injection in the network and app modules (`core/network/src/main/java/.../NetworkModule.kt`, `app/src/main/java/com/aiassistant/di/AppModule.kt`) and configuration persistence (`core/data/src/main/java/com/aiassistant/core/data/datastore/SettingsDataStore.kt`).
+
+**Purpose and Main Responsibilities**
+
+- To provide the ability to send chat message sequences to OpenAI API's "Responses" endpoint and receive AI-generated text responses with usage metadata.
+- To unify multiple AI backends (OpenAI, Local Ollama, Private VPS) behind a common LlmClient interface, selecting the provider dynamically based on user settings.
+- To encapsulate HTTP request construction, API key authentication, error handling, and response parsing for OpenAI interactions.
+
+**End-to-End Data and Control Flow**
+
+1. `LlmClientImpl.sendChat()` is called with a list of chat `Message` objects and optional parameters for max tokens and model name.
+2. It reads current chat settings from a DataStore (`SettingsDataStore`) asynchronously.
+3. If the provider is set to OpenAI, it calls `sendViaOpenAi()`.
+4. In `sendViaOpenAi()`:
+   - Validates presence of the OpenAI API key from `ApiConfig` (provided by `AppModule` via `BuildConfig.OPENAI_API_KEY`).
+   - Constructs the request payload:
+     - System messages are combined with a fixed system prompt; user/assistant messages are converted into OpenAI API message objects with role translation ("user", "assistant", "system").
+   - Sends the request through a Retrofit service (`OpenAiApi`) created with a Retrofit instance configured in `NetworkModule`.
+   - Logs model name in debug builds.
+   - Parses the response text; returns a `ChatResponse` on success.
+   - Catches network, HTTP, and unexpected exceptions; returns failed results with descriptive error messages localized in Russian, e.g., "OpenAI API key не настроен", "Нет подключения к интернету", "OpenAI вернул пустой ответ".
+5. Returned `Result<ChatResponse>` carries the AI output or failure cause for display or further processing.
+
+**Configuration and Dependencies**
+
+- The OpenAI API key is supplied via Gradle's `BuildConfig.OPENAI_API_KEY` embedded through `local.properties` with key `OPENAI_API_KEY`, documented in the README from lines 101–121.
+- Retrofit and OkHttp setups for OpenAI API use a named client with `OpenAiAuthInterceptor` injecting the Bearer token header, plus HTTP logging with authorization header redacted (`core/network/.../NetworkModule.kt` lines 26–85).
+- User chat preferences including selected OpenAI model (default `gpt-4.1-mini`), temperature, max output tokens, and system prompt are stored and loaded via Android DataStore in `SettingsDataStore` (lines 23–152). Normalization of OpenAI model names occurs at usage.
+- The class uses Kotlin Coroutines to perform network I/O on Dispatchers.IO.
+
+**Error Handling**
+
+- Explicit exceptions caught: `SocketTimeoutException` (timeouts), `UnknownHostException` (no internet), `HttpException` (HTTP error responses), and generic `Exception`.
+- HTTP codes are mapped to user-friendly messages. For example:
+  - 400: "OpenAI отклонил запрос..."
+  - 401: "Неверный OpenAI API key..."
+  - 429: "Превышен лимит OpenAI API..."
+  - 5xx: "OpenAI временно недоступен..."
+- Empty responses are treated as errors.
+- Detailed log output is enabled in debug mode for development diagnostics.
+
+**Security and Maintenance Limitations**
+
+- The README (lines 119–121) warns the OpenAI API key is exposed in `BuildConfig` and thus embedded in the APK for this educational/demo project. This is not suitable for production apps where secrets should not be bundled with distributed code.
+- API key must be added manually to `local.properties` and not committed to Git for security.
+- The app does not perform automatic retries on API rate limiting (429) or failures.
+- Network timeouts are generous but finite (set in OkHttp clients).
+- The integration depends on Android-provided network connectivity.
+- The OpenAI system prompt is hardcoded in `LlmClientImpl` and merged with any system messages provided in the chat stream; this limits dynamic system prompt flexibility.
+- The model normalization and selection support adapt to new OpenAI model names but require explicit updates if models change significantly.
+
+**Summary**
+
+The OpenAI API integration is configured for chat response generation with a specific "gpt-4.1-mini" model as default. It is wired through Retrofit with auth interceptors, configured via settings stored in a DataStore, and selected at runtime by user preference. The client handles building requests including system prompts, error handling with localized messages, and returns structured responses or failures. Usage is documented in the README with setup instructions emphasizing manual API key provisioning, use of `local.properties`, and security warnings about embedding keys in BuildConfig. This integration forms a key component of the multi-backend AI assistant architecture.  
+
+##### Evidence citation:
+
+- README.md lines 94-95, 101-121 (OpenAI API and usage instructions, security notes)
+- app/src/main/java/com/aiassistant/di/AppModule.kt lines 20-26, 31-32 (providing API key to interceptor and ApiConfig)
+- core/data/src/main/java/com/aiassistant/core/data/client/LlmClientImpl.kt lines 42-105 (OpenAI sendViaOpenAi method, error handling, prompt building)
+- core/data/src/main/java/com/aiassistant/core/data/datastore/SettingsDataStore.kt lines 23-152 (chat settings flow with OpenAI model, keys, /and defaults)
+- core/network/src/main/java/com/aiassistant/core/network/di/NetworkModule.kt lines 26-85 (OkHttp and Retrofit setup for OpenAI endpoint and interceptor)
+<!-- day34-openai-api-doc:end -->
