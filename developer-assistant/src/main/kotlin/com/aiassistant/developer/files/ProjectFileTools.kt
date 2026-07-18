@@ -25,7 +25,7 @@ class ProjectFileTools(
         }
     }
 
-    fun searchInFiles(query: String, path: String = ".", extensions: Set<String> = emptySet(), regex: Boolean = false, limit: Int = maxResults): List<SearchMatch> {
+    fun searchInFiles(query: String, path: String = ".", extensions: Set<String> = emptySet(), regex: Boolean = false, ignoreCase: Boolean = false, limit: Int = maxResults): List<SearchMatch> {
         require(query.isNotEmpty()) { "Search query must not be empty." }
         val matcher = if (regex) Regex(query) else null
         val result = mutableListOf<SearchMatch>()
@@ -33,7 +33,7 @@ class ProjectFileTools(
             if (extensions.isNotEmpty() && ".${file.substringAfterLast('.', "")}" !in extensions) continue
             val lines = try { readRaw(file).lines() } catch (_: Exception) { continue }
             lines.forEachIndexed { index, line ->
-                if (result.size < limit && (matcher?.containsMatchIn(line) ?: line.contains(query))) {
+                if (result.size < limit && (matcher?.containsMatchIn(line) ?: line.contains(query, ignoreCase = ignoreCase))) {
                     result += SearchMatch(file, index + 1, line.trim().take(300))
                 }
             }

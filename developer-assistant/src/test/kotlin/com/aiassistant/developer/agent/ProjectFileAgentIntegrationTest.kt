@@ -36,6 +36,20 @@ class ProjectFileAgentIntegrationTest {
         assertContains(result.diff, "OpenAiClient.kt")
     }
 
+    @Test fun `usage goal accepts API OpenAi word order and punctuation`() = runBlocking {
+        val root = Files.createTempDirectory("day34-openai-alias")
+        root.resolve("OpenAiApi.kt").writeText("interface OpenAiApi")
+        root.resolve("Client.kt").writeText("val api: OpenAiApi")
+        root.resolve("README.md").writeText("# Sample")
+        val misleadingLlm = object : LlmClient {
+            override suspend fun generate(instructions: String, input: String) = error("Known alias must not call LLM")
+        }
+        val result = ProjectFileAgent(root, ProjectFileTools(root), true, misleadingLlm)
+            .execute("Найди все места, где используется API OpenAi и создай отчет.") { false }
+        assertContains(result.diff, "docs/generated/openai-api-usage.md")
+        assertContains(result.diff, "OpenAiApi.kt")
+    }
+
     @Test fun `documentation goal uses requested subject instead of support`() = runBlocking {
         val root = Files.createTempDirectory("day34-openai-doc")
         root.resolve("OpenAiClient.kt").writeText("class OpenAiClient // OpenAI API")

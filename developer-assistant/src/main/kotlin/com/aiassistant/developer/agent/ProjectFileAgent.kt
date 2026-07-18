@@ -84,7 +84,7 @@ ${LocalDate.now()}
     private suspend fun documentationUpdate(goal: String, plan: SubjectPlan) {
         val subject = plan.subject
         tool("search_in_files"); val matches = plan.searchTerms.flatMap {
-            tools.searchInFiles(it, ".", setOf(".kt", ".kts", ".java", ".js", ".ts", ".json", ".xml", ".md"), limit = 60)
+            tools.searchInFiles(it, ".", setOf(".kt", ".kts", ".java", ".js", ".ts", ".json", ".xml", ".md"), ignoreCase = true, limit = 60)
         }.distinctBy { Triple(it.path, it.line, it.text) }.take(80)
         require(matches.isNotEmpty()) { "No code or documentation found for: $subject" }
         val sourcePaths = matches.map { it.path }.filterNot { it == "README.md" || isGeneratedOrTest(it) }
@@ -128,7 +128,7 @@ ${LocalDate.now()}
 
     private fun rawText(path: String): String = tools.readFile(path, 1, Int.MAX_VALUE).lineSequence().joinToString("\n") { it.substringAfter(": ", "") }
     private fun searchSubject(subject: String, extensions: Set<String>, limit: Int = 80) =
-        GoalSubjectExtractor.searchTerms(subject).flatMap { tools.searchInFiles(it, ".", extensions, limit = limit) }
+        GoalSubjectExtractor.searchTerms(subject).flatMap { tools.searchInFiles(it, ".", extensions, ignoreCase = true, limit = limit) }
             .distinctBy { Triple(it.path, it.line, it.text) }.take(limit)
     private fun slug(value: String) = value.lowercase().replace(Regex("[^a-zа-я0-9]+"), "-").trim('-').ifBlank { "component" }
     private fun isGeneratedOrTest(path: String) = path.contains("/test/") || path.contains("/build/") ||
@@ -139,12 +139,15 @@ ${LocalDate.now()}
         else -> 2
     }
     private suspend fun resolveSubject(goal: String): SubjectPlan {
+        GoalSubjectExtractor.knownPlanOrNull(goal)?.let { return it }
         if (llm == null) return GoalSubjectExtractor.localPlan(goal)
         val response = llm.generate(SUBJECT_PROMPT, goal)
         return runCatching {
             val json = JsonParser.parseString(response.substringAfter('{').substringBeforeLast('}') .let { "{$it}" }).asJsonObject
-            val subject = json.get("subject").asString.trim()
-            val terms = json.getAsJsonArray("searchTerms").map { it.asString.trim() }.filter { it.isNotBlank() }
+            val rawSubject = json.get("subject").asString.trim()
+            val subject = GoalSubjectExtractor.cleanSubject(rawSubject)
+            val terms = json.getAsJsonArray("searchTerms").map { GoalSubjectExtractor.cleanSubject(it.asString) }
+                .filter { it.isNotBlank() }.plus(GoalSubjectExtractor.searchTerms(subject)).distinct()
             SubjectPlan(subject, terms.ifEmpty { listOf(subject) })
         }.getOrElse { GoalSubjectExtractor.localPlan(goal) }
     }
@@ -178,13 +181,26 @@ object GoalSubjectExtractor {
     private val known = listOf("OpenAI API", "SupportAssistantService", "MCP", "RAG", "OpenRouter API", "Ollama")
 
     fun extract(goal: String): String {
-        known.firstOrNull { goal.contains(it, true) }?.let { return it }
+        knownPlanOrNull(goal)?.let { return it.subject }
         Regex("`([^`]{2,80})`").find(goal)?.groupValues?.get(1)?.let { return it }
         Regex("\\b([A-Z][A-Za-z0-9_]*(?:Service|Client|Repository|ViewModel|API))\\b").find(goal)?.groupValues?.get(1)?.let { return it }
         throw IllegalArgumentException("Could not identify a component or API in the goal. Name the subject, but not individual files.")
     }
 
     fun localPlan(goal: String): SubjectPlan = extract(goal).let { SubjectPlan(it, searchTerms(it)) }
+
+    fun knownPlanOrNull(goal: String): SubjectPlan? {
+        if (Regex("(?i)\\b(?:openai\\s+api|api\\s+openai)\\b").containsMatchIn(goal)) {
+            return SubjectPlan("OpenAI API", searchTerms("OpenAI API"))
+        }
+        return known.firstOrNull { goal.contains(it, true) }?.let { SubjectPlan(it, searchTerms(it)) }
+    }
+
+    fun cleanSubject(value: String): String = value
+        .replace(Regex("(?i)\\b(usages?|references?|report|documentation|использован(?:ие|ия|ий|ию|ии)?|отч[её]т|документац(?:ия|ию|ии))\\b"), " ")
+        .replace(Regex("\\s+"), " ").trim().let {
+            if (Regex("(?i)^(?:api\\s+openai|openai\\s+api)$").matches(it)) "OpenAI API" else it
+        }
 
     fun searchTerms(subject: String): List<String> = when {
         subject.equals("OpenAI API", true) -> listOf("OpenAI", "openai", "api.openai.com")
