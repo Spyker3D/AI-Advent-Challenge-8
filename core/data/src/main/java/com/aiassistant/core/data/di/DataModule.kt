@@ -26,6 +26,10 @@ import com.aiassistant.core.domain.repository.LongTermMemoryRepository
 import com.aiassistant.core.domain.repository.SettingsRepository
 import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.repository.PrivateVpsConnectionTester
+import com.aiassistant.core.domain.support.SupportKnowledgeProvider
+import com.aiassistant.core.domain.support.SupportTicketProvider
+import com.aiassistant.core.data.support.AssetSupportKnowledgeProvider
+import com.aiassistant.core.data.support.McpSupportTicketProvider
 import com.aiassistant.core.data.repository.PrivateVpsConnectionTesterImpl
 import dagger.Binds
 import dagger.Module
@@ -82,6 +86,9 @@ abstract class DataModule {
 
     @Binds
     abstract fun bindPrivateVpsConnectionTester(impl: PrivateVpsConnectionTesterImpl): PrivateVpsConnectionTester
+
+    @Binds abstract fun bindSupportTicketProvider(impl: McpSupportTicketProvider): SupportTicketProvider
+    @Binds abstract fun bindSupportKnowledgeProvider(impl: AssetSupportKnowledgeProvider): SupportKnowledgeProvider
 
 
     companion object {

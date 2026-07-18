@@ -138,3 +138,53 @@ automatically; retry manually later. `Retry-After` is shown when the server supp
 
 Online и Local выбираются в Settings. Имя online-модели редактируется вручную;
 локальные URL и модель настраиваются отдельно.
+# Day 33 — AI Assistant User Support
+
+Support Assistant встроен в текущее Android-приложение по маршруту **Settings → Support**. Он не добавляет аккаунты, авторизацию, подписки или платежи. Экран выбирает один из пяти демонстрационных тикетов, показывает безопасную карточку устройства, ведёт историю текущей support-сессии и выводит ответ, источники и рекомендацию оператора.
+
+```mermaid
+flowchart TD
+    U[Support question] --> S[SupportAssistantService]
+    S --> M[MCP demo CRM]
+    M --> T[Ticket and device context]
+    S --> R[Support RAG]
+    R --> D[AI Assistant documentation]
+    T --> P[Prompt Builder]
+    D --> P
+    P --> L[OpenAI]
+    L --> V[Validation]
+    V --> UI[Android Support UI]
+    V --> E[Escalation decision]
+```
+
+RAG читает только восемь Markdown-файлов из `support-knowledge/`: обзор продукта, FAQ, чат, историю, настройки, диагностику, коды ошибок и эскалацию. Для отдельного инкрементального индекса используются существующие chunker, Ollama embedding client и manifest storage:
+
+```powershell
+.\gradlew.bat :developer-assistant:run --args="index-support-knowledge --project-root=. --knowledge-root=support-knowledge"
+```
+
+Индекс сохраняется в `.support-assistant/index.json`, manifest — в `.support-assistant/manifest.json`; CRM JSON туда не входит. Android-пакет также включает scoped support-документы как assets и использует существующий `RagRetriever`.
+
+Демонстрационная CRM находится в `mcp-server/data`: три вымышленных профиля и тикеты `ticket-101` (rate limit), `ticket-102` (нет сети), `ticket-103` (timeout), `ticket-104` (история), `ticket-105` (пустой ответ). Read-only MCP tools: `get_support_user`, `get_ticket`, `list_support_user_tickets`, `list_tickets`. Они возвращают структурированные ошибки и не изменяют тикеты или устройство.
+
+Запуск:
+
+```powershell
+$env:MCP_PROJECT_ROOT = (Resolve-Path .).Path
+$env:MCP_DISABLE_WEATHER = "true"
+npm ci --prefix mcp-server
+npm start --prefix mcp-server
+.\gradlew.bat installDebug
+```
+
+Демо-вопросы: «Почему AI Assistant не отвечает?» для `ticket-101` и `ticket-102`, «Почему ответ генерируется так долго?» для `ticket-103`, «Почему исчез мой прошлый диалог?» для `ticket-104`. MCP имеет один ограниченный retry; при его недоступности ответ строится по общей документации. Недоступность/пустой результат RAG, повторные ошибки, неизвестная причина и потеря истории приводят к детерминированной рекомендации оператора. При недоступном OpenAI UI показывает контролируемую ошибку и повтор.
+
+Проверка:
+
+```powershell
+npm test --prefix mcp-server
+.\gradlew.bat :developer-assistant:test :core:domain:testDebugUnitTest assembleDebug test
+git diff --check
+```
+
+Ограничения: CRM и диагностические коды демонстрационные; Support Assistant read-only и не связывается с реальным оператором; OpenAI/MCP/Ollama требуют доступной локальной конфигурации; восстановление удалённой локальной истории невозможно.

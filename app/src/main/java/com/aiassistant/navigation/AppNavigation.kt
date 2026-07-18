@@ -21,6 +21,8 @@ import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.MemoryViewModel
 import com.aiassistant.feature.settings.presentation.screen.SettingsScreen
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
+import com.aiassistant.feature.settings.presentation.support.SupportScreen
+import com.aiassistant.feature.settings.presentation.support.SupportViewModel
 
 @Composable
 fun AppNavigation(
@@ -61,10 +63,16 @@ fun AppNavigation(
             val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
             SettingsScreen(
                 viewModel = settingsViewModel,
+                onNavigateToSupport = { navController.navigate(Screen.Support.route) },
                 onNavigateBack = {
                     navController.popBackStack()
                 }
             )
+        }
+
+        composable(Screen.Support.route) {
+            val supportViewModel: SupportViewModel = viewModel(factory = viewModelFactory)
+            SupportScreen(supportViewModel, onBack = { navController.popBackStack() })
         }
 
         composable(Screen.Memory.route) {
