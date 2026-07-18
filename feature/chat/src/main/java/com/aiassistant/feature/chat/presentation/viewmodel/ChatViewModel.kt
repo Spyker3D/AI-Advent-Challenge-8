@@ -47,6 +47,11 @@ import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.ChatUiState
 import com.aiassistant.feature.chat.presentation.RagSourceUi
+import com.aiassistant.feature.chat.calendar.CalendarAssistantService
+import com.aiassistant.feature.chat.calendar.CalendarDateTime
+import com.aiassistant.feature.chat.calendar.CalendarToolOutcome
+import com.aiassistant.feature.chat.calendar.CalendarUiState
+import com.aiassistant.feature.chat.calendar.PendingCalendarAction
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -119,12 +124,14 @@ class ChatViewModel @Inject constructor(
     private val ragPromptBuilder: RagPromptBuilder,
     private val queryRewriter: QueryRewriter,
     private val taskMemoryUpdater: TaskMemoryUpdater,
-    private val taskMemoryMerger: TaskMemoryMerger
+    private val taskMemoryMerger: TaskMemoryMerger,
+    private val calendarAssistant: CalendarAssistantService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
     private val ragAnswerConfig = RagAnswerConfig()
+    private var pendingCalendarWrite: PendingCalendarAction.CreateEvent? = null
 
         init {
         observeChatSettings()
@@ -487,6 +494,11 @@ class ChatViewModel @Inject constructor(
         val currentMessage = _uiState.value.currentMessage.trim()
         if (currentMessage.isBlank() || _uiState.value.isLoading) return
 
+        if (calendarAssistant.canHandle(currentMessage)) {
+            sendCalendarMessage(currentMessage)
+            return
+        }
+
         if (mcpOrchestratorAgent.canHandleOrchestration(currentMessage)) {
             sendMcpOrchestrationMessage(currentMessage)
             return
@@ -789,6 +801,70 @@ class ChatViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    private fun sendCalendarMessage(text: String) {
+        val chatId = _uiState.value.currentChatId
+        val user = Message(UUID.randomUUID().toString(), text, MessageRole.USER)
+        _uiState.value = _uiState.value.copy(messages = _uiState.value.messages + user, currentMessage = "", isLoading = true, error = null)
+        viewModelScope.launch {
+            chatRepository.saveMessage(user, chatId)
+            when (val outcome = calendarAssistant.handle(text)) {
+                is CalendarToolOutcome.Answer -> addCalendarAssistantMessage(outcome.text, chatId)
+                is CalendarToolOutcome.Pending -> {
+                    addCalendarAssistantMessage(CalendarDateTime.formatPreview(outcome.action.draft), chatId)
+                    _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PendingConfirmation(outcome.action), isLoading = false)
+                }
+                is CalendarToolOutcome.Permission -> _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PermissionRequired(outcome.permission), isLoading = false)
+                is CalendarToolOutcome.Failure -> addCalendarAssistantMessage(outcome.message, chatId)
+            }
+        }
+    }
+
+    fun onCalendarPermissionResult(granted: Boolean, permanentlyDenied: Boolean) {
+        val state = _uiState.value.calendarState as? CalendarUiState.PermissionRequired ?: return
+        if (!granted) { _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PermissionRequired(state.permission, permanentlyDenied), error = "Доступ к календарю не предоставлен"); return }
+        _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Idle)
+        if (state.permission == android.Manifest.permission.READ_CALENDAR) viewModelScope.launch {
+            when (val outcome = calendarAssistant.resumeAfterPermission()) {
+                is CalendarToolOutcome.Answer -> addCalendarAssistantMessage(outcome.text, _uiState.value.currentChatId)
+                is CalendarToolOutcome.Failure -> addCalendarAssistantMessage(outcome.message, _uiState.value.currentChatId)
+                else -> _uiState.value = _uiState.value.copy(error = "Не удалось продолжить календарную операцию")
+            }
+        }
+        if (state.permission == android.Manifest.permission.WRITE_CALENDAR) pendingCalendarWrite?.let { action ->
+            _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PendingConfirmation(action))
+            confirmCalendarAction()
+        }
+    }
+
+    fun dismissCalendarPermission() {
+        if (_uiState.value.calendarState is CalendarUiState.PermissionRequired) {
+            _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Idle)
+            addCalendarAssistantMessage("Не удалось выполнить календарную операцию, потому что доступ не предоставлен.", _uiState.value.currentChatId)
+        }
+    }
+
+    fun confirmCalendarAction() {
+        val pending = _uiState.value.calendarState as? CalendarUiState.PendingConfirmation ?: return
+        pendingCalendarWrite = pending.action
+        _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Executing)
+        viewModelScope.launch {
+            calendarAssistant.confirm(pending.action).fold(
+                onSuccess = { created -> pendingCalendarWrite=null; val start=java.time.Instant.ofEpochMilli(created.draft.startMillis).atZone(java.time.ZoneId.of(created.draft.timeZone)); val end=java.time.Instant.ofEpochMilli(created.draft.endMillis).atZone(start.zone); addCalendarAssistantMessage("Событие «${created.draft.title}» добавлено в календарь на ${start.toLocalDate()} с ${start.toLocalTime()} до ${end.toLocalTime()}.", _uiState.value.currentChatId); _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Success("Событие создано")) },
+                onFailure = { error -> if (error is SecurityException) _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PermissionRequired(android.Manifest.permission.WRITE_CALENDAR)) else _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Error("Не удалось создать событие: ${error.message}")) }
+            )
+        }
+    }
+
+    fun cancelCalendarAction() {
+        if (_uiState.value.calendarState is CalendarUiState.PendingConfirmation) { pendingCalendarWrite=null; _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Idle); addCalendarAssistantMessage("Создание события отменено.", _uiState.value.currentChatId) }
+    }
+
+    private fun addCalendarAssistantMessage(text: String, chatId: String) {
+        val message = Message(UUID.randomUUID().toString(), text, MessageRole.ASSISTANT)
+        _uiState.value = _uiState.value.copy(messages = _uiState.value.messages + message, isLoading = false)
+        viewModelScope.launch { chatRepository.saveMessage(message, chatId) }
     }
 
     private suspend fun buildRagContext(
