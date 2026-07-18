@@ -299,3 +299,49 @@ The OpenAI API integration is configured for chat response generation with a spe
 - core/data/src/main/java/com/aiassistant/core/data/datastore/SettingsDataStore.kt lines 23-152 (chat settings flow with OpenAI model, keys, /and defaults)
 - core/network/src/main/java/com/aiassistant/core/network/di/NetworkModule.kt lines 26-85 (OkHttp and Retrofit setup for OpenAI endpoint and interceptor)
 <!-- day34-openai-api-doc:end -->
+# Day 35 — AI Calendar Assistant
+
+AI Assistant теперь автоматизирует работу с личным календарём прямо в существующем чате. Пользователь формулирует цель естественным языком, LLM определяет намерение и параметры, а локальные Android tools читают реальные события или готовят создание нового события.
+
+```mermaid
+flowchart TD
+    U[User message] --> L[LLM]
+    L --> I{Intent}
+    I -->|Read| T1[list_calendar_events]
+    I -->|Create| T2[create_calendar_event]
+    T1 --> C[Android Calendar Provider]
+    C --> R[Tool result]
+    R --> L
+    L --> A[Chat answer]
+    T2 --> P[Pending action preview]
+    P --> Q{User confirms?}
+    Q -->|No| X[Cancel]
+    Q -->|Yes| W[Write to Calendar Provider]
+    W --> A
+```
+
+Архитектура продолжает существующую цепочку `ChatScreen → ChatViewModel → CalendarAssistantService → LLM/tool call → CalendarToolExecutor → CalendarRepository → CalendarContract`. Для чтения используется `CalendarContract.Instances`, поэтому события запрашиваются только за нужный диапазон и учитываются повторения. Создание выполняется через `CalendarContract.Events`.
+
+Поддерживаются чтение, поиск, создание, перенос, изменение и удаление обычных событий. В prompt передаются локальные дата, время, день недели и `ZoneId.systemDefault()`. Реализованы tools `list_calendar_events`, `find_calendar_events`, `create_calendar_event`, `update_calendar_event` и `delete_calendar_event`. В LLM не отправляются данные аккаунта, участники и внутренние event ID.
+
+Разрешения `READ_CALENDAR` и `WRITE_CALENDAR` запрашиваются по требованию. Отказ показывается как понятная ошибка, а после постоянного отказа доступна ссылка в настройки приложения. Permission-flow продолжает сохранённый локальный tool call и не повторяет запрос определения намерения к LLM.
+
+Создание, перенос, изменение и удаление всегда двухэтапные: tool лишь создаёт `PendingCalendarAction`, чат показывает preview старых и новых значений, и только кнопка «Подтвердить» вызывает Provider. При неоднозначном поиске ассистент показывает кандидатов и просит уточнить дату или время. «Отмена» ничего не меняет; состояние `Executing` защищает от двойного нажатия. Повторяющиеся события отклоняются до записи.
+
+Запуск и проверка:
+
+```powershell
+.\gradlew.bat test
+.\gradlew.bat assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+Для демонстрации добавьте в системный календарь событие «Проверка Day 35» сегодня на 11:00–11:30. Затем: (1) спросите «Какие события у меня сегодня?»; (2) отправьте «Создай завтра в 15:00 встречу „Запись видео Day 35“ на один час»; (3) проверьте preview и подтвердите; (4) откройте стандартный Calendar; (5) вернитесь и спросите расписание на завтра.
+
+Для проверки изменения и удаления: отправьте «Перенеси встречу „Запись видео Day 35“ завтра на 16:00», проверьте блок «Было/Станет» и подтвердите. Затем отправьте «Отмени встречу „Запись видео Day 35“ завтра», проверьте предупреждение удаления и подтвердите.
+
+Ограничения первой версии: используется системный календарь Android, а не Google Calendar API; tools локальные; участники, Google Meet и повторяющиеся события не создаются; изменение и удаление повторяющихся событий не поддерживаются; сложные фразы зависят от качества LLM; timezone берётся с устройства; на эмуляторе требуется настроенный writable-календарь.
+
+Приватность: приложение не выгружает календарь целиком, не логирует аккаунты и полные личные данные, не хранит копию календаря и не выполняет запись без явного подтверждения.
+
+Я автоматизировал работу с личным календарём через существующее Android-приложение AI Assistant. AI определяет намерение, интерпретирует даты и время, извлекает параметры и вызывает локальные calendar tools. Приложение читает настоящие события и после явного подтверждения создаёт новые события в реальном системном календаре Android.

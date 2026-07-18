@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
@@ -61,6 +62,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -98,6 +100,8 @@ import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
+import com.aiassistant.feature.chat.calendar.CalendarDateTime
+import com.aiassistant.feature.chat.calendar.CalendarUiState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -128,6 +132,18 @@ fun ChatScreen(
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var isOverflowMenuOpen by remember { mutableStateOf(false) }
+    var permissionRequested by remember { mutableStateOf(false) }
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val activity = context as? android.app.Activity
+        val state = uiState.calendarState as? CalendarUiState.PermissionRequired
+        val permanentlyDenied = !granted && permissionRequested && state != null && activity?.shouldShowRequestPermissionRationale(state.permission) == false
+        viewModel.onCalendarPermissionResult(granted, permanentlyDenied)
+    }
+
+    val permissionState = uiState.calendarState as? CalendarUiState.PermissionRequired
+    if (permissionState != null) {
+        AlertDialog(onDismissRequest = viewModel::dismissCalendarPermission, title = { Text("Доступ к календарю") }, text = { Text(if (permissionState.permission == android.Manifest.permission.READ_CALENDAR) "Для просмотра реальных событий приложению нужен доступ к календарю." else "Для добавления подтверждённого события приложению нужен доступ на запись в календарь.") }, confirmButton = { TextButton(onClick = { if (permissionState.permanentlyDenied) { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) } else { permissionRequested = true; calendarPermissionLauncher.launch(permissionState.permission) } }) { Text(if (permissionState.permanentlyDenied) "Открыть настройки" else "Продолжить") } }, dismissButton = { TextButton(onClick = viewModel::dismissCalendarPermission) { Text("Не сейчас") } })
+    }
 
     // Refresh settings when returning from settings screen
     LaunchedEffect(Unit) {
@@ -675,6 +691,18 @@ fun ChatScreen(
 
                             // Loading indicator is now shown after user messages
                             // This ensures it appears in the right place in the conversation flow
+                        }
+                    }
+                }
+
+                (uiState.calendarState as? CalendarUiState.PendingConfirmation)?.let { pending ->
+                    Card(modifier = Modifier.fillMaxWidth().padding(16.dp), elevation = CardDefaults.cardElevation(6.dp)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(CalendarDateTime.formatPreview(pending.action), style = MaterialTheme.typography.bodyMedium)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = viewModel::cancelCalendarAction) { Text("Отмена") }
+                                Button(onClick = viewModel::confirmCalendarAction) { Text("Подтвердить") }
+                            }
                         }
                     }
                 }
