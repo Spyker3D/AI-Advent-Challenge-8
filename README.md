@@ -6,6 +6,50 @@
 
 Запуск: `gradlew.bat :developer-assistant:run --args="--project-root=."`. Подробнее: [developer-assistant/README.md](developer-assistant/README.md).
 
+## Day 34 — Project File Assistant
+
+Терминальный `developer-assistant` расширен агентным режимом работы с файлами проекта. Пользователь вводит цель обычным языком, а ограниченный цикл (не более 10 tool-итераций) сам просматривает дерево, выполняет точный поиск, читает актуальные файлы, готовит изменение в памяти и показывает diff. Существующие `/help` с RAG, PR review Day 32 и индекс поддержки Day 33 сохранены.
+
+```mermaid
+flowchart TD
+    U[User goal] --> A[Developer Assistant]
+    A --> P[Planner]
+    P --> S[Search files]
+    P --> R[Read files]
+    S --> P
+    R --> P
+    P --> D[Prepare diff]
+    D --> C{User confirms?}
+    C -->|No| X[Cancel]
+    C -->|Yes| W[Write or patch files]
+    W --> V[Verify result]
+    V --> O[Final report]
+```
+
+Доступные локальные tools: `list_files`, `search_in_files`, `read_file`, `write_file`, `apply_patch`, `get_diff`. RAG используется для существующих вопросов и предварительного отбора контекста; перед изменением содержимое всегда читается с диска. Proposed changes не затрагивают рабочее дерево до ответа `y` или `yes`; любое другое значение отменяет запись. `--dry-run` выполняет анализ и показывает diff, но никогда не пишет файлы.
+
+```powershell
+# Интерактивный запуск
+.\gradlew.bat :developer-assistant:run --args="--project-root=."
+
+# Без записи
+.\gradlew.bat :developer-assistant:run --args="--project-root=. --dry-run"
+```
+
+Перед запуском задайте `OPENAI_API_KEY` и запустите Ollama, как описано в [developer-assistant/README.md](developer-assistant/README.md). Индекс строится инкрементально при запуске; `/reindex` выполняет принудительную полную переиндексацию. После записи ассистент явно предлагает переиндексировать изменённые файлы. Команды интерактивного режима: `/help <question>`, `/status`, `/reindex`, `/diff`, `/exit`.
+
+Демонстрационные цели:
+
+- `Найди все места, где используется SupportAssistantService, и создай отчёт.` — создаёт `docs/generated/support-assistant-usage.md`.
+- `Проверь реализацию поддержки и обнови документацию, чтобы она соответствовала коду.` — идемпотентно обновляет помеченный раздел README.
+- `Проверь инварианты CRM и MCP и создай отчёт.` — создаёт `reports/day-34-project-validation.md`.
+
+Пример предварительного diff начинается с `diff --git a/... b/...`, содержит `---`, `+++`, удалённые строки с `-` и добавленные с `+`. Повторный запуск сравнивает итоговое содержимое: одинаковый файл не записывается, а управляемый раздел README заменяется, поэтому дубликаты не накапливаются.
+
+Безопасность: нормализованный путь обязан оставаться внутри абсолютного project root; внешние symlink, служебные каталоги, бинарные/слишком большие файлы и `.env*`, `local.properties`, keystore и credential JSON запрещены. Запись выполняется через временный файл и atomic move, patch требует единственного точного совпадения. Git commit/push/reset/clean и смена веток не выполняются. Журнал последней операции без содержимого файлов и ключей сохраняется в `developer-assistant/logs/last-operation.json`.
+
+Ограничения: агент извлекает известный API или компонент из естественной формулировки цели либо из имени в обратных кавычках; полностью произвольное рефакторинг-планирование пока не поддерживается. Локальный unified diff показывает изменённую область с тремя строками контекста. Один запуск обрабатывает не более 10 tool calls.
+
 ## Day 29 — Local LLM Optimization
 
 В режиме `Local` параметры Ollama меняются прямо в Settings и автоматически

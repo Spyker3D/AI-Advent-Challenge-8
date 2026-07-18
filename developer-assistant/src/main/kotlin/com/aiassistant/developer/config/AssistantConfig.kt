@@ -17,6 +17,7 @@ data class AssistantConfig(
     val chunkSize: Int,
     val chunkOverlap: Int,
     val maxFileSizeBytes: Long,
+    val dryRun: Boolean,
     val debug: Boolean
 )
 
@@ -47,6 +48,7 @@ object ConfigLoader {
             value("chunk-size", "DEVELOPER_ASSISTANT_CHUNK_SIZE", "1200").toInt(),
             value("chunk-overlap", "DEVELOPER_ASSISTANT_CHUNK_OVERLAP", "200").toInt(),
             value("max-file-size", "DEVELOPER_ASSISTANT_MAX_FILE_SIZE", "1048576").toLong(),
+            options["dry-run"]?.toBoolean() ?: false,
             options["debug"]?.toBoolean() ?: false
         )
     }

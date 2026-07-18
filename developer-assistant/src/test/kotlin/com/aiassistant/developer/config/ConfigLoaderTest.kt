@@ -14,6 +14,13 @@ class ConfigLoaderTest {
         assertEquals("nomic-embed-text:latest", config.embeddingModel)
         assertEquals("https://api.openai.com/v1", config.openAiBaseUrl)
         assertEquals("gpt-4.1-mini", config.openAiModel)
+        assertEquals(false, config.dryRun)
+    }
+
+    @Test fun `parses dry run flag`() {
+        val root = Files.createTempDirectory("assistant-dry-run")
+        val config = ConfigLoader.load(arrayOf("--project-root=$root", "--dry-run"), mapOf("OPENAI_API_KEY" to "test-key"))
+        assertEquals(true, config.dryRun)
     }
 
     @Test fun `fails when OpenAI key is absent from environment and local properties`() {

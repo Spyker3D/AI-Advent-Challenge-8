@@ -9,6 +9,8 @@ class CommandLoop(
     private val help: (String) -> String,
     private val status: () -> String,
     private val reindex: () -> String,
+    private val goal: (String, (String) -> Boolean) -> String = { _, _ -> "Project file assistant is not configured." },
+    private val diff: () -> String = { "No proposed changes." },
     private val debug: Boolean = false
 ) {
     fun run() {
@@ -20,6 +22,8 @@ class CommandLoop(
                     is CliCommand.Help -> printBlock("АССИСТЕНТ", help(command.question))
                     CliCommand.Status -> printBlock("СТАТУС", status())
                     CliCommand.Reindex -> printBlock("ПЕРЕИНДЕКСАЦИЯ", reindex())
+                    CliCommand.Diff -> printBlock("DIFF", diff())
+                    is CliCommand.Goal -> printBlock("АССИСТЕНТ", goal(command.text, ::confirm))
                     CliCommand.Exit -> return
                     is CliCommand.Invalid -> if (command.message.isNotEmpty()) printBlock("СИСТЕМА", command.message)
                 }
@@ -29,6 +33,12 @@ class CommandLoop(
             }
             output.flush()
         }
+    }
+
+    private fun confirm(prompt: String): Boolean {
+        output.print("$prompt [y/N] ")
+        output.flush()
+        return input.readLine()?.trim()?.lowercase() in setOf("y", "yes")
     }
 
     private fun printPrompt() {
@@ -49,4 +59,3 @@ class CommandLoop(
         const val SEPARATOR = "────────────────────────────────────────"
     }
 }
-

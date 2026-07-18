@@ -17,6 +17,8 @@ class CommandLoopTest {
         assertIs<CliCommand.Status>(CommandParser.parse("/status"))
         assertIs<CliCommand.Reindex>(CommandParser.parse("/reindex"))
         assertIs<CliCommand.Exit>(CommandParser.parse("/exit"))
+        assertIs<CliCommand.Diff>(CommandParser.parse("/diff"))
+        assertEquals(CliCommand.Goal("Create a report"), CommandParser.parse("Create a report"))
     }
     @Test fun `rejects empty help`() {
         assertEquals(CliCommand.Invalid("Usage: /help <question>"), CommandParser.parse("/help  "))
