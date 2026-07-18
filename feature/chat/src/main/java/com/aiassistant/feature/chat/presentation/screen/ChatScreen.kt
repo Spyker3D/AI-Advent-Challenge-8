@@ -698,7 +698,7 @@ fun ChatScreen(
                 (uiState.calendarState as? CalendarUiState.PendingConfirmation)?.let { pending ->
                     Card(modifier = Modifier.fillMaxWidth().padding(16.dp), elevation = CardDefaults.cardElevation(6.dp)) {
                         Column(Modifier.padding(16.dp)) {
-                            Text(CalendarDateTime.formatPreview(pending.action.draft), style = MaterialTheme.typography.bodyMedium)
+                            Text(CalendarDateTime.formatPreview(pending.action), style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                 TextButton(onClick = viewModel::cancelCalendarAction) { Text("Отмена") }
                                 Button(onClick = viewModel::confirmCalendarAction) { Text("Подтвердить") }

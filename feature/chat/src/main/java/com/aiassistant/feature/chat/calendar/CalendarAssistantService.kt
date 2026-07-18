@@ -33,7 +33,15 @@ class CalendarAssistantService @Inject constructor(private val llm: LlmClient, c
         val finalPrompt = "Ответь пользователю по-русски кратко, используя только фактический tool result. Не выдумывай события.\nЗапрос: $userText\nTool result: ${result.text}"
         return llm.sendChat(listOf(Message("calendar-result", finalPrompt, MessageRole.SYSTEM)), 700).fold({ CalendarToolOutcome.Answer(it.message) }, { CalendarToolOutcome.Failure("Календарь прочитан, но ответ сформировать не удалось") })
     }
-    suspend fun confirm(action: PendingCalendarAction.CreateEvent) = executor.confirm(action)
+    suspend fun confirm(action: PendingCalendarAction) = executor.confirm(action)
 
-    companion object { const val MAX_TOOL_ITERATIONS=5; private const val SYSTEM = """You are an AI assistant inside an Android application. For schedule reads choose list_calendar_events. For creation choose create_calendar_event. Resolve relative dates using the supplied local context. Never invent events. Writes require UI confirmation. If duration is omitted use 60 minutes. If exact time is critically missing, return {\"tool\":\"clarification\",\"arguments\":{\"message\":\"...\"}}. Return JSON only: {\"tool\":\"list_calendar_events\",\"arguments\":{\"startDateTime\":\"ISO-8601 with timezone\",\"endDateTime\":\"ISO-8601 with timezone\",\"calendarId\":null}} or {\"tool\":\"create_calendar_event\",\"arguments\":{\"title\":\"...\",\"startDateTime\":\"ISO-8601 with timezone\",\"endDateTime\":\"ISO-8601 with timezone\",\"timeZone\":\"IANA zone\",\"location\":null,\"description\":null,\"calendarId\":null}}.""" }
+    companion object { const val MAX_TOOL_ITERATIONS=5; private const val SYSTEM = """You are an AI assistant inside an Android application. Use calendar tools proactively and never invent events. Resolve relative dates using the supplied local context. All writes require UI confirmation. Recurring events cannot be changed or deleted. If duration is omitted use 60 minutes.
+Return exactly one JSON tool call.
+Read: {\"tool\":\"list_calendar_events\",\"arguments\":{\"startDateTime\":\"ISO-8601\",\"endDateTime\":\"ISO-8601\",\"calendarId\":null}}
+Find: {\"tool\":\"find_calendar_events\",\"arguments\":{\"query\":\"title fragment\",\"searchStartDateTime\":\"ISO-8601\",\"searchEndDateTime\":\"ISO-8601\"}}
+Create: {\"tool\":\"create_calendar_event\",\"arguments\":{\"title\":\"...\",\"startDateTime\":\"ISO-8601\",\"endDateTime\":\"ISO-8601\",\"timeZone\":\"IANA zone\",\"location\":null,\"description\":null,\"calendarId\":null}}
+Move or edit: {\"tool\":\"update_calendar_event\",\"arguments\":{\"query\":\"old title fragment\",\"searchStartDateTime\":\"ISO-8601\",\"searchEndDateTime\":\"ISO-8601\",\"newTitle\":null,\"newStartDateTime\":\"ISO-8601\",\"newEndDateTime\":null,\"newLocation\":null,\"timeZone\":\"IANA zone\"}}
+Delete: {\"tool\":\"delete_calendar_event\",\"arguments\":{\"query\":\"title fragment\",\"searchStartDateTime\":\"ISO-8601\",\"searchEndDateTime\":\"ISO-8601\"}}
+Clarification: {\"tool\":\"clarification\",\"arguments\":{\"message\":\"exact question for the user\"}}
+Use a narrow but safe search interval. If identity or new time is critically missing, use clarification instead of claiming success.""" }
 }

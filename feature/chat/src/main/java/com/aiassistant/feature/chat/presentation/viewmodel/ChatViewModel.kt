@@ -131,7 +131,7 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
     private val ragAnswerConfig = RagAnswerConfig()
-    private var pendingCalendarWrite: PendingCalendarAction.CreateEvent? = null
+    private var pendingCalendarWrite: PendingCalendarAction? = null
 
         init {
         observeChatSettings()
@@ -812,7 +812,7 @@ class ChatViewModel @Inject constructor(
             when (val outcome = calendarAssistant.handle(text)) {
                 is CalendarToolOutcome.Answer -> addCalendarAssistantMessage(outcome.text, chatId)
                 is CalendarToolOutcome.Pending -> {
-                    addCalendarAssistantMessage(CalendarDateTime.formatPreview(outcome.action.draft), chatId)
+                    addCalendarAssistantMessage(CalendarDateTime.formatPreview(outcome.action), chatId)
                     _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PendingConfirmation(outcome.action), isLoading = false)
                 }
                 is CalendarToolOutcome.Permission -> _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PermissionRequired(outcome.permission), isLoading = false)
@@ -851,14 +851,21 @@ class ChatViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Executing)
         viewModelScope.launch {
             calendarAssistant.confirm(pending.action).fold(
-                onSuccess = { created -> pendingCalendarWrite=null; val start=java.time.Instant.ofEpochMilli(created.draft.startMillis).atZone(java.time.ZoneId.of(created.draft.timeZone)); val end=java.time.Instant.ofEpochMilli(created.draft.endMillis).atZone(start.zone); addCalendarAssistantMessage("Событие «${created.draft.title}» добавлено в календарь на ${start.toLocalDate()} с ${start.toLocalTime()} до ${end.toLocalTime()}.", _uiState.value.currentChatId); _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Success("Событие создано")) },
-                onFailure = { error -> if (error is SecurityException) _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PermissionRequired(android.Manifest.permission.WRITE_CALENDAR)) else _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Error("Не удалось создать событие: ${error.message}")) }
+                onSuccess = { message -> pendingCalendarWrite=null; addCalendarAssistantMessage(message, _uiState.value.currentChatId); _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Success(message)) },
+                onFailure = { error ->
+                    if (error is SecurityException && error.message.orEmpty().contains("WRITE_CALENDAR")) {
+                        _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.PermissionRequired(android.Manifest.permission.WRITE_CALENDAR))
+                    } else {
+                        pendingCalendarWrite = null
+                        _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Error("Не удалось выполнить календарное действие: ${error.message}"), error = "Не удалось выполнить календарное действие: ${error.message}")
+                    }
+                }
             )
         }
     }
 
     fun cancelCalendarAction() {
-        if (_uiState.value.calendarState is CalendarUiState.PendingConfirmation) { pendingCalendarWrite=null; _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Idle); addCalendarAssistantMessage("Создание события отменено.", _uiState.value.currentChatId) }
+        if (_uiState.value.calendarState is CalendarUiState.PendingConfirmation) { pendingCalendarWrite=null; _uiState.value = _uiState.value.copy(calendarState = CalendarUiState.Idle); addCalendarAssistantMessage("Календарное действие отменено.", _uiState.value.currentChatId) }
     }
 
     private fun addCalendarAssistantMessage(text: String, chatId: String) {

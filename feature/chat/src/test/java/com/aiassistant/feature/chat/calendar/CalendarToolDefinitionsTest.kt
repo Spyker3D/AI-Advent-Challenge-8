@@ -8,4 +8,5 @@ class CalendarToolDefinitionsTest {
     @Test fun `malformed JSON is rejected`() { assertTrue(CalendarToolDefinitions.parseCall("not-json").isFailure) }
     @Test fun `unknown tool is rejected`() { assertTrue(CalendarToolDefinitions.parseCall("""{\"tool\":\"delete_everything\",\"arguments\":{}}""").isFailure) }
     @Test fun `missing arguments are rejected`() { assertTrue(CalendarToolDefinitions.parseCall("""{\"tool\":\"list_calendar_events\"}""").isFailure) }
+    @Test fun `update and delete tools are supported`() { assertTrue("update_calendar_event" in CalendarToolDefinitions.supported); assertTrue("delete_calendar_event" in CalendarToolDefinitions.supported) }
 }
