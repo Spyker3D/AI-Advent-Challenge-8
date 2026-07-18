@@ -50,6 +50,7 @@ import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToSupport: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -101,6 +102,10 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            SettingsCard(title = "Поддержка") {
+                Text("Помощь по работе с AI Assistant и демонстрационным техническим тикетам.")
+                Button(onClick = onNavigateToSupport) { Text("Открыть поддержку") }
+            }
             SettingsCard(title = "AI Provider") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),

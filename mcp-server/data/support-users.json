@@ -1,0 +1,5 @@
+[
+  {"id":"support-user-001","displayName":"Анна","device":{"platform":"android","osVersion":"15","manufacturer":"Google","model":"Pixel 8"},"app":{"version":"1.0.0","buildNumber":33},"settings":{"historyEnabled":true,"selectedModel":"default","theme":"system"}},
+  {"id":"support-user-002","displayName":"Иван","device":{"platform":"android","osVersion":"14","manufacturer":"Samsung","model":"Galaxy S23"},"app":{"version":"0.9.0","buildNumber":32},"settings":{"historyEnabled":true,"selectedModel":"default","theme":"dark"}},
+  {"id":"support-user-003","displayName":"Мария","device":{"platform":"android","osVersion":"13","manufacturer":"Xiaomi","model":"13T"},"app":{"version":"1.0.0","buildNumber":33},"settings":{"historyEnabled":false,"selectedModel":"default","theme":"light"}}
+]

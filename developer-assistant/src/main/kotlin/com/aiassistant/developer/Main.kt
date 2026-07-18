@@ -33,6 +33,18 @@ fun main(args: Array<String>) {
     val config = try { ConfigLoader.load(args) } catch (error: Exception) {
         System.err.println("Error: ${error.message}"); exitProcess(2)
     }
+    if (args.firstOrNull() == "index-support-knowledge") {
+        val options = args.filter { it.startsWith("--") }.associate { val p = it.removePrefix("--").split('=', limit = 2); p[0] to p.getOrElse(1) { "" } }
+        val knowledgeRoot = config.projectRoot.resolve(options["knowledge-root"] ?: "support-knowledge").normalize()
+        require(knowledgeRoot.startsWith(config.projectRoot) && Files.isDirectory(knowledgeRoot)) { "Support knowledge directory does not exist or is outside project root: $knowledgeRoot" }
+        val state = config.projectRoot.resolve(".support-assistant")
+        val storage = IndexStorage(state.resolve("index.json")); val manifest = ManifestStorage(state.resolve("manifest.json"))
+        val embedding = OllamaEmbeddingClient(OllamaEmbeddingConfig(config.embeddingBaseUrl, config.embeddingModel))
+        val indexer = ProjectIndexer(knowledgeRoot, ProjectScanner(ScannerConfig(extensions = setOf("md"), maxFileSizeBytes = config.maxFileSizeBytes)), ProjectChunker(config.chunkSize, config.chunkOverlap), embedding, "ollama", config.embeddingModel, storage, manifest)
+        try { val update = runBlocking { indexer.update(progress = ::println) }; println("Support documents: ${update.filesFound}\nSupport chunks: ${storage.load().size}\nIndex: ${state.resolve("index.json")}") }
+        catch (error: Exception) { System.err.println("Support index update failed: ${error.message}"); exitProcess(1) }
+        return
+    }
     val stateDir = config.projectRoot.resolve(".developer-assistant")
     val indexPath = stateDir.resolve("index.json")
     val manifestPath = stateDir.resolve("manifest.json")

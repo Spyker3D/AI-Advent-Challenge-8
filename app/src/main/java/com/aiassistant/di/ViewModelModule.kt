@@ -5,6 +5,7 @@ import com.aiassistant.feature.chat.presentation.mcp.McpDemoViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.MemoryViewModel
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
+import com.aiassistant.feature.settings.presentation.support.SupportViewModel
 import dagger.Binds
 import dagger.Module
 import dagger.multibindings.IntoMap
@@ -31,4 +32,7 @@ abstract class ViewModelModule {
     @IntoMap
     @ViewModelKey(McpDemoViewModel::class)
     abstract fun bindMcpDemoViewModel(viewModel: McpDemoViewModel): ViewModel
+
+    @Binds @IntoMap @ViewModelKey(SupportViewModel::class)
+    abstract fun bindSupportViewModel(viewModel: SupportViewModel): ViewModel
 }

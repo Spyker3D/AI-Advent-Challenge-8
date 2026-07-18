@@ -13,6 +13,9 @@ const DATA_DIR = path.join(__dirname, "data");
 const REPORTS_DIR = path.join(DATA_DIR, "reports");
 const WEATHER_HISTORY_FILE = path.join(DATA_DIR, "weather-history.json");
 const PROJECT_ROOT = path.resolve(process.env.MCP_PROJECT_ROOT || path.join(__dirname, ".."));
+const SUPPORT_DATA_DIR = path.resolve(PROJECT_ROOT, "mcp-server", "data");
+const SUPPORT_USERS_FILE = path.join(SUPPORT_DATA_DIR, "support-users.json");
+const TICKETS_FILE = path.join(SUPPORT_DATA_DIR, "tickets.json");
 const execFileAsync = promisify(execFile);
 const WEATHER_TOOL_NAMES = new Set([
   "get_weather_by_city", "create_weather_report", "save_report_to_file",
@@ -54,6 +57,23 @@ function createJsonRpcError(id, code, message) {
 
 function textResult(text) {
   return { content: [{ type: "text", text }] };
+}
+
+function supportError(code, message) { return { ok: false, error: { code, message } }; }
+function readSupportArray(filePath) {
+  if (!filePath.startsWith(SUPPORT_DATA_DIR + path.sep)) return supportError("INTERNAL_ERROR", "Invalid support data path.");
+  if (!fs.existsSync(filePath)) return supportError("DATA_FILE_NOT_FOUND", "Support data file was not found.");
+  try {
+    const value = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return Array.isArray(value) ? { ok: true, value } : supportError("INVALID_DATA_FILE", "Support data must be a JSON array.");
+  } catch (_) { return supportError("INVALID_DATA_FILE", "Support data file contains invalid JSON."); }
+}
+function supportResult(payload) { return textResult(JSON.stringify(payload)); }
+function validId(value) { return typeof value === "string" && /^[a-z0-9-]{1,80}$/.test(value); }
+function loadSupportData() {
+  const users = readSupportArray(SUPPORT_USERS_FILE); if (!users.ok) return users;
+  const tickets = readSupportArray(TICKETS_FILE); if (!tickets.ok) return tickets;
+  return { ok: true, users: users.value, tickets: tickets.value };
 }
 
 function validateGitRef(value, fieldName) {
@@ -313,6 +333,10 @@ function handleReportsGet(req, res) {
 
 function handleToolsList(id) {
   const tools = [
+      { name: "get_support_user", description: "Returns a demo support profile by id (read-only).", inputSchema: { type: "object", properties: { supportUserId: { type: "string" } }, required: ["supportUserId"], additionalProperties: false } },
+      { name: "get_ticket", description: "Returns a demo support ticket and its related profile (read-only).", inputSchema: { type: "object", properties: { ticketId: { type: "string" } }, required: ["ticketId"], additionalProperties: false } },
+      { name: "list_support_user_tickets", description: "Lists demo tickets for a support profile (read-only).", inputSchema: { type: "object", properties: { supportUserId: { type: "string" } }, required: ["supportUserId"], additionalProperties: false } },
+      { name: "list_tickets", description: "Lists demo support tickets with optional filters (read-only).", inputSchema: { type: "object", properties: { status: { type: "string" }, category: { type: "string" } }, additionalProperties: false } },
       {
         name: "get_current_git_branch",
         description: "Returns the current Git branch of the configured local project repository.",
@@ -427,6 +451,32 @@ async function handleToolsCall(id, params) {
 
   if (WEATHER_TOOL_NAMES.has(toolName) && isWeatherDisabled()) {
     return createJsonRpcError(id, -32601, `Weather tool is disabled: ${toolName}`);
+  }
+
+  if (["get_support_user", "get_ticket", "list_support_user_tickets", "list_tickets"].includes(toolName)) {
+    const data = loadSupportData();
+    if (!data.ok) return success(createJsonRpcResponse(id, supportResult({ found: false, error: data.error })));
+    if (toolName === "get_support_user") {
+      if (!validId(args.supportUserId)) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "INVALID_ARGUMENT", message: "supportUserId is required." } })));
+      const user = data.users.find((item) => item.id === args.supportUserId);
+      return success(createJsonRpcResponse(id, supportResult(user ? { found: true, user } : { found: false, error: { code: "USER_NOT_FOUND", message: "Support user was not found." } })));
+    }
+    if (toolName === "get_ticket") {
+      if (!validId(args.ticketId)) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "INVALID_ARGUMENT", message: "ticketId is required." } })));
+      const ticket = data.tickets.find((item) => item.id === args.ticketId);
+      if (!ticket) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "TICKET_NOT_FOUND", message: "Ticket was not found." } })));
+      const supportUser = data.users.find((item) => item.id === ticket.supportUserId);
+      if (!supportUser) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "USER_NOT_FOUND", message: "Related support user was not found." } })));
+      return success(createJsonRpcResponse(id, supportResult({ found: true, ticket, supportUser })));
+    }
+    if (toolName === "list_support_user_tickets") {
+      if (!validId(args.supportUserId)) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "INVALID_ARGUMENT", message: "supportUserId is required." } })));
+      if (!data.users.some((item) => item.id === args.supportUserId)) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "USER_NOT_FOUND", message: "Support user was not found." } })));
+      return success(createJsonRpcResponse(id, supportResult({ found: true, tickets: data.tickets.filter((item) => item.supportUserId === args.supportUserId) })));
+    }
+    if ((args.status !== undefined && typeof args.status !== "string") || (args.category !== undefined && typeof args.category !== "string")) return success(createJsonRpcResponse(id, supportResult({ found: false, error: { code: "INVALID_ARGUMENT", message: "Filters must be strings." } })));
+    const tickets = data.tickets.filter((item) => (!args.status || item.status === args.status) && (!args.category || item.category === args.category));
+    return success(createJsonRpcResponse(id, supportResult({ found: true, tickets })));
   }
 
   if (toolName === "get_current_git_branch") {
@@ -567,4 +617,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { handleMcpRequest, handleToolsCall, runGitDiff, validateGitRef, isWeatherDisabled };
+module.exports = { handleMcpRequest, handleToolsCall, runGitDiff, validateGitRef, isWeatherDisabled, readSupportArray };
