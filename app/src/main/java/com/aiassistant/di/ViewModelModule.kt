@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.aiassistant.feature.chat.presentation.mcp.McpDemoViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.MemoryViewModel
+import com.aiassistant.feature.chat.presentation.viewmodel.VoiceInputViewModel
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
 import com.aiassistant.feature.settings.presentation.support.SupportViewModel
 import dagger.Binds
@@ -22,6 +23,11 @@ abstract class ViewModelModule {
     @IntoMap
     @ViewModelKey(MemoryViewModel::class)
     abstract fun bindMemoryViewModel(memoryViewModel: MemoryViewModel): ViewModel
+
+    @Binds
+    @IntoMap
+    @ViewModelKey(VoiceInputViewModel::class)
+    abstract fun bindVoiceInputViewModel(viewModel: VoiceInputViewModel): ViewModel
 
     @Binds
     @IntoMap
