@@ -4,6 +4,7 @@ import com.aiassistant.MainActivity
 import com.aiassistant.core.data.di.DataModule
 import com.aiassistant.core.domain.di.DomainModule
 import com.aiassistant.core.network.di.NetworkModule
+import com.aiassistant.feature.chat.voice.VoiceInputModule
 import dagger.Component
 import javax.inject.Singleton
 
@@ -14,6 +15,7 @@ import javax.inject.Singleton
         NetworkModule::class,
         DataModule::class,
         DomainModule::class,
+        VoiceInputModule::class,
         ViewModelModule::class
     ]
 )

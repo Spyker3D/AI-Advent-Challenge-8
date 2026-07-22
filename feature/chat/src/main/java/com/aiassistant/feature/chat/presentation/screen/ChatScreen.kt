@@ -1,9 +1,12 @@
 package com.aiassistant.feature.chat.presentation.screen
 
+import android.Manifest
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,11 +38,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
@@ -61,9 +67,11 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -87,6 +95,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
@@ -98,6 +107,10 @@ import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
+import com.aiassistant.feature.chat.presentation.viewmodel.VoiceInputViewModel
+import com.aiassistant.feature.chat.voice.mergeVoiceTranscript
+import com.aiassistant.feature.chat.calendar.CalendarDateTime
+import com.aiassistant.feature.chat.calendar.CalendarUiState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -115,12 +128,14 @@ sealed class ChatItem {
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
+    voiceInputViewModel: VoiceInputViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToMemory: () -> Unit,
     onNavigateToMcpDemo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val voiceInputState by voiceInputViewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     // val keyboardController = LocalSoftwareKeyboardController.current
@@ -128,6 +143,80 @@ fun ChatScreen(
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var isOverflowMenuOpen by remember { mutableStateOf(false) }
+    var permissionRequested by remember { mutableStateOf(false) }
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val activity = context as? android.app.Activity
+        val state = uiState.calendarState as? CalendarUiState.PermissionRequired
+        val permanentlyDenied = !granted && permissionRequested && state != null && activity?.shouldShowRequestPermissionRationale(state.permission) == false
+        viewModel.onCalendarPermissionResult(granted, permanentlyDenied)
+    }
+    var showVoicePermissionDialog by remember { mutableStateOf(false) }
+    var voicePermissionRequested by remember { mutableStateOf(false) }
+    var voicePermissionPermanentlyDenied by remember { mutableStateOf(false) }
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val activity = context as? Activity
+        voicePermissionPermanentlyDenied = !granted &&
+            voicePermissionRequested &&
+            activity?.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) == false
+        showVoicePermissionDialog = voicePermissionPermanentlyDenied
+        if (granted) {
+            voiceInputViewModel.startListening()
+        } else {
+            voiceInputViewModel.onPermissionDenied(voicePermissionPermanentlyDenied)
+        }
+    }
+
+    DisposableEffect(voiceInputViewModel) {
+        onDispose { voiceInputViewModel.release() }
+    }
+
+    if (showVoicePermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVoicePermissionDialog = false },
+            title = { Text("Microphone access") },
+            text = {
+                Text(
+                    if (voicePermissionPermanentlyDenied) {
+                        "Enable microphone permission in application settings to dictate messages."
+                    } else {
+                        "Microphone permission is needed to convert your speech into message text."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (voicePermissionPermanentlyDenied) {
+                            context.startActivity(
+                                Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                            showVoicePermissionDialog = false
+                        } else {
+                            voicePermissionRequested = true
+                            voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                ) {
+                    Text(if (voicePermissionPermanentlyDenied) "Open settings" else "Continue")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVoicePermissionDialog = false }) {
+                    Text("Not now")
+                }
+            }
+        )
+    }
+
+    val permissionState = uiState.calendarState as? CalendarUiState.PermissionRequired
+    if (permissionState != null) {
+        AlertDialog(onDismissRequest = viewModel::dismissCalendarPermission, title = { Text("Доступ к календарю") }, text = { Text(if (permissionState.permission == android.Manifest.permission.READ_CALENDAR) "Для просмотра реальных событий приложению нужен доступ к календарю." else "Для добавления подтверждённого события приложению нужен доступ на запись в календарь.") }, confirmButton = { TextButton(onClick = { if (permissionState.permanentlyDenied) { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) } else { permissionRequested = true; calendarPermissionLauncher.launch(permissionState.permission) } }) { Text(if (permissionState.permanentlyDenied) "Открыть настройки" else "Продолжить") } }, dismissButton = { TextButton(onClick = viewModel::dismissCalendarPermission) { Text("Не сейчас") } })
+    }
 
     // Refresh settings when returning from settings screen
     LaunchedEffect(Unit) {
@@ -176,6 +265,24 @@ fun ChatScreen(
         uiState.error?.let { error ->
             snackbarHostState.showSnackbar(error)
             viewModel.handleEvent(ChatUiEvent.ClearError)
+        }
+    }
+
+    LaunchedEffect(voiceInputState.transcript) {
+        voiceInputState.transcript?.let { transcript ->
+            viewModel.handleEvent(
+                ChatUiEvent.MessageChanged(
+                    mergeVoiceTranscript(uiState.currentMessage, transcript)
+                )
+            )
+            voiceInputViewModel.consumeTranscript()
+        }
+    }
+
+    LaunchedEffect(voiceInputState.error) {
+        voiceInputState.error?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            voiceInputViewModel.clearError()
         }
     }
 
@@ -679,6 +786,18 @@ fun ChatScreen(
                     }
                 }
 
+                (uiState.calendarState as? CalendarUiState.PendingConfirmation)?.let { pending ->
+                    Card(modifier = Modifier.fillMaxWidth().padding(16.dp), elevation = CardDefaults.cardElevation(6.dp)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(CalendarDateTime.formatPreview(pending.action), style = MaterialTheme.typography.bodyMedium)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = viewModel::cancelCalendarAction) { Text("Отмена") }
+                                Button(onClick = viewModel::confirmCalendarAction) { Text("Подтвердить") }
+                            }
+                        }
+                    }
+                }
+
                 // File attachment section
                 if (uiState.attachedFileName != null) {
                     AttachedFileSection(
@@ -755,6 +874,38 @@ fun ChatScreen(
                         enabled = !uiState.isLoading
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Attach file")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (voiceInputState.isListening) {
+                                voiceInputViewModel.cancelListening()
+                            } else if (
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                voiceInputViewModel.startListening()
+                            } else {
+                                voicePermissionPermanentlyDenied = false
+                                showVoicePermissionDialog = true
+                            }
+                        },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Icon(
+                            imageVector = if (voiceInputState.isListening) {
+                                Icons.Default.Stop
+                            } else {
+                                Icons.Default.Mic
+                            },
+                            contentDescription = if (voiceInputState.isListening) {
+                                "Stop voice input"
+                            } else {
+                                "Start voice input"
+                            }
+                        )
                     }
 
                     OutlinedTextField(
