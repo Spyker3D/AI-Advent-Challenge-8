@@ -19,6 +19,7 @@ import com.aiassistant.feature.chat.presentation.screen.MemoryScreen
 import com.aiassistant.feature.chat.presentation.screen.TaskContextEditorScreen
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.presentation.viewmodel.MemoryViewModel
+import com.aiassistant.feature.chat.presentation.viewmodel.VoiceInputViewModel
 import com.aiassistant.feature.settings.presentation.screen.SettingsScreen
 import com.aiassistant.feature.settings.presentation.viewmodel.SettingsViewModel
 import com.aiassistant.feature.settings.presentation.support.SupportScreen
@@ -35,10 +36,12 @@ fun AppNavigation(
     ) {
         composable(Screen.Chat.route) {
             val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
+            val voiceInputViewModel: VoiceInputViewModel = viewModel(factory = viewModelFactory)
             // Refresh settings when returning to chat screen
             chatViewModel.refreshSettings()
             ChatScreen(
                 viewModel = chatViewModel,
+                voiceInputViewModel = voiceInputViewModel,
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
                 },
