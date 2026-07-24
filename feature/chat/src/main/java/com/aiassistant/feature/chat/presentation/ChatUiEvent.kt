@@ -34,4 +34,10 @@ sealed class ChatUiEvent {
     object PauseTask : ChatUiEvent()
     object ResumeTask : ChatUiEvent()
     object ContinueTask : ChatUiEvent()
+    object VoiceInputClicked : ChatUiEvent()
+    object VoiceInputPermissionGranted : ChatUiEvent()
+    data class VoiceInputPermissionDenied(val permanentlyDenied: Boolean) : ChatUiEvent()
+    object StopVoiceInput : ChatUiEvent()
+    object CancelVoiceInput : ChatUiEvent()
+    object DismissVoiceGuidance : ChatUiEvent()
 }

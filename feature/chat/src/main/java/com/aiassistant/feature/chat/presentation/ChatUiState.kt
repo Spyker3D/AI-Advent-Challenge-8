@@ -8,6 +8,8 @@ import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.memory.TaskContext
 import com.aiassistant.core.domain.mcp.McpExecutionLogItem
+import com.aiassistant.feature.chat.calendar.CalendarUiState
+import com.aiassistant.feature.chat.voice.VoiceInputState
 
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
@@ -53,5 +55,7 @@ data class ChatUiState(
     val isMcpExecutionVisible: Boolean = false,
     val ragEnabled: Boolean = false,
     val day23ImprovedRetrievalEnabled: Boolean = true,
-    val ragSourcesByMessageId: Map<String, List<RagSourceUi>> = emptyMap()
+    val ragSourcesByMessageId: Map<String, List<RagSourceUi>> = emptyMap(),
+    val calendarState: CalendarUiState = CalendarUiState.Idle,
+    val voiceInputState: VoiceInputState = VoiceInputState.Idle
 )
