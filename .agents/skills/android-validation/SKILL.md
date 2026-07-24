@@ -23,13 +23,32 @@ and report real results without hiding failures.
 2. Inspect the diff and map changed files to affected Gradle modules.
 3. Select the narrowest relevant unit-test task.
 4. Select the narrowest relevant Kotlin compile task.
-5. Add `:app:compileDebugKotlin` when DI, navigation, permissions, or application
+5. Validate the approved behavioral contract, not only compilation:
+    - trace every visible action to the operation it invokes;
+    - verify that labels and operations have matching semantics;
+    - inspect start, stop, cancel, completion, and cleanup paths;
+    - inspect stale-callback and restart protection;
+    - inspect resource ownership and lifecycle cleanup.
+6. For interactive Android behavior, define and report applicable runtime checks:
+    - short interaction;
+    - natural pause;
+    - long pause;
+    - continuation after pause;
+    - long-running interaction;
+    - explicit user completion;
+    - provider-driven automatic completion;
+    - application backgrounding;
+    - navigation away;
+    - cancellation followed by immediate restart.
+7. Do not report full success when runtime behavior depends on an Android platform
+    provider and only JVM tests were executed.
+8. Add `:app:compileDebugKotlin` when DI, navigation, permissions, or application
    integration changed.
-6. Add `:app:assembleDebug` only for APK-level or cross-module changes that warrant
+9. Add `:app:assembleDebug` only for APK-level or cross-module changes that warrant
    assembly.
-7. Run selected commands sequentially and inspect exit codes and output.
-8. Run `git diff --check`, then inspect `git diff` and `git status --short`.
-9. Report passed, failed, and skipped checks with reasons.
+10. Run selected commands sequentially and inspect exit codes and output.
+11. Run `git diff --check`, then inspect `git diff` and `git status --short`.
+12. Report passed, failed, and skipped checks with reasons.
 
 Use repository-confirmed task shapes; never invent a task:
 
@@ -45,6 +64,13 @@ Use repository-confirmed task shapes; never invent a task:
 - Failures attributable to the current change.
 - Skipped checks with reasons and remaining risks or blockers.
 - Results of whitespace, diff, and status inspection.
+- Behavioral-contract verification results.
+- User-action-to-operation trace.
+- State transitions covered by automated tests.
+- State transitions requiring instrumentation or manual validation.
+- Platform-driven automatic completion observations.
+- Pause and long-running interaction observations.
+- Unverified platform behavior and residual UX risks.
 
 ## Stop and failure conditions
 

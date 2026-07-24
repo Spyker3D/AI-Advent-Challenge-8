@@ -52,6 +52,9 @@ import com.aiassistant.feature.chat.calendar.CalendarDateTime
 import com.aiassistant.feature.chat.calendar.CalendarToolOutcome
 import com.aiassistant.feature.chat.calendar.CalendarUiState
 import com.aiassistant.feature.chat.calendar.PendingCalendarAction
+import com.aiassistant.feature.chat.voice.VoiceDraftMerger
+import com.aiassistant.feature.chat.voice.VoiceInputCoordinator
+import com.aiassistant.feature.chat.voice.VoiceInputState
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -125,8 +128,9 @@ class ChatViewModel @Inject constructor(
     private val queryRewriter: QueryRewriter,
     private val taskMemoryUpdater: TaskMemoryUpdater,
     private val taskMemoryMerger: TaskMemoryMerger,
-    private val calendarAssistant: CalendarAssistantService
-) : ViewModel() {
+    private val calendarAssistant: CalendarAssistantService,
+    private val voiceInputCoordinator: VoiceInputCoordinator
+) : ViewModel(), VoiceInputCoordinator.Observer {
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -134,6 +138,7 @@ class ChatViewModel @Inject constructor(
     private var pendingCalendarWrite: PendingCalendarAction? = null
 
         init {
+        voiceInputCoordinator.attach(this)
         observeChatSettings()
         loadChats()
         // initializeBranches() - moved inside loadChatHistory()
@@ -484,10 +489,48 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.Day23ImprovedRetrievalToggled -> {
                 _uiState.value = _uiState.value.copy(day23ImprovedRetrievalEnabled = event.enabled)
             }
+            is ChatUiEvent.VoiceInputClicked -> {
+                _uiState.value = _uiState.value.copy(
+                    voiceInputState = VoiceInputState.PermissionRequired
+                )
+            }
+            is ChatUiEvent.VoiceInputPermissionGranted -> voiceInputCoordinator.start()
+            is ChatUiEvent.VoiceInputPermissionDenied -> {
+                _uiState.value = _uiState.value.copy(
+                    voiceInputState = VoiceInputState.Guidance(
+                        message = if (event.permanentlyDenied) {
+                            "Microphone permission is disabled. Enable it in app settings to use voice input."
+                        } else {
+                            "Microphone permission is required for voice input."
+                        },
+                        openSettings = event.permanentlyDenied
+                    )
+                )
+            }
+            is ChatUiEvent.StopVoiceInput -> voiceInputCoordinator.stop()
+            is ChatUiEvent.CancelVoiceInput -> voiceInputCoordinator.cancel()
+            is ChatUiEvent.DismissVoiceGuidance -> {
+                _uiState.value = _uiState.value.copy(voiceInputState = VoiceInputState.Idle)
+            }
             is ChatUiEvent.PauseTask -> runTaskAction("пауза")
             is ChatUiEvent.ResumeTask -> runTaskAction("продолжи")
             is ChatUiEvent.ContinueTask -> runTaskAction("да, продолжай")
         }
+    }
+
+    override fun onState(state: VoiceInputState) {
+        _uiState.value = _uiState.value.copy(voiceInputState = state)
+    }
+
+    override fun onFinalText(text: String) {
+        _uiState.value = _uiState.value.copy(
+            currentMessage = VoiceDraftMerger.merge(_uiState.value.currentMessage, text)
+        )
+    }
+
+    override fun onCleared() {
+        voiceInputCoordinator.release()
+        super.onCleared()
     }
 
     private fun sendMessage() {

@@ -23,13 +23,30 @@ approval gate before execution.
    evidence is missing.
 2. Restate the requested outcome and non-goals.
 3. Identify the smallest complete behavioral change.
-4. List the exact files expected to change and explain each file's role.
-5. Identify existing abstractions and patterns that must be reused.
-6. Describe implementation steps in dependency order.
-7. Define focused tests and validation commands confirmed by the repository.
-8. Identify risks, assumptions, approval-sensitive decisions, and possible scope
+4. Write a behavioral contract for every user-visible action.
+5. Identify interaction owner, completion owner, cancellation owner, and timeout
+   owner.
+6. Confirm whether the selected platform API can provide the requested interaction
+   model, including pauses and explicit completion.
+7. For callback-based, permission-gated, stateful, asynchronous, or lifecycle-bound
+   changes, include:
+    - a state-transition table;
+    - resource ownership;
+    - stop versus cancel semantics;
+    - permanent cleanup semantics;
+    - stale-callback strategy;
+    - restart behavior;
+    - expected platform failures;
+    - platform-driven automatic completion behavior.
+8. Produce a behavioral test matrix and identify which checks require JVM,
+   instrumentation, or manual validation.
+9. List the exact files expected to change and explain each file's role.
+10. Identify existing abstractions and patterns that must be reused.
+11. Describe implementation steps in dependency order.
+12. Define focused tests and validation commands confirmed by the repository.
+13. Identify risks, assumptions, approval-sensitive decisions, and possible scope
    changes.
-9. Present the plan, state that execution has not started, and stop for explicit
+14. Present the plan, state that execution has not started, and stop for explicit
    human approval.
 
 ## Output contract
@@ -40,6 +57,13 @@ approval gate before execution.
 - Tests and confirmed validation commands.
 - Risks, assumptions, and unresolved decisions.
 - An explicit statement that execution requires human approval.
+- Behavioral contract for each user action.
+- Interaction and completion ownership.
+- State-transition table.
+- Resource ownership and cleanup boundary.
+- Platform/API capability and limitation assessment.
+- Stop, cancel, automatic completion, restart, and stale-callback semantics.
+- Automated and manual validation matrix.
 
 ## Stop and failure conditions
 
@@ -51,6 +75,11 @@ approval gate before execution.
   dependencies, public contracts, module boundaries, or file scope and cannot be
   resolved safely.
 - If an approved plan changes, require new human approval before execution resumes.
+- Do not approve an implementation approach that nominally starts the requested
+    interaction but cannot preserve the required completion semantics.
+- Stop for a user decision when the platform cannot guarantee user-controlled
+  completion and repository-compatible alternatives materially differ in UX,
+  dependencies, or architecture.
 
 ## Allowed agents
 

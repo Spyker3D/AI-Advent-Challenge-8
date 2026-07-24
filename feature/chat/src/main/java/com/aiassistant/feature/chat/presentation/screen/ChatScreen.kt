@@ -1,9 +1,13 @@
 package com.aiassistant.feature.chat.presentation.screen
 
+import android.Manifest
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,9 +39,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -66,11 +72,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,6 +86,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -89,6 +98,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.aiassistant.core.domain.entity.AiResponseMetadata
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
@@ -102,6 +114,7 @@ import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.calendar.CalendarDateTime
 import com.aiassistant.feature.chat.calendar.CalendarUiState
+import com.aiassistant.feature.chat.voice.VoiceInputState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -133,11 +146,95 @@ fun ChatScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var isOverflowMenuOpen by remember { mutableStateOf(false) }
     var permissionRequested by remember { mutableStateOf(false) }
+    var hasRequestedVoicePermission by rememberSaveable { mutableStateOf(false) }
+    var currentVoiceRequestHadHistory by rememberSaveable { mutableStateOf(false) }
     val calendarPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val activity = context as? android.app.Activity
         val state = uiState.calendarState as? CalendarUiState.PermissionRequired
         val permanentlyDenied = !granted && permissionRequested && state != null && activity?.shouldShowRequestPermissionRationale(state.permission) == false
         viewModel.onCalendarPermissionResult(granted, permanentlyDenied)
+    }
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val activity = context.findActivity()
+        val permanentlyDenied = !granted &&
+            currentVoiceRequestHadHistory &&
+            activity?.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) == false
+        viewModel.handleEvent(
+            if (granted) {
+                ChatUiEvent.VoiceInputPermissionGranted
+            } else {
+                ChatUiEvent.VoiceInputPermissionDenied(permanentlyDenied)
+            }
+        )
+    }
+
+    LaunchedEffect(uiState.voiceInputState) {
+        if (uiState.voiceInputState == VoiceInputState.PermissionRequired) {
+            if (
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                viewModel.handleEvent(ChatUiEvent.VoiceInputPermissionGranted)
+            } else {
+                currentVoiceRequestHadHistory = hasRequestedVoicePermission
+                hasRequestedVoicePermission = true
+                voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.handleEvent(ChatUiEvent.CancelVoiceInput)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.handleEvent(ChatUiEvent.CancelVoiceInput)
+        }
+    }
+
+    val voiceGuidance = uiState.voiceInputState as? VoiceInputState.Guidance
+    if (voiceGuidance != null) {
+        AlertDialog(
+            onDismissRequest = {
+                viewModel.handleEvent(ChatUiEvent.DismissVoiceGuidance)
+            },
+            title = { Text("Voice input") },
+            text = { Text(voiceGuidance.message) },
+            confirmButton = {
+                if (voiceGuidance.openSettings) {
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                            viewModel.handleEvent(ChatUiEvent.DismissVoiceGuidance)
+                        }
+                    ) {
+                        Text("Open settings")
+                    }
+                } else {
+                    TextButton(
+                        onClick = {
+                            viewModel.handleEvent(ChatUiEvent.DismissVoiceGuidance)
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                }
+            }
+        )
     }
 
     val permissionState = uiState.calendarState as? CalendarUiState.PermissionRequired
@@ -785,6 +882,37 @@ fun ChatScreen(
                         Icon(Icons.Default.Add, contentDescription = "Attach file")
                     }
 
+                    val isVoiceActive =
+                        uiState.voiceInputState is VoiceInputState.Listening ||
+                            uiState.voiceInputState is VoiceInputState.Stopping
+                    val isVoiceStopping = uiState.voiceInputState is VoiceInputState.Stopping
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.handleEvent(
+                                if (isVoiceActive) {
+                                    ChatUiEvent.StopVoiceInput
+                                } else {
+                                    ChatUiEvent.VoiceInputClicked
+                                }
+                            )
+                        },
+                        enabled = !uiState.isLoading && !isVoiceStopping
+                    ) {
+                        Icon(
+                            imageVector = if (isVoiceActive) Icons.Default.Stop else Icons.Default.Mic,
+                            contentDescription = if (isVoiceActive) {
+                                "Stop voice input"
+                            } else {
+                                "Start voice input"
+                            }
+                        )
+                    }
+
+                    val voicePartial = when (val voiceState = uiState.voiceInputState) {
+                        is VoiceInputState.Listening -> voiceState.partialText
+                        is VoiceInputState.Stopping -> voiceState.partialText
+                        else -> ""
+                    }
                     OutlinedTextField(
                         value = uiState.currentMessage,
                         onValueChange = { viewModel.handleEvent(ChatUiEvent.MessageChanged(it)) },
@@ -794,6 +922,16 @@ fun ChatScreen(
                                 "Type your message...",
                                 style = MaterialTheme.typography.bodyMedium
                             )
+                        },
+                        supportingText = if (voicePartial.isNotBlank()) {
+                            {
+                                Text(
+                                    "Uncommitted voice preview: $voicePartial",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        } else {
+                            null
                         },
                         enabled = !uiState.isLoading,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -1832,6 +1970,12 @@ private fun openUrl(context: Context, url: String) {
     } catch (throwable: Throwable) {
         Toast.makeText(context, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show()
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private const val URL_TAG = "url"

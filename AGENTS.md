@@ -9,6 +9,31 @@ These instructions apply to the whole repository. Base changes on active source 
 - Do not hand-edit generated indexes and reports under `rag-indexer/output`, `app/src/main/assets/rag`, `.developer-assistant`, or `.support-assistant` unless the task explicitly concerns generated output. Use their owning generator instead.
 - Never read, print, or modify secrets in `local.properties`. The build reads `OPENAI_API_KEY`, `PRIVATE_VPS_BASE_URL`, `PRIVATE_VPS_API_KEY`, and `PRIVATE_VPS_MODEL` from that untracked file.
 
+## Required agent workflow
+
+For implementation tasks, the main agent owns this sequence:
+
+1. Use `researcher` and `module-research` to gather repository and platform evidence.
+2. Use `implementation-plan` to produce:
+    - behavioral contracts;
+    - interaction ownership;
+    - completion ownership;
+    - state-transition table;
+    - test matrix;
+    - exact editable files.
+3. Stop for explicit human approval.
+4. Send the approved plan to `implementer`.
+5. Run `implementation-review-loop`.
+6. Run `android-validation`.
+7. Report the first generation, reviewer findings, second generation, validation
+   results, and remaining risks.
+
+Subagents cannot grant human approval.
+
+The user must not be required to enumerate implementation defects that violate an
+already approved behavioral contract. Those defects belong to the automatic
+reviewer-to-implementer corrective loop.
+
 ## Technology stack
 
 - Kotlin with Gradle Kotlin DSL; the Gradle wrapper is the project build entry point.
@@ -32,7 +57,7 @@ The Android application follows a modular domain/data/presentation split:
 app
 ├── feature:chat ────────┐
 ├── feature:settings ────┼──> core:domain
-│                       └──> core:ui
+│                        └──> core:ui
 ├── core:data ──────────────> core:domain + core:network
 ├── core:network
 └── core:ui ────────────────> core:domain
@@ -184,6 +209,205 @@ class ExampleRepositoryImpl @Inject constructor(
 
 For presentation files, keep `MutableStateFlow` private, expose `StateFlow` with `asStateFlow()`, update immutable state with `copy`, and launch suspend work in `viewModelScope`.
 
+## Behavioral contracts
+
+Before implementing user-facing, asynchronous, callback-based, or platform-integrated
+behavior, define a concise behavioral contract.
+
+For every user-visible action, identify:
+
+- what the user expects the action to mean;
+- which application or platform operation it invokes;
+- who decides when the interaction starts;
+- who decides when the interaction finishes;
+- successful completion behavior;
+- interruption and cancellation behavior;
+- failure behavior;
+- whether the output is persistent state or a one-time effect.
+
+UI labels, icons, content descriptions, state names, and invoked operations must have
+matching semantics.
+
+Do not map a user-visible action such as Stop, Save, Retry, Confirm, Pause, or Cancel
+to a semantically different operation.
+
+Do not accept framework-default behavior as the intended product behavior without
+explicitly comparing it with the user interaction contract.
+
+## Interaction ownership
+
+For every interactive feature, identify the interaction owner and completion owner.
+
+Possible owners include:
+
+- the user;
+- the Android framework;
+- an external service;
+- a timeout;
+- the application lifecycle.
+
+For user-controlled interactions, explicit user completion is preferred over
+framework heuristics unless the requested behavior explicitly allows automatic
+completion.
+
+The plan must state:
+
+- who starts the interaction;
+- who finishes the interaction;
+- whether pauses are allowed;
+- whether the platform may finish the interaction automatically;
+- what happens if the platform cannot provide the required interaction model;
+- whether a fallback, restart, aggregation, or different abstraction is necessary.
+
+Do not claim that an interaction is manually controlled when the selected platform
+API can still terminate it automatically.
+
+## Resource ownership and lifecycle
+
+Every stateful or platform resource must have one clearly identified owner.
+
+Before implementation, identify:
+
+- who creates the resource;
+- which lifecycle the resource follows;
+- which operation temporarily stops or cancels active work;
+- which operation permanently releases the resource;
+- whether the resource owner can outlive the current screen or Composable.
+
+A Composable must not permanently destroy a dependency owned by a ViewModel.
+
+UI lifecycle callbacks may request temporary stop or cancellation, but permanent
+resource cleanup belongs to the resource owner, normally `ViewModel.onCleared()`,
+a scoped component, repository, or service.
+
+For Android platform integrations, explicitly analyze:
+
+- configuration change;
+- navigation away;
+- application backgrounding;
+- repeated start;
+- user-requested stop;
+- cancellation;
+- cancellation followed immediately by restart;
+- delayed callback after cancellation;
+- delayed callback from an earlier operation after a new operation starts;
+- permission denial and revocation;
+- unavailable or failing platform providers.
+
+## Platform API boundaries
+
+Treat Android framework APIs, services, ContentProviders, Binder calls, and
+callback-based integrations as failure-prone external boundaries.
+
+Platform adapters must:
+
+- keep Android framework types outside ViewModels when an abstraction is practical;
+- identify and enforce thread requirements;
+- convert expected error codes and framework failures into controlled results;
+- handle permission races and service unavailability;
+- ignore callbacks from obsolete operations;
+- distinguish successful completion, stopping, cancellation, and destruction when
+  the underlying API distinguishes them;
+- document platform limitations that affect the requested UX.
+
+A permission check before a framework call does not guarantee that the call cannot
+fail.
+
+When the selected platform API cannot guarantee the requested UX, stop planning and
+present the limitation and viable repository-compatible alternatives before
+implementation.
+
+## Required state-transition analysis
+
+For stateful, asynchronous, callback-based, permission-gated, or lifecycle-bound
+features, the implementation plan must contain a state-transition table.
+
+The table must cover all applicable transitions:
+
+1. idle to active;
+2. active to successful completion;
+3. active to user-requested stop;
+4. active to cancellation;
+5. active to controlled failure;
+6. active to lifecycle interruption;
+7. cancellation to delayed callback;
+8. cancellation to new operation;
+9. new operation receiving a callback from the previous operation;
+10. repeated start while already active;
+11. owner cleanup while active;
+12. provider-driven automatic completion;
+13. user pause followed by continuation.
+
+Each transition must identify:
+
+- current state;
+- trigger;
+- invoked operation;
+- next state;
+- observable output;
+- stale-callback behavior;
+- required test or manual check.
+
+## Required behavioral test matrix
+
+For every new stateful or platform-integrated feature, tests must cover all
+applicable items:
+
+- successful start;
+- successful completion;
+- controlled failure;
+- user stop;
+- cancellation;
+- duplicate start;
+- cleanup while active;
+- delayed callback after cancellation;
+- delayed callback from operation A after operation B starts;
+- unavailable dependency;
+- permission denial;
+- permanent permission denial;
+- platform call throwing a controlled exception;
+- automatic platform completion when the product expects explicit completion.
+
+The plan and final report must mark every item as:
+
+- covered by an automated test;
+- covered by an instrumentation or manual check;
+- not applicable, with a reason.
+
+Compilation plus happy-path tests are not sufficient evidence for callback-based,
+permission-gated, or lifecycle-bound behavior.
+
+## Corrective review loop
+
+Human approval authorizes the requested behavior, approved architecture, dependencies,
+public contracts, module boundaries, and editable file scope.
+
+A reviewer finding does not require new approval when the correction:
+
+- makes the implementation conform to already approved behavior;
+- preserves the approved architecture;
+- introduces no dependency;
+- changes no public contract;
+- changes no module boundary;
+- remains inside approved editable files.
+
+New human approval is required only when the correction expands or changes behavior,
+architecture, dependencies, public contracts, module boundaries, non-goals, or
+editable scope.
+
+After implementation, the main agent must run one reviewer-to-implementer corrective
+loop for blocking in-scope findings:
+
+1. reviewer inspects the first implementation;
+2. main agent classifies findings as corrective or scope-changing;
+3. implementer corrects all in-scope findings;
+4. validation is repeated;
+5. reviewer reviews the corrected diff;
+6. main agent reports the difference between the first and second iterations.
+
+Do not require the user to rewrite the feature prompt or enumerate implementation
+defects for an in-scope corrective pass.
+
 ## Definition of Done
 
 A change is done only when all applicable items below are true:
@@ -198,6 +422,19 @@ A change is done only when all applicable items below are true:
 - No real external service mutation occurs during automated tests; environment-gated integration checks are reported separately.
 - `git diff --check`, `git diff`, and `git status --short` are inspected; unrelated user changes and secret files remain untouched.
 - No required configured check is failing, and skipped checks, missing prerequisites, and remaining risks are stated explicitly.
+- The implementation is checked against an explicit behavioral contract, not only
+  against file scope and compilation.
+- User-visible actions invoke operations with matching semantics.
+- Interaction owner and completion owner are explicitly identified.
+- Framework-driven automatic completion is verified against the intended UX.
+- Platform limitations affecting the requested behavior are reported rather than
+  hidden behind a nominally working implementation.
+- Resource creation, cancellation, stopping, and permanent cleanup have one clear
+  ownership model.
+- Applicable lifecycle, restart, and stale-callback scenarios are covered by tests
+  or explicitly reported manual checks.
+- One corrective reviewer-to-implementer pass has been completed for blocking
+  findings that remain inside the approved plan.
 
 ## When uncertain
 

@@ -27,10 +27,43 @@ planning or review.
 5. Identify entry points, primary abstractions, state models, and integrations
    relevant to the question.
 6. Inspect representative implementations and relevant tests.
-7. Derive validation commands only from build configuration, package scripts,
+7. Classify the requested behavior using all applicable categories:
+    - pure transformation;
+    - synchronous user interaction;
+    - asynchronous operation;
+    - callback-based platform integration;
+    - permission-gated integration;
+    - lifecycle-bound resource;
+    - persistent mutation;
+    - external service boundary.
+8. For interactive behavior, identify:
+    - interaction owner;
+    - completion owner;
+    - timeout owner;
+    - cancellation owner;
+    - whether the platform may finish the interaction automatically;
+    - whether platform-default completion matches the requested UX.
+9. For lifecycle-bound or callback-based work, identify:
+    - resource owner;
+    - state transitions;
+    - stopping and cancellation semantics;
+    - stale-callback risk;
+    - restart behavior;
+    - thread requirements;
+    - expected platform exceptions;
+    - provider limitations.
+10. Determine whether the selected or existing platform API can actually guarantee
+    the requested behavior. Do not assume that an API name or basic happy path proves
+    UX compatibility.
+11. Identify the required validation level:
+    - JVM unit test;
+    - Robolectric;
+    - instrumentation;
+    - manual device validation.
+12. Derive validation commands only from build configuration, package scripts,
    workflows, or repository documentation.
-8. Cross-check findings against applicable architecture and safety constraints.
-9. Return the research report and stop.
+13. Cross-check findings against applicable architecture and safety constraints.
+14. Return the research report and stop.
 
 ## Output contract
 
@@ -39,6 +72,14 @@ planning or review.
 - Existing patterns and conventions.
 - Relevant tests and confirmed validation commands.
 - Constraints, uncertainties, risks, and repository-relative file references.
+- Behavioral contract and expected user-visible semantics.
+- Interaction owner and completion owner.
+- Platform-driven automatic completion risks.
+- Resource ownership and lifecycle boundary.
+- State-transition table or the evidence required to create it.
+- Stop, cancel, cleanup, restart, and stale-callback distinctions.
+- Platform/API limitations that may prevent the requested UX.
+- Required automated and manual validation levels.
 
 ## Stop and failure conditions
 
@@ -48,6 +89,12 @@ planning or review.
 - If sources conflict, identify the conflict and prefer active source and build
   configuration.
 - Never invent commands, APIs, modules, or architectural layers.
+- Stop and report the limitation when the available platform API cannot guarantee
+    the requested interaction model.
+- Do not silently reinterpret user-controlled completion as framework-controlled
+  completion.
+- Do not recommend implementation until completion ownership and lifecycle behavior
+  are understood.
 
 ## Allowed agents
 
