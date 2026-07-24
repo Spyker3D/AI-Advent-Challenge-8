@@ -412,7 +412,10 @@ class ChatViewModel @Inject constructor(
         fun handleEvent(event: ChatUiEvent) {
         when (event) {
             is ChatUiEvent.MessageChanged -> {
-                _uiState.value = _uiState.value.copy(currentMessage = event.message)
+                _uiState.value = _uiState.value.copy(
+                    currentMessage = event.message,
+                    inputError = null
+                )
             }
             is ChatUiEvent.SendMessage -> {
                 sendMessage()
@@ -484,8 +487,12 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun sendMessage() {
-        val currentMessage = _uiState.value.currentMessage.trim()
-        if (currentMessage.isBlank() || _uiState.value.isLoading) return
+        val currentMessage = _uiState.value.currentMessage
+        if (currentMessage.isEmpty()) {
+            _uiState.value = _uiState.value.copy(inputError = "Message cannot be empty")
+            return
+        }
+        if (_uiState.value.isLoading) return
 
         if (mcpOrchestratorAgent.canHandleOrchestration(currentMessage)) {
             sendMcpOrchestrationMessage(currentMessage)
@@ -567,7 +574,8 @@ class ChatViewModel @Inject constructor(
             branches = updatedBranches,
             currentMessage = "",
             isLoading = true,
-            error = null
+            error = null,
+            inputError = null
         )
 
         viewModelScope.launch {

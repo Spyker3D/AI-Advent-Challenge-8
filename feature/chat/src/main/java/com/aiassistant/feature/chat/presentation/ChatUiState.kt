@@ -9,6 +9,8 @@ import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.memory.TaskContext
 import com.aiassistant.core.domain.mcp.McpExecutionLogItem
 
+const val MAX_MESSAGE_LENGTH = 2_000
+
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
     val isLoading: Boolean = false,
@@ -20,6 +22,7 @@ data class ChatUiState(
     val taskPipelineEnabled: Boolean = true,
     val error: String? = null,
     val currentMessage: String = "",
+    val inputError: String? = null,
     // Day 2 fields (loaded from settings)
     val useJsonFormat: Boolean = false,
     val limitLength: Boolean = false,
