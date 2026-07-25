@@ -490,9 +490,7 @@ class ChatViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(day23ImprovedRetrievalEnabled = event.enabled)
             }
             is ChatUiEvent.VoiceInputClicked -> {
-                _uiState.value = _uiState.value.copy(
-                    voiceInputState = VoiceInputState.PermissionRequired
-                )
+                _uiState.value = _uiState.value.prepareForVoiceInput()
             }
             is ChatUiEvent.VoiceInputPermissionGranted -> voiceInputCoordinator.start()
             is ChatUiEvent.VoiceInputPermissionDenied -> {
