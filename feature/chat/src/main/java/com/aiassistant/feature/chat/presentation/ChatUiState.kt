@@ -58,4 +58,9 @@ data class ChatUiState(
     val ragSourcesByMessageId: Map<String, List<RagSourceUi>> = emptyMap(),
     val calendarState: CalendarUiState = CalendarUiState.Idle,
     val voiceInputState: VoiceInputState = VoiceInputState.Idle
-)
+) {
+    internal fun prepareForVoiceInput(): ChatUiState = copy(
+        currentMessage = "",
+        voiceInputState = VoiceInputState.PermissionRequired
+    )
+}
