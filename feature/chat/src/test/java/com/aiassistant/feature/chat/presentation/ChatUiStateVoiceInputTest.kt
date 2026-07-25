@@ -7,10 +7,10 @@ import org.junit.Test
 
 class ChatUiStateVoiceInputTest {
     @Test
-    fun `preparing voice input clears nonempty draft and requests permission`() {
+    fun `preparing voice input preserves nonempty draft and requests permission`() {
         val result = ChatUiState(currentMessage = "buy bread").prepareForVoiceInput()
 
-        assertEquals("", result.currentMessage)
+        assertEquals("buy bread", result.currentMessage)
         assertTrue(result.voiceInputState is VoiceInputState.PermissionRequired)
     }
 
@@ -27,7 +27,6 @@ class ChatUiStateVoiceInputTest {
 
         assertEquals(
             initial.copy(
-                currentMessage = "",
                 voiceInputState = VoiceInputState.PermissionRequired
             ),
             result

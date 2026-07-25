@@ -60,7 +60,6 @@ data class ChatUiState(
     val voiceInputState: VoiceInputState = VoiceInputState.Idle
 ) {
     internal fun prepareForVoiceInput(): ChatUiState = copy(
-        currentMessage = "",
         voiceInputState = VoiceInputState.PermissionRequired
     )
 }
