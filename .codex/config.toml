@@ -1,3 +1,23 @@
 [agents]
 max_threads = 3
 max_depth = 2
+
+[agents.researcher]
+description = "Investigates repository architecture, execution flows, dependencies, and root causes."
+config_file = "agents/researcher.toml"
+
+[agents.implementer]
+description = "Implements focused production changes based on verified research."
+config_file = "agents/implementer.toml"
+
+[agents.reviewer]
+description = "Reviews research, implementation, tests, regressions, and validation evidence."
+config_file = "agents/reviewer.toml"
+
+[agents.test-writer]
+description = "Finds insufficiently tested business logic, writes focused unit or integration tests, and runs relevant validation."
+config_file = "agents/test-writer.toml"
+
+[agents.smoke-tester]
+description = "Executes Android smoke scenarios through mobile MCP, captures screenshots and reports UI failures."
+config_file = "agents/smoke-tester.toml"
