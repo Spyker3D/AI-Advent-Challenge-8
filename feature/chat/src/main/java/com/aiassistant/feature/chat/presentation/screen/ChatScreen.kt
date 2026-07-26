@@ -145,6 +145,7 @@ fun ChatScreen(
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var isOverflowMenuOpen by remember { mutableStateOf(false) }
+    var showClearChatConfirmation by rememberSaveable { mutableStateOf(false) }
     var permissionRequested by remember { mutableStateOf(false) }
     var hasRequestedVoicePermission by rememberSaveable { mutableStateOf(false) }
     var currentVoiceRequestHadHistory by rememberSaveable { mutableStateOf(false) }
@@ -292,6 +293,16 @@ fun ChatScreen(
         }
     }
 
+    if (showClearChatConfirmation) {
+        ClearChatConfirmationDialog(
+            onDismiss = { showClearChatConfirmation = false },
+            onConfirm = {
+                showClearChatConfirmation = false
+                viewModel.handleEvent(ChatUiEvent.ClearChat)
+            }
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -357,7 +368,7 @@ fun ChatScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.handleEvent(ChatUiEvent.ClearChat) }) {
+                        IconButton(onClick = { showClearChatConfirmation = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.Clear,
                                 contentDescription = "Clear Chat"
@@ -1565,6 +1576,27 @@ fun BranchingControls(
             }
         )
     }
+}
+
+@Composable
+internal fun ClearChatConfirmationDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Очистить историю сообщений?") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Очистить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }
 
 
