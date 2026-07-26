@@ -2,22 +2,33 @@
 
 ## Purpose
 
-Use this profile to perform two levels of repository-aware validation:
+Use this profile to perform repository-aware validation throughout the entire
+testing lifecycle.
 
-1. **Level 1 — Code Testing**
+The workflow supports three different testing phases:
 
-    * discover insufficiently tested production business logic;
-    * add focused unit or integration tests;
-    * execute relevant test tasks;
-    * report results and uncovered risks.
+1. **Bootstrap**
 
-2. **Level 2 — Android Smoke Testing**
+   Establish the initial automated testing baseline.
 
-    * execute documented user scenarios through the configured mobile MCP server;
-    * interact with a real Android emulator or physical device;
-    * verify observable UI behavior;
-    * capture screenshots and diagnostic evidence;
-    * report passed, failed, blocked, and skipped scenarios.
+   This phase discovers insufficiently tested production business logic,
+   creates focused unit or integration tests, validates them, and establishes
+   the repository testing baseline.
+
+2. **Validation**
+
+   Validate an existing testing baseline after repository changes.
+
+   This phase primarily reuses existing tests, updates them only when required,
+   executes Android smoke scenarios, and produces fresh validation evidence.
+
+3. **Feature Update**
+
+   Validate a newly implemented or deployed feature.
+
+   This phase updates automated tests, updates smoke scenarios for changed
+   user-visible behavior, executes the complete validation pipeline, and
+   produces a new unified report.
 
 This profile coordinates specialized agents and produces one unified testing
 report.
@@ -31,85 +42,166 @@ Example:
 ```text
 Work strictly according to `.codex/profiles/testing.md`.
 
-Run both testing levels for the current repository.
+Run FULL_VALIDATION.
 ```
 
-A narrower scope may be supplied:
+Examples of narrower scopes:
+
+### Initial repository bootstrap
 
 ```text
 Work strictly according to `.codex/profiles/testing.md`.
 
-Run Level 1 only.
+Run LEVEL_1_BOOTSTRAP.
+
 Find and test at least three insufficiently covered production files.
 ```
 
+---
+
+### Code validation only
+
 ```text
 Work strictly according to `.codex/profiles/testing.md`.
 
-Run Level 2 only.
-Execute scenarios SMOKE-01 through SMOKE-04.
+Run LEVEL_1_VALIDATION.
 ```
 
-When the user does not explicitly limit the scope, execute both levels.
+---
+
+### Smoke validation only
+
+```text
+Work strictly according to `.codex/profiles/testing.md`.
+
+Run LEVEL_2.
+
+Execute all applicable Android smoke scenarios.
+```
+
+---
+
+### Pull request validation
+
+```text
+Work strictly according to `.codex/profiles/testing.md`.
+
+Run CHANGE_VALIDATION for the current branch.
+```
+
+---
+
+### Newly implemented feature
+
+```text
+Work strictly according to `.codex/profiles/testing.md`.
+
+I implemented a new feature.
+
+Update automated tests if necessary.
+
+Update smoke scenarios.
+
+Run the complete validation workflow.
+```
+
+This request selects `FEATURE_UPDATE`.
+
+---
+
+When the user does not specify the workflow:
+
+* use `LEVEL_1_BOOTSTRAP` only when the repository does not yet contain the
+  required initial testing baseline;
+
+* otherwise use `FULL_VALIDATION`.
 
 ---
 
 ## Agents
 
-This workflow uses the following specialized agents:
+This workflow uses the following specialized agents.
 
-* `researcher`
+### researcher
 
-    * studies the repository;
-    * identifies architecture, affected modules, existing tests, build commands,
-      application identifiers, and testing constraints;
-    * does not modify files.
+Responsibilities:
 
-* `test-writer`
+* inspect repository architecture;
+* inspect AGENTS.md instructions;
+* inspect existing testing infrastructure;
+* inspect existing smoke scenarios;
+* inspect current Git changes;
+* identify affected production behavior;
+* determine whether existing tests already provide sufficient coverage.
 
-    * selects meaningful production behavior;
-    * creates or updates unit and integration tests;
-    * runs confirmed Gradle test tasks;
-    * reports test results and failures.
-
-* `smoke-tester`
-
-    * executes Android smoke scenarios through the configured mobile MCP server;
-    * captures screenshots, UI state, and logs;
-    * does not modify production code or tests.
-
-* `reviewer`
-
-    * verifies that test selection, assertions, execution evidence, and conclusions
-      are supported;
-    * identifies missing coverage and unreliable results;
-    * issues the final verdict.
-
-Do not substitute one agent for another when the required role is available.
+The researcher never modifies repository files.
 
 ---
 
-## Global invariants
+### test-writer
 
-Throughout the workflow:
+Responsibilities:
 
-* Read every applicable `AGENTS.md`.
+* establish the initial testing baseline;
+* update existing automated tests when justified;
+* create regression tests for newly discovered production defects;
+* execute repository test commands;
+* classify failures.
+
+The test-writer does not modify production code unless the workflow explicitly
+requests bug fixing.
+
+---
+
+### smoke-tester
+
+Responsibilities:
+
+* execute Android smoke scenarios through the configured mobile MCP server;
+* collect screenshots;
+* collect UI hierarchy;
+* collect diagnostic logs;
+* report observable user behavior.
+
+The smoke-tester never modifies production code.
+
+---
+
+### reviewer
+
+Responsibilities:
+
+* independently review testing evidence;
+* verify conclusions;
+* identify missing validation;
+* produce the final verdict.
+
+---
+
+Do not substitute one specialized agent for another when the required role is
+available.
+
+---
+
+# Global Invariants
+
+Throughout every workflow:
+
+* Read every applicable AGENTS.md.
 * Preserve unrelated user changes.
-* Do not create commits.
-* Do not stage or unstage files.
-* Do not reset, clean, or rewrite Git history.
-* Do not change dependencies without demonstrated necessity.
-* Do not weaken assertions to obtain passing tests.
-* Do not disable or delete failing tests.
-* Do not claim that a command or scenario passed unless it was actually
-  executed and its result was inspected.
-* Do not invent Gradle tasks, package names, activities, selectors, device
-  identifiers, test results, screenshots, or logs.
-* Separate application defects from test implementation errors and environment
-  blockers.
-* Keep code-test changes focused on testing.
-* During smoke execution, production code and test code are read-only.
-* Store generated smoke evidence only in the designated evidence directory.
+* Never create commits.
+* Never stage or unstage files.
+* Never rewrite Git history.
+* Never weaken assertions merely to obtain passing tests.
+* Never disable failing tests.
+* Never invent screenshots, logs, Gradle tasks, package names, device
+  identifiers, selectors, or execution results.
+* Never report PASS unless execution evidence exists.
+* Distinguish production defects from testing defects.
+* Keep production code unchanged unless the workflow explicitly requests a bug
+  fix.
+* Smoke execution must treat production code and automated tests as read-only.
+* Every physical smoke execution must create a new evidence directory.
 
 ---
 
@@ -117,43 +209,136 @@ Throughout the workflow:
 
 ## Stage 1 — Scope
 
-Determine the requested testing scope.
+Determine which workflow the user requested.
 
-Possible scopes:
+Possible workflows:
 
-* `LEVEL_1`
+---
 
-    * unit and integration tests only;
+### LEVEL_1_BOOTSTRAP
 
-* `LEVEL_2`
+Purpose:
 
-    * Android smoke scenarios only;
+Create the initial automated testing baseline.
 
-* `FULL`
+Responsibilities:
 
-    * both code tests and Android smoke scenarios;
+* discover insufficiently tested production behavior;
+* select meaningful production targets;
+* create unit or integration tests;
+* execute repository test commands;
+* establish repository testing coverage.
 
-* `CHANGE_VALIDATION`
+Unless the user specifies otherwise, this workflow must cover at least three
+meaningful production files.
 
-    * test the current branch, diff, feature, bug fix, or pull request;
+---
 
-* `SMOKE_UPDATE`
+### LEVEL_1_VALIDATION
 
-    * update scenarios for a newly implemented feature and rerun validation.
+Purpose:
 
-When the user does not specify a narrower scope, use `FULL`.
+Validate the existing automated testing baseline.
 
-Record:
+Responsibilities:
+
+* inspect existing tests;
+* determine whether current repository changes require additional tests;
+* update tests only when repository evidence justifies doing so;
+* execute repository test commands.
+
+This workflow does **not** search for three additional production files merely
+to repeat the bootstrap requirement.
+
+---
+
+### LEVEL_2
+
+Purpose:
+
+Execute Android smoke scenarios only.
+
+Responsibilities:
+
+* execute documented scenarios;
+* capture screenshots;
+* collect logs;
+* classify results.
+
+---
+
+### FULL_VALIDATION
+
+Purpose:
+
+Perform complete repository validation.
+
+Responsibilities:
+
+1. validate automated tests;
+2. execute code tests;
+3. build the application;
+4. execute Android smoke scenarios;
+5. collect new evidence;
+6. produce one Unified Testing Report.
+
+`FULL_VALIDATION` reuses the established testing baseline whenever it is still
+valid.
+
+It creates or updates automated tests only when:
+
+* repository changes introduce uncovered behavior;
+* current expectations became obsolete;
+* a regression requires additional coverage;
+* the user explicitly requests additional tests.
+
+---
+
+### CHANGE_VALIDATION
+
+Purpose:
+
+Validate the current branch, pull request, bug fix, or repository diff.
+
+Responsibilities:
+
+* inspect changed production files;
+* map changes to existing tests;
+* update tests only when required;
+* identify affected smoke scenarios;
+* execute focused validation.
+
+---
+
+### FEATURE_UPDATE
+
+Purpose:
+
+Validate a newly implemented or newly deployed feature.
+
+Responsibilities:
+
+* inspect changed production behavior;
+* update automated tests where necessary;
+* update smoke scenarios for changed user-visible behavior;
+* preserve unaffected regression scenarios;
+* execute complete validation;
+* produce a fresh Unified Testing Report.
+
+---
+
+When the workflow has been determined, record:
 
 * requested objective;
-* current Git branch or revision when available;
-* changed files when the request concerns a diff;
-* required minimum number of production files for Level 1;
-* requested smoke scenario identifiers;
-* whether scenario updates are allowed.
+* current Git branch when available;
+* current revision;
+* current diff when applicable;
+* selected workflow;
+* requested smoke scenarios;
+* whether smoke scenario updates are permitted.
 
-Do not begin implementation before the scope is clear enough to test observable
-behavior.
+Do not begin implementation before observable expected behavior is sufficiently
+understood.
 
 ---
 
@@ -163,613 +348,329 @@ Delegate repository investigation to `researcher`.
 
 The researcher must inspect:
 
-1. Repository structure and Android modules.
-2. Applicable `AGENTS.md` instructions.
-3. Gradle configuration and available test source sets.
-4. Existing unit, integration, instrumentation, and UI tests.
-5. Test frameworks and utilities already used by the project.
-6. Production files containing meaningful business behavior.
-7. Existing coverage gaps that can be inferred from source and tests.
-8. Application package name and build variants.
-9. Confirmed build and test commands.
-10. Existing smoke documentation.
-11. Current Git diff when validation is change-based.
-12. Android-specific execution constraints.
+1. repository structure;
+2. Android modules;
+3. AGENTS.md instructions;
+4. Gradle configuration;
+5. existing unit tests;
+6. existing integration tests;
+7. existing instrumentation tests;
+8. existing smoke scenarios;
+9. production modules containing business logic;
+10. existing testing coverage;
+11. application package name;
+12. build variants;
+13. confirmed Gradle commands;
+14. current Git diff;
+15. Android execution constraints.
 
-For `LEVEL_1` or `FULL`, the research report must propose meaningful production
-test targets.
+For `LEVEL_1_BOOTSTRAP`, the researcher must propose meaningful production
+targets that currently lack sufficient automated testing.
 
-For `LEVEL_2` or `FULL`, the research report must identify:
+For every validation workflow
+(`LEVEL_1_VALIDATION`, `FULL_VALIDATION`,
+`CHANGE_VALIDATION`, `FEATURE_UPDATE`)
+the researcher must instead determine:
 
-* the application package;
-* relevant screen entry point;
-* likely stable UI controls;
+* whether an adequate testing baseline already exists;
+* which existing tests cover changed production behavior;
+* whether additional automated tests are actually required.
+
+For workflows containing smoke execution, identify:
+
+* application package;
+* application entry point;
+* stable UI controls;
 * required permissions;
-* device or provider dependencies;
+* external dependencies;
 * scenario preconditions;
-* confirmed APK build/install path when available.
+* confirmed application build.
 
-The researcher must distinguish:
+Research results must distinguish:
 
 * repository evidence;
 * inference;
 * unknowns;
 * environment prerequisites.
 
-### Research gate
-
-Proceed only when the workflow has:
-
-* confirmed repository testing conventions;
-* confirmed relevant commands or explained why they cannot be confirmed;
-* meaningful test targets for Level 1 when applicable;
-* sufficient application and scenario context for Level 2 when applicable.
-
-If the repository cannot be inspected or expected behavior cannot be
-established, stop with `BLOCKED`.
-
 ---
+
+### Research Gate
+
+Proceed only when:
+
+* repository testing conventions are understood;
+* executable test commands have been confirmed;
+* required validation targets have been identified;
+* smoke prerequisites are understood.
+
+Otherwise return:
+
+`BLOCKED`.
 
 # Level 1 — Code Testing
 
-Skip this section when the scope excludes Level 1.
+Skip this section when the selected workflow excludes Level 1.
 
-## Stage 3 — Test Target Selection
+---
 
-Delegate test planning and implementation to `test-writer`.
+## Stage 3 — Test Planning
 
-Unless the user specifies a different number, Level 1 must cover at least three
-distinct production files containing meaningful business logic.
+Delegate planning and implementation to `test-writer`.
 
-A selected target must have observable behavior such as:
+The planning strategy depends on the selected workflow.
 
-* state transitions;
-* validation;
+---
+
+### LEVEL_1_BOOTSTRAP
+
+The objective is to establish the initial repository testing baseline.
+
+Unless the user specifies otherwise, select at least three distinct production
+files containing meaningful business logic.
+
+Selection criteria:
+
+* observable state transitions;
+* validation logic;
 * mapping or transformation;
 * formatting or normalization;
 * branching;
 * error handling;
-* result merging;
+* repository or use-case behavior;
 * cancellation;
-* duplicate-event protection;
-* stale-callback protection;
-* repository or use-case behavior.
+* stale callback protection;
+* duplicate event protection;
+* result aggregation;
+* business rules.
 
-Do not count the following as meaningful targets merely to reach the required
-number:
+Do not satisfy the required target count using:
 
 * generated files;
-* constants;
 * previews;
-* resource declarations;
+* constants;
+* resources;
 * simple data classes;
-* trivial getters and setters;
-* framework-only wrappers without testable application behavior.
+* trivial getters or setters;
+* framework wrappers without application behavior.
 
-For every target, record:
+For every selected target record:
 
-* repository-relative production path;
-* corresponding test path;
-* behavior to cover;
-* why existing coverage is insufficient;
-* selected test level: unit or integration.
+* production file;
+* planned test file;
+* observable behavior;
+* current coverage gap;
+* selected test level;
+* justification.
+
+---
+
+### LEVEL_1_VALIDATION
+
+The objective is to validate the existing testing baseline.
+
+Do not search for three additional production targets.
+
+Instead:
+
+1. inspect existing tests;
+2. map production behavior to existing coverage;
+3. inspect current repository changes;
+4. determine whether existing tests remain sufficient.
+
+Only create or modify tests when repository evidence demonstrates that:
+
+* changed business behavior is not covered;
+* expected behavior intentionally changed;
+* a regression requires additional verification;
+* an existing automated test became obsolete;
+* the user explicitly requested additional coverage.
+
+When no automated-test changes are required, explicitly record:
+
+```
+Existing automated testing baseline is sufficient.
+
+No code-test changes are required for this validation run.
+```
+
+---
+
+### CHANGE_VALIDATION
+
+Inspect the current Git diff.
+
+For every changed production file determine:
+
+* existing automated tests;
+* missing coverage;
+* obsolete expectations;
+* regression risk.
+
+Only affected areas should receive updated tests.
+
+---
+
+### FEATURE_UPDATE
+
+Inspect the new feature.
+
+Determine:
+
+* newly introduced business behavior;
+* modified business behavior;
+* unchanged behavior.
+
+Rules:
+
+* add tests for genuinely new behavior;
+* update tests for intentionally changed behavior;
+* preserve valid existing tests;
+* do not duplicate equivalent coverage.
+
+The initial bootstrap requirement remains satisfied by the existing repository
+baseline.
 
 ---
 
 ## Stage 4 — Test Implementation
 
-The `test-writer` must:
+Delegate implementation to `test-writer`.
 
-1. Inspect the selected production file.
-2. Inspect nearby and existing test conventions.
-3. Define observable expected behavior.
-4. Add focused success, failure, boundary, and regression cases as applicable.
-5. Reuse existing test frameworks and utilities.
-6. Avoid unnecessary production changes.
-7. Keep tests deterministic.
-8. Use behavior-oriented test names.
-9. Preserve existing test behavior.
-10. Record all changed files.
+The test-writer must:
 
-Production code must not be changed during this stage unless the workflow was
-explicitly invoked to fix a confirmed defect.
+1. inspect production behavior;
+2. inspect nearby testing conventions;
+3. inspect existing tests;
+4. define observable expected behavior;
+5. reuse existing testing infrastructure;
+6. keep tests deterministic;
+7. use behavior-oriented names;
+8. preserve valid existing tests;
+9. avoid unnecessary production changes;
+10. record every modified file.
 
-When a new test reveals a production defect:
+When new automated tests are created they should include, where appropriate:
 
-* do not weaken the test;
-* classify the result as `CONFIRMED_PRODUCTION_DEFECT`;
-* report the suspected production location;
-* continue with independent targets when reliable;
-* do not silently convert the testing workflow into a bug-fix workflow.
+* successful behavior;
+* failure behavior;
+* boundary conditions;
+* regression cases;
+* error handling;
+* cancellation behavior;
+* duplicate protection;
+* stale callback protection.
+
+The workflow must never replace an existing strong assertion with a weaker one.
+
+Production code must remain unchanged unless the workflow explicitly includes bug
+fixing.
+
+---
+
+### Confirmed Production Defects
+
+When an automated test exposes a production defect:
+
+do not weaken the test.
+
+Instead:
+
+* classify the result as
+  `CONFIRMED_PRODUCTION_DEFECT`;
+* identify the suspected production location;
+* continue independent validation whenever practical;
+* do not silently convert the workflow into bug fixing.
+
+---
+
+### No-Test-Change Outcome
+
+When repository evidence shows that the existing automated testing baseline
+already provides sufficient coverage, record:
+
+* inspected production behavior;
+* inspected automated tests;
+* justification for reusing the existing baseline.
+
+This is considered a successful validation outcome.
 
 ---
 
 ## Stage 5 — Code-Test Validation
 
-Run validation from narrowest to broadest:
+Execute validation from the narrowest practical scope toward broader validation.
 
-1. Newly added or changed test class.
-2. Relevant module test task.
-3. Broader repository test task when available and practical.
+Recommended order:
 
-Only use commands confirmed by the repository.
+1. newly added or modified test classes;
+2. existing focused tests covering changed behavior;
+3. relevant module test task;
+4. broader repository task when practical.
 
-For each executed command, record:
+Only execute commands confirmed by repository evidence.
+
+For every executed command record:
 
 * exact command;
-* exit result;
-* passed and failed tests when available;
-* relevant error output;
-* whether the failure is related to current changes.
+* execution result;
+* exit code;
+* passed tests;
+* failed tests;
+* relevant output;
+* relationship to current changes.
 
-Classify unsuccessful results as:
+Never report a command as executed unless execution evidence exists.
 
-* `TEST_IMPLEMENTATION_ERROR`;
-* `CONFIRMED_PRODUCTION_DEFECT`;
-* `PRE_EXISTING_FAILURE`;
-* `ENVIRONMENT_BLOCKER`.
+---
 
-The `test-writer` may correct mistakes in newly written tests.
+### Failure Classification
 
-It must not:
+Every unsuccessful execution must be classified as exactly one of:
 
-* change assertions merely to match defective behavior;
-* add retries or delays to hide nondeterminism;
-* disable tests;
-* replace meaningful checks with weak assertions;
-* report an unexecuted test as passing.
+* `TEST_IMPLEMENTATION_ERROR`
+* `CONFIRMED_PRODUCTION_DEFECT`
+* `PRE_EXISTING_FAILURE`
+* `ENVIRONMENT_BLOCKER`
 
-### Level 1 completion gate
+The test-writer may fix mistakes introduced into newly written tests.
 
-Level 1 is complete only when:
+The test-writer must not:
 
-* the required number of meaningful production targets was addressed;
-* test files compile, unless blocked by an identified environment issue;
-* all available relevant commands were executed;
-* every failure is classified;
-* remaining gaps are documented.
+* weaken assertions;
+* introduce retries merely to hide nondeterminism;
+* disable failing tests;
+* replace observable verification with trivial assertions;
+* report PASS without execution.
+
+---
+
+### Level 1 Completion Gate
+
+LEVEL_1_BOOTSTRAP completes only when:
+
+* the required production targets were covered;
+* automated tests compile unless blocked by environment;
+* repository test commands executed;
+* every failure classified;
+* remaining coverage gaps documented.
+
+LEVEL_1_VALIDATION,
+CHANGE_VALIDATION,
+FEATURE_UPDATE,
+and FULL_VALIDATION complete when:
+
+* the existing testing baseline has been inspected;
+* necessary test updates have been completed;
+* repository test commands executed;
+* every failure classified;
+* justification exists whenever no test modifications were required.
+
+---
 
 Possible Level 1 results:
 
-* `PASS`;
-* `PASS_WITH_LIMITATIONS`;
-* `FAIL`;
-* `BLOCKED`.
-
----
-
-# Level 2 — Android Smoke Testing
-
-Skip this section when the scope excludes Level 2.
-
-## Stage 6 — Scenario Preparation
-
-Use scenarios from:
-
-```text
-.codex/smoke/scenarios.md
-```
-
-Read:
-
-```text
-.codex/smoke/README.md
-```
-
-before execution.
-
-Unless the user specifies a subset, execute all scenarios that are applicable
-to the current environment.
-
-Before execution, verify that each selected scenario contains:
-
-* identifier;
-* purpose;
-* preconditions;
-* ordered steps;
-* expected result;
-* test data when required;
-* blocking conditions when applicable.
-
-If the scope is `SMOKE_UPDATE`, inspect the current feature diff and update
-`.codex/smoke/scenarios.md` before execution.
-
-Scenario update rules:
-
-* preserve unaffected regression scenarios;
-* add a scenario only for a distinct user outcome;
-* update an existing scenario when behavior changed intentionally;
-* do not delete scenarios merely because they fail;
-* document why every scenario was added, updated, or removed.
-
----
-
-## Stage 7 — Android Preflight
-
-Delegate execution to `smoke-tester`.
-
-Before interacting with the application, the smoke tester must:
-
-1. Confirm that the configured mobile MCP server is available.
-2. Confirm that ADB can see a device or emulator.
-3. Select an explicit device when multiple devices are present.
-4. Confirm the application package name from repository evidence.
-5. Confirm the application build or install state.
-6. Record the device model and Android version.
-7. Record the tested build variant and Git revision when available.
-8. Create a unique evidence directory.
-
-Recommended evidence directory:
-
-```text
-artifacts/smoke/<run-id>/
-```
-
-Do not reuse or overwrite an earlier run.
-
-If the device, MCP server, application build, or required package information
-is unavailable, classify Level 2 as `BLOCKED`.
-
----
-
-## Stage 8 — Smoke Execution
-
-For every selected scenario, the `smoke-tester` must:
-
-1. Restore documented preconditions.
-2. Start from a known application state.
-3. Execute steps in order through mobile MCP.
-4. Capture a screenshot after every meaningful step.
-5. Inspect UI hierarchy for important assertions when available.
-6. Record expected and actual behavior.
-7. Stop the scenario after the earliest blocking failure.
-8. Capture logs and UI state on failure.
-9. Restore a known state before the next scenario.
-10. Classify the result as:
-
-    * `PASS`;
-    * `FAIL`;
-    * `BLOCKED`;
-    * `SKIPPED`.
-
-A scenario may be marked `PASS` only when every required step and assertion was
-executed and verified.
-
-A tool call completing without an error is not evidence that the application
-behavior is correct.
-
----
-
-## Stage 9 — Smoke Evidence
-
-For every scenario, preserve:
-
-* initial-state screenshot;
-* screenshots after meaningful actions;
-* final-state screenshot;
-* relevant UI hierarchy or UI dump;
-* failure logs when applicable;
-* step-by-step execution notes.
-
-Recommended structure:
-
-```text
-artifacts/smoke/<run-id>/
-├── environment.md
-├── SMOKE-01/
-│   ├── 01-initial-state.png
-│   ├── 02-action.png
-│   ├── 03-final-state.png
-│   ├── ui-state.txt
-│   └── logs.txt
-├── SMOKE-02/
-└── report.md
-```
-
-Evidence files must use descriptive and stable names.
-
-Do not claim that a screenshot exists unless it was actually created.
-
----
-
-## Voice-to-Text Rules
-
-Microphone permission testing and speech-recognition testing are separate
-behaviors.
-
-The workflow must distinguish:
-
-* microphone control is visible;
-* permission dialog is shown;
-* permission is granted or denied correctly;
-* listening state starts;
-* real audio reaches the recognition provider;
-* final recognition result is received;
-* final text is processed correctly by the application.
-
-Do not claim that speech recognition passed when only the permission flow was
-tested.
-
-Mark a speech-dependent scenario `BLOCKED` when:
-
-* real audio input is unavailable;
-* the emulator cannot provide microphone input;
-* a compatible recognition provider is unavailable;
-* required Google services are missing;
-* required network access is unavailable;
-* the application has no documented test mechanism for recognition results.
-
-A blocked speech scenario does not automatically invalidate independent smoke
-scenarios.
-
-### Level 2 completion gate
-
-Level 2 is complete only when:
-
-* preflight information is recorded;
-* all selected scenarios have a result;
-* required screenshots were captured for executed steps;
-* failures include evidence and earliest failing step;
-* blocked scenarios identify the missing prerequisite;
-* no scenario is marked PASS without verified assertions.
-
-Possible Level 2 results:
-
-* `PASS`;
-* `PASS_WITH_BLOCKED_SCENARIOS`;
-* `FAIL`;
-* `BLOCKED`.
-
----
-
-# Review
-
-## Stage 10 — Independent Review
-
-After applicable testing levels are complete, delegate the complete results to
-`reviewer`.
-
-The reviewer must inspect:
-
-### Level 1
-
-* whether selected targets contain meaningful business logic;
-* whether the required number of production files was actually covered;
-* whether tests verify observable behavior;
-* whether assertions are sufficiently strong;
-* whether edge and regression cases are appropriate;
-* whether commands were really executed;
-* whether failures were classified correctly;
-* whether tests introduced unnecessary coupling or nondeterminism.
-
-### Level 2
-
-* whether scenarios represent real user behavior;
-* whether preconditions were restored;
-* whether screenshots correspond to documented steps;
-* whether important assertions used inspectable UI evidence;
-* whether PASS, FAIL, BLOCKED, and SKIPPED are justified;
-* whether voice-to-text limitations were represented honestly;
-* whether failure analysis is supported by logs or UI state.
-
-### Review verdict
-
-The reviewer must return one of:
-
-* `APPROVED`;
-* `APPROVED_WITH_LIMITATIONS`;
-* `CHANGES_REQUIRED`;
-* `BLOCKED`.
-
-When the reviewer identifies an error in newly created tests:
-
-1. Return the issue to `test-writer`.
-2. Correct the test.
-3. Rerun the affected validation.
-4. Resubmit the result to `reviewer`.
-
-When the reviewer identifies missing or unreliable smoke evidence:
-
-1. Return the affected scenario to `smoke-tester`.
-2. Rerun only when the environment remains valid.
-3. Capture the missing evidence.
-4. Resubmit the result to `reviewer`.
-
-Do not rerun unrelated successful work without reason.
-
-Do not modify production code to satisfy reviewer findings within this profile.
-
----
-
-# Final Report
-
-## Stage 11 — Unified Testing Report
-
-Return one final report using the following structure.
-
-```markdown
-# Unified Testing Report
-
-## 1. Scope
-
-- Requested objective:
-- Testing scope:
-- Tested branch or revision:
-- Current diff:
-- Repository limitations:
-
-## 2. Repository Research
-
-### Architecture and modules
-
-### Existing test setup
-
-### Confirmed commands
-
-### Testing constraints
-
-## 3. Level 1 — Code Testing
-
-### Result
-
-PASS | PASS_WITH_LIMITATIONS | FAIL | BLOCKED | NOT_REQUESTED
-
-### Selected production targets
-
-| Production file | Test file | Behavior covered | Selection reason |
-|---|---|---|---|
-
-### Tests added or updated
-
-### Commands executed
-
-| Command | Result | Notes |
-|---|---|---|
-
-### Failures
-
-### Remaining coverage gaps
-
-## 4. Level 2 — Android Smoke Testing
-
-### Result
-
-PASS | PASS_WITH_BLOCKED_SCENARIOS | FAIL | BLOCKED | NOT_REQUESTED
-
-### Environment
-
-- Device:
-- Android version:
-- Package:
-- Build variant:
-- Evidence directory:
-
-### Scenario summary
-
-| Scenario | Result | Earliest failing step | Evidence |
-|---|---|---|---|
-
-### Detailed failures and blockers
-
-### Residual UI risks
-
-## 5. Changed Files
-
-### Test files
-
-### Smoke scenario files
-
-### Evidence and reports
-
-## 6. Reviewer Assessment
-
-- Verdict:
-- Blocking findings:
-- Limitations:
-- Required follow-up:
-
-## 7. Final Verdict
-
-PASS | PASS_WITH_LIMITATIONS | FAIL | BLOCKED
-```
-
----
-
-## Final verdict rules
-
-Use `PASS` only when:
-
-* every requested testing level passed;
-* the required Level 1 production targets were meaningfully covered;
-* relevant tests passed;
-* all required smoke scenarios passed;
-* reviewer verdict is `APPROVED`.
-
-Use `PASS_WITH_LIMITATIONS` when:
-
-* completed checks passed;
-* limitations or independently blocked scenarios remain;
-* reviewer verdict is `APPROVED_WITH_LIMITATIONS`;
-* the limitations are clearly documented.
-
-Use `FAIL` when:
-
-* a code test exposes a confirmed production defect;
-* a smoke scenario exposes contradictory application behavior;
-* required tests fail because of current changes;
-* reviewer returns `CHANGES_REQUIRED` and the issue cannot be corrected within
-  test or evidence scope.
-
-Use `BLOCKED` when:
-
-* required validation cannot be executed because of repository or environment
-  constraints;
-* no reliable conclusion can be made;
-* both levels are unavailable;
-* reviewer returns `BLOCKED`.
-
-Never convert a failure into a limitation merely to produce a successful final
-verdict.
-
----
-
-# Change-Validation Flow
-
-When invoked after a pull request, feature, or bug fix:
-
-1. Inspect the current diff.
-2. Map changed production files to existing tests.
-3. Add or update relevant tests when coverage is missing.
-4. Run focused and module-level code tests.
-5. Identify affected smoke scenarios.
-6. Update smoke scenarios only when user-visible behavior intentionally changed.
-7. Build and install the relevant Android variant.
-8. Execute affected smoke scenarios.
-9. Execute core smoke scenarios when practical.
-10. Collect evidence.
-11. Run reviewer.
-12. Produce the Unified Testing Report.
-
-The workflow must not assume that all smoke scenarios are affected by every
-change.
-
----
-
-# New-Feature Smoke Update Flow
-
-When the user says:
-
-> I deployed a new feature. Update the smoke scenarios and run everything again.
-
-Perform:
-
-1. Research the feature and current diff.
-2. Identify new and changed user-visible outcomes.
-3. Review existing scenarios for overlap.
-4. Update `.codex/smoke/scenarios.md`.
-5. Explain every scenario change.
-6. Run relevant unit and integration tests.
-7. Build and install the application.
-8. Run the full applicable smoke set through mobile MCP.
-9. Capture new evidence in a new run directory.
-10. Run reviewer.
-11. Produce the Unified Testing Report.
-
-Do not replace the entire scenario set when only one user path changed.
-
----
-
-# Stop Conditions
-
-Stop and return the best available report when:
-
-* repository instructions conflict with the requested operation;
-* expected behavior cannot be established;
-* relevant test commands cannot be identified;
-* the Android device or MCP server is unavailable;
-* the application cannot be installed or launched;
-* required external speech services are unavailable;
-* continuing would overwrite user work or earlier evidence;
-* reviewer cannot validate the supplied evidence.
-
-A partial, evidence-based result is preferable to an unsupported PASS.
+* PASS
+* PASS_WITH_LIMITATIONS
+* FAIL
+* BLOCKED

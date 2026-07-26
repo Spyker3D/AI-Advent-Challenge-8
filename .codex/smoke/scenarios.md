@@ -239,3 +239,92 @@ Mark this scenario `BLOCKED`, not `FAIL`, when:
 
 Do not claim that voice recognition was verified by testing only the microphone
 permission dialog.
+
+---
+
+## SMOKE-06: Clear-chat confirmation
+
+### Purpose
+
+Verify that clearing the current chat requires explicit confirmation, that
+cancelling preserves the message history, and that neither dialog action
+changes the selected Context Strategy or the unrelated RAG setting.
+
+### Preconditions
+
+* The application is on its primary screen.
+* No permission, system, or application dialog is visible.
+* The application can display a user message in the current chat.
+* Record the initial selected Context Strategy and RAG setting before changing
+  them, so they can be restored after the scenario if required.
+
+### Test data
+
+Unique message:
+
+```text
+SMOKE-06 clear confirmation 2026-07-26
+```
+
+Scenario settings:
+
+```text
+Context Strategy: Sticky Facts
+RAG: OFF
+```
+
+### Steps
+
+1. Select `Sticky Facts` in the `Context Strategy` control.
+2. Open the `More` menu and set the RAG switch to off.
+3. Reopen the `More` menu and verify that it displays `RAG OFF`.
+4. Enter `SMOKE-06 clear confirmation 2026-07-26` in the main text input and
+   tap the `Send message` action.
+5. Verify that the complete unique message is visible in the current chat.
+   Do not require an assistant response for this scenario.
+6. Tap the top-app-bar action with content description `Clear Chat`.
+7. Verify that a modal dialog is displayed with the exact title
+   `Очистить историю сообщений?`.
+8. Verify that the dialog displays both exact actions: `Отмена` and
+   `Очистить`.
+9. Capture the dialog before choosing an action.
+10. Tap `Отмена`.
+11. Verify that the confirmation dialog closes.
+12. Verify that the complete unique message remains visible in the current
+    chat.
+13. Verify that `Sticky Facts` is still the selected Context Strategy.
+14. Open the `More` menu and verify that it still displays `RAG OFF`, then
+    dismiss the menu.
+15. Tap the top-app-bar action with content description `Clear Chat` again.
+16. Verify the exact dialog title and both exact actions again.
+17. Tap `Очистить`.
+18. Verify that the confirmation dialog closes.
+19. Verify that the unique message is no longer present and that the empty
+    state `Start a conversation with AI` is displayed.
+20. Verify that `Sticky Facts` is still the selected Context Strategy.
+21. Open the `More` menu and verify that it still displays `RAG OFF`.
+22. Capture the final state and restore the settings recorded in the
+    preconditions when required by subsequent scenarios.
+
+### Expected result
+
+* Tapping `Clear Chat` does not clear the current chat immediately.
+* The dialog title and both actions exactly match the required Russian labels.
+* `Отмена` dismisses the dialog without removing the unique message.
+* `Очистить` dismisses the dialog and clears the current chat.
+* The selected `Sticky Facts` Context Strategy remains unchanged after both
+  cancellation and confirmation.
+* The unrelated RAG setting remains `RAG OFF` after both cancellation and
+  confirmation.
+* The application remains responsive throughout the interaction.
+
+### Failure evidence
+
+When any assertion fails, capture:
+
+* the state immediately before tapping `Clear Chat`;
+* the dialog and its UI hierarchy;
+* the state after `Отмена`;
+* the state after `Очистить`;
+* the visible Context Strategy and `More` menu RAG label;
+* application logs for a crash, frozen UI, or unexpected state transition.

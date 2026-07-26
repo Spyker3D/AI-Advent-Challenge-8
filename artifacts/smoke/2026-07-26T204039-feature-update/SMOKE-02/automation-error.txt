@@ -1,0 +1,11 @@
+Blocked at step 3 while entering the scenario's exact Russian test data.
+
+The mobile input action retried twice and returned:
+
+[ADB_ERROR] ADB shell failed while executing text:
+java.lang.NullPointerException: Attempt to get length of null array
+at com.android.server.input.InputShellCommand.sendText(InputShellCommand.java:393)
+
+No text was injected, so preservation and keyboard-dismissal assertions were not
+claimed. This is an automation/environment blocker, not observed application
+failure.
