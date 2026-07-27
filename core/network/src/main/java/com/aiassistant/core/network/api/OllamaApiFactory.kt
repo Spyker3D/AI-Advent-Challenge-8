@@ -22,6 +22,11 @@ class OllamaApiFactory @Inject constructor(
     }
 
     fun normalizeBaseUrl(url: String): String {
-        return if (url.endsWith("/")) url else "$url/"
+        val normalized = url.trim().trimEnd('/')
+        val uri = runCatching { java.net.URI(normalized) }.getOrNull()
+        require(uri?.scheme in setOf("http", "https") && !uri?.host.isNullOrBlank()) {
+            "Invalid Ollama Base URL"
+        }
+        return "$normalized/"
     }
 }
