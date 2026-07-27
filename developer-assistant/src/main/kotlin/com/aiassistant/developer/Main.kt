@@ -113,7 +113,7 @@ fun main(args: Array<String>) {
 
     val service = DeveloperAssistantService(config.projectRoot, indexStorage, ProjectRetriever(embedding, config.topK), git, llm)
     val fileTools = ProjectFileTools(config.projectRoot, config.maxFileSizeBytes)
-    val fileAgent = ProjectFileAgent(config.projectRoot, fileTools, config.dryRun, llm)
+    val fileAgent = ProjectFileAgent(config.projectRoot, fileTools, config.dryRun, llm, maxIterations = config.maxToolIterations)
     var lastDiff = "No proposed changes."
     val loop = CommandLoop(
         BufferedReader(InputStreamReader(System.`in`, StandardCharsets.UTF_8)),

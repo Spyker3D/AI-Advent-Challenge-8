@@ -17,6 +17,7 @@ data class AssistantConfig(
     val chunkSize: Int,
     val chunkOverlap: Int,
     val maxFileSizeBytes: Long,
+    val maxToolIterations: Int,
     val dryRun: Boolean,
     val debug: Boolean
 )
@@ -36,6 +37,12 @@ object ConfigLoader {
         require(!apiKey.isNullOrBlank()) {
             "OpenAI API key was not found. Set OPENAI_API_KEY in the environment or add OPENAI_API_KEY=... to ${root.resolve("local.properties")}."
         }
+        val maxToolIterations = value(
+            "max-tool-iterations",
+            "DEVELOPER_ASSISTANT_MAX_TOOL_ITERATIONS",
+            "10"
+        ).toInt()
+        require(maxToolIterations > 0) { "max-tool-iterations must be greater than zero." }
         return AssistantConfig(
             root,
             value("embedding-base-url", "OLLAMA_BASE_URL", "http://localhost:11434"),
@@ -48,6 +55,7 @@ object ConfigLoader {
             value("chunk-size", "DEVELOPER_ASSISTANT_CHUNK_SIZE", "1200").toInt(),
             value("chunk-overlap", "DEVELOPER_ASSISTANT_CHUNK_OVERLAP", "200").toInt(),
             value("max-file-size", "DEVELOPER_ASSISTANT_MAX_FILE_SIZE", "1048576").toLong(),
+            maxToolIterations,
             options["dry-run"]?.toBoolean() ?: false,
             options["debug"]?.toBoolean() ?: false
         )
