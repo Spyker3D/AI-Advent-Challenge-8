@@ -533,8 +533,9 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun sendMessage() {
-        val currentMessage = _uiState.value.currentMessage.trim()
-        if (currentMessage.isBlank() || _uiState.value.isLoading) return
+        val currentState = _uiState.value
+        if (!currentState.canSendMessage()) return
+        val currentMessage = currentState.currentMessage.trim()
 
         if (calendarAssistant.canHandle(currentMessage)) {
             sendCalendarMessage(currentMessage)
