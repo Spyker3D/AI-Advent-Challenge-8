@@ -1,6 +1,8 @@
 package com.aiassistant.rag
 
 import java.nio.file.Files
+import kotlin.io.path.isDirectory
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -90,7 +92,40 @@ class StorageTest {
         assertFails { ManifestStorage(manifestPath).load() }
     }
 
-    private fun chunk() = ProjectChunk(
+
+    @Test
+    fun `repeated saves replace complete index and manifest without temporary files`() {
+        val root = Files.createTempDirectory("replacement-storage")
+        val indexPath = root.resolve("index.json")
+        val manifestPath = root.resolve("manifest.json")
+        val indexStorage = IndexStorage(indexPath)
+        val manifestStorage = ManifestStorage(manifestPath)
+
+        indexStorage.save(LocalVectorIndex(IndexMetadata("local", "old-model", 2), listOf(chunk())))
+        manifestStorage.save(IndexManifest(mapOf("A.kt" to ManifestEntry("old", 1, listOf("chunk-1"))), 1))
+        indexStorage.save(LocalVectorIndex(IndexMetadata("local", "new-model", 1), emptyList()))
+        manifestStorage.save(IndexManifest(mapOf("B.kt" to ManifestEntry("new", 2, emptyList())), 2))
+
+        assertEquals("new-model", indexStorage.loadIndex().metadata?.embeddingModel)
+        assertTrue(indexStorage.load().isEmpty())
+        assertEquals(setOf("B.kt"), manifestStorage.load().files.keys)
+        assertFalse(indexPath.readText().contains("old-model"))
+        assertFalse(manifestPath.readText().contains("A.kt"))
+        assertTrue(Files.list(root).use { files -> files.noneMatch { it.fileName.toString().endsWith(".tmp") } })
+    }
+
+    @Test
+    fun `failed replacement cleans temporary file without creating partial JSON`() {
+        val root = Files.createTempDirectory("failed-storage")
+        val target = root.resolve("index.json")
+        Files.createDirectory(target)
+        target.resolve("keep.txt").writeText("existing")
+
+        assertFails { IndexStorage(target).save(LocalVectorIndex(chunks = listOf(chunk()))) }
+
+        assertTrue(target.isDirectory())
+        assertTrue(Files.list(root).use { files -> files.noneMatch { it.fileName.toString().endsWith(".tmp") } })
+    }    private fun chunk() = ProjectChunk(
         id = "chunk-1",
         sourcePath = "src/A.kt",
         content = "class A",
