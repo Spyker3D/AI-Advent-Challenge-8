@@ -3,6 +3,7 @@ package com.aiassistant.feature.settings.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiassistant.core.domain.entity.ChatSettings
+import com.aiassistant.core.domain.usecase.ClearConversationSummaryUseCase
 import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.feature.settings.presentation.SettingsUiEvent
@@ -19,6 +20,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val getChatSettingsUseCase: GetChatSettingsUseCase,
     private val saveChatSettingsUseCase: SaveChatSettingsUseCase,
+    private val clearConversationSummaryUseCase: ClearConversationSummaryUseCase,
     private val privateVpsConnectionTester: PrivateVpsConnectionTester
 ) : ViewModel() {
 
@@ -126,6 +128,7 @@ class SettingsViewModel @Inject constructor(
                 updateSettings { it.copy(keepLastMessagesCount = event.keepLastMessagesCount) }
                 saveSettings()
             }
+            SettingsUiEvent.ClearConversationSummary -> clearConversationSummary()
 
         }
     }
@@ -151,6 +154,21 @@ class SettingsViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message ?: "Failed to save settings"
+                )
+            }
+        }
+    }
+
+    private fun clearConversationSummary() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                clearConversationSummaryUseCase()
+                _uiState.value = _uiState.value.copy(isLoading = false)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to clear conversation summary"
                 )
             }
         }
