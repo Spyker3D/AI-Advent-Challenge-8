@@ -82,4 +82,20 @@ The application calls the OpenAI Responses API directly and uses `Authorization:
         assertContains(result.diff, "Authorization: Bearer <key>")
         assertContains(result.diff, "HTTP 400, 401, 403, 429")
     }
+
+    @Test fun `agent stops at configured tool iteration limit and clears staged changes`() = runBlocking {
+        val root = Files.createTempDirectory("day34-agent-limit")
+        root.resolve("SampleService.kt").writeText("class SupportAssistantService")
+        val tools = ProjectFileTools(root)
+        tools.proposeWrite("staged-before-run.md", "must be cleared")
+        val agent = ProjectFileAgent(root, tools, dryRun = true, maxIterations = 1)
+
+        val error = assertFailsWith<IllegalStateException> {
+            agent.execute("Find SupportAssistantService usage") { false }
+        }
+
+        assertContains(error.message.orEmpty(), "MAX_TOOL_ITERATIONS=1")
+        assertTrue(tools.proposedChanges().isEmpty())
+        assertFalse(Files.exists(root.resolve("staged-before-run.md")))
+    }
 }
