@@ -15,6 +15,7 @@ class CommandLoopTest {
     }
     @Test fun `recognizes status reindex and exit`() {
         assertIs<CliCommand.Status>(CommandParser.parse("/status"))
+        assertIs<CliCommand.Diagnostics>(CommandParser.parse("/diagnostics"))
         assertIs<CliCommand.Reindex>(CommandParser.parse("/reindex"))
         assertIs<CliCommand.Exit>(CommandParser.parse("/exit"))
         assertIs<CliCommand.Diff>(CommandParser.parse("/diff"))

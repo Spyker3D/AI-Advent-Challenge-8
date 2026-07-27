@@ -23,7 +23,11 @@ data class AssistantConfig(
 )
 
 object ConfigLoader {
-    fun load(args: Array<String>, env: Map<String, String> = System.getenv()): AssistantConfig {
+    fun load(
+        args: Array<String>,
+        env: Map<String, String> = System.getenv(),
+        requireApiKey: Boolean = true
+    ): AssistantConfig {
         val options = args.filter { it.startsWith("--") }.associate {
             val pair = it.removePrefix("--").split('=', limit = 2)
             pair[0] to pair.getOrElse(1) { "true" }
@@ -34,7 +38,7 @@ object ConfigLoader {
         fun value(key: String, envKey: String, default: String) = options[key] ?: env[envKey] ?: default
         val apiKey = env["OPENAI_API_KEY"]?.takeIf { it.isNotBlank() }
             ?: loadOpenAiApiKey(root)
-        require(!apiKey.isNullOrBlank()) {
+        require(!requireApiKey || !apiKey.isNullOrBlank()) {
             "OpenAI API key was not found. Set OPENAI_API_KEY in the environment or add OPENAI_API_KEY=... to ${root.resolve("local.properties")}."
         }
         val maxToolIterations = value(
@@ -49,7 +53,7 @@ object ConfigLoader {
             value("embedding-model", "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest"),
             value("openai-base-url", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
             value("generation-model", "OPENAI_GENERATION_MODEL", "gpt-4.1-mini"),
-            apiKey,
+            apiKey.orEmpty(),
             value("mcp-url", "DEVELOPER_ASSISTANT_MCP_URL", "http://localhost:3000/mcp"),
             value("top-k", "DEVELOPER_ASSISTANT_TOP_K", "8").toInt(),
             value("chunk-size", "DEVELOPER_ASSISTANT_CHUNK_SIZE", "1200").toInt(),
