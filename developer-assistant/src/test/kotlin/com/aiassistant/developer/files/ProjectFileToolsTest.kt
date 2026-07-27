@@ -1,6 +1,7 @@
 package com.aiassistant.developer.files
 
 import java.nio.file.Files
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
@@ -63,5 +64,31 @@ class ProjectFileToolsTest {
         assertContains(tools.getDiff(), "+new value"); tools.applyConfirmed(true, false)
         assertEquals("new value", root.resolve("README.md").readText())
         assertFailsWith<PatchConflict> { ProjectFileTools(root).proposePatch("README.md", "missing", "x") }
+    }
+
+    @Test fun `rejects absolute path outside project root`() {
+        val root = root()
+        val outside = Files.createTempFile("day34-outside", ".txt")
+
+        assertFailsWith<IllegalArgumentException> { PathGuard(root).resolve(outside.toString()) }
+    }
+
+    @Test fun `allows ordinary path inside project root`() {
+        val root = root()
+
+        assertEquals(root.resolve("docs/report.md"), PathGuard(root).resolve("docs/report.md"))
+    }
+
+    @Test fun `rejects symbolic link that points outside project root`() {
+        val root = root()
+        val outside = Files.createTempDirectory("day34-outside")
+        val link = root.resolve("external")
+        try {
+            Files.createSymbolicLink(link, outside)
+        } catch (error: Exception) {
+            assumeTrue(false, "Symbolic links are unavailable on this filesystem: ${error.message}")
+        }
+
+        assertFailsWith<IllegalArgumentException> { PathGuard(root).resolve("external/secret.txt", write = true) }
     }
 }
