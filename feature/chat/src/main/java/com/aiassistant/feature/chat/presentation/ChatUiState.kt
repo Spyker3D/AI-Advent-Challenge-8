@@ -59,6 +59,8 @@ data class ChatUiState(
     val calendarState: CalendarUiState = CalendarUiState.Idle,
     val voiceInputState: VoiceInputState = VoiceInputState.Idle
 ) {
+    internal fun canSendMessage(): Boolean = currentMessage.isNotBlank() && !isLoading
+
     internal fun prepareForVoiceInput(): ChatUiState = copy(
         voiceInputState = VoiceInputState.PermissionRequired
     )

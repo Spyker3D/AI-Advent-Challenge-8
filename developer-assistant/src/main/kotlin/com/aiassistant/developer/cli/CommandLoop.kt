@@ -8,6 +8,7 @@ class CommandLoop(
     private val output: PrintWriter,
     private val help: (String) -> String,
     private val status: () -> String,
+    private val diagnostics: () -> String = { "Diagnostics are unavailable." },
     private val reindex: () -> String,
     private val goal: (String, (String) -> Boolean) -> String = { _, _ -> "Project file assistant is not configured." },
     private val diff: () -> String = { "No proposed changes." },
@@ -21,6 +22,7 @@ class CommandLoop(
                 when (val command = CommandParser.parse(line)) {
                     is CliCommand.Help -> printBlock("ASSISTANT", help(command.question))
                     CliCommand.Status -> printBlock("STATUS", status())
+                    CliCommand.Diagnostics -> printBlock("DIAGNOSTICS", diagnostics())
                     CliCommand.Reindex -> printBlock("REINDEX", reindex())
                     CliCommand.Diff -> printBlock("DIFF", diff())
                     is CliCommand.Goal -> printBlock("ASSISTANT", goal(command.text, ::confirm))

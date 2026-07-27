@@ -1,0 +1,411 @@
+# Execution Loop Rules
+
+## Назначение
+
+Этот документ описывает автономный цикл выполнения задач из файла:
+
+```text
+execution-loop/tasks.json
+```
+
+Когда пользователь просит запустить execution loop, необходимо выполнить все доступные задачи последовательно в рамках одной сессии.
+
+После начала цикла не запрашивать у пользователя подтверждение, пояснения, выбор профиля или разрешение перейти к следующей задаче.
+
+## Основной цикл
+
+Повторять следующие действия:
+
+1. Прочитать `execution-loop/tasks.json`.
+2. Найти задачу с минимальным значением `order`, у которой:
+
+   ```json
+   "status": "pending"
+   ```
+3. Самостоятельно выбрать рабочий профиль.
+4. Изменить статус задачи на:
+
+   ```json
+   "status": "in_progress"
+   ```
+5. Зафиксировать время начала задачи.
+6. Изучить относящийся к задаче код.
+7. Реализовать только эту задачу.
+8. Запустить проверки из `acceptanceCriteria`.
+9. Запустить подходящие автоматические тесты.
+10. Проверить собственный diff.
+11. Если задача выполнена, создать отдельный Git-коммит.
+12. Записать результат выполнения.
+13. Изменить статус задачи на `completed`.
+14. Сохранить `tasks.json`.
+15. Немедленно взять следующую задачу со статусом `pending`.
+
+Не останавливаться между успешно выполненными задачами.
+
+## Выбор профиля
+
+Профиль выбирается самостоятельно на основе поля `type` и содержания задачи.
+
+Использовать следующее соответствие:
+
+| Тип задачи      | Профиль       |
+| --------------- | ------------- |
+| `bug`           | Bug Fix       |
+| `feature`       | Feature       |
+| `refactor`      | Refactoring   |
+| `test`          | Testing       |
+| `documentation` | Documentation |
+| `research`      | Research      |
+
+Если тип задачи и её содержание не совпадают, выбирать профиль по фактическому ожидаемому результату.
+
+Примеры:
+
+* исправление неправильного поведения — `Bug Fix`;
+* добавление нового пользовательского поведения — `Feature`;
+* изменение структуры без изменения поведения — `Refactoring`;
+* добавление отсутствующих тестов — `Testing`;
+* изменение README или другой документации — `Documentation`;
+* изучение проблемы без обязательного изменения production-кода — `Research`.
+
+Не спрашивать пользователя, какой профиль выбрать.
+
+## Статусы задач
+
+Разрешены следующие статусы:
+
+```text
+pending
+in_progress
+completed
+failed
+blocked
+```
+
+### `pending`
+
+Задача ещё не начиналась.
+
+### `in_progress`
+
+Codex начал работать над задачей.
+
+Перед изменением production-кода статус должен быть изменён с `pending` на `in_progress`.
+
+### `completed`
+
+Задача реализована, проверки прошли, отдельный Git-коммит создан.
+
+Запрещено выставлять `completed`, если:
+
+* код не компилируется;
+* обязательные тесты не прошли;
+* критерии приёмки не проверены;
+* Git-коммит не создан.
+
+### `failed`
+
+Codex понял задачу и попытался выполнить её, но не смог получить рабочий результат.
+
+Примеры:
+
+* код не компилируется после попытки исправления;
+* тесты продолжают падать;
+* получено зацикливание;
+* критерии приёмки не выполнены;
+* Git-коммит создать не удалось.
+
+### `blocked`
+
+Задачу невозможно выполнить из-за внешнего ограничения.
+
+Примеры:
+
+* отсутствует обязательная зависимость;
+* недоступен Android SDK;
+* отсутствует необходимый файл;
+* требуется секрет или внешний сервис;
+* нужный модуль фактически отсутствует.
+
+## Успешное выполнение задачи
+
+Задача считается выполненной только при одновременном выполнении всех условий:
+
+1. Все пункты `acceptanceCriteria` выполнены.
+2. Изменения относятся только к текущей задаче.
+3. Production-код компилируется.
+4. Подходящие тесты проходят.
+5. В diff нет случайных или посторонних изменений.
+6. Не добавлены секреты.
+7. Создан отдельный Git-коммит.
+
+После этого изменить статус:
+
+```json
+"status": "completed"
+```
+
+## Проверки
+
+Для каждой задачи самостоятельно определить минимальный достаточный набор проверок.
+
+Приоритет:
+
+1. тест конкретного класса или модуля;
+2. тесты изменённого модуля;
+3. компиляция изменённого модуля;
+4. более широкая сборка, если это необходимо для проверки интеграции.
+
+Не запускать тяжёлую полную сборку после каждого изменения без необходимости.
+
+Если в задаче указаны конкретные validation-команды, выполнить их обязательно.
+
+Нельзя утверждать, что тесты прошли, если команда фактически не запускалась.
+
+## Первый проход
+
+Поле результата `firstPass` равно `true`, если:
+
+* первоначальная реализация прошла тесты;
+* после первого запуска тестов не потребовалось исправлять production-код;
+* review не обнаружил дефектов, потребовавших изменения реализации.
+
+`firstPass` равно `false`, если после первой проверки потребовалось менять production-код или тесты из-за ошибки реализации.
+
+## Git-коммиты
+
+Для каждой успешно выполненной задачи создать отдельный коммит.
+
+Формат сообщения:
+
+```text
+<TASK-ID>: <краткое название задачи>
+```
+
+Пример:
+
+```text
+TASK-003: prevent duplicate chat submission
+```
+
+Один коммит должен соответствовать одной задаче.
+
+Перед коммитом проверить:
+
+```bash
+git diff --check
+git status --short
+```
+
+После коммита сохранить его hash в журнале выполнения.
+
+Запрещено:
+
+```text
+git push
+git push --force
+git reset --hard
+git clean
+git rebase
+изменять remote
+переходить на другую ветку
+```
+
+## Работа с tasks.json
+
+Не удалять задачи из `tasks.json`.
+
+Не менять:
+
+* `id`;
+* `order`;
+* `type`;
+* `title`;
+* `description`;
+* `relevantFiles`;
+* `acceptanceCriteria`.
+
+Во время выполнения разрешено менять только служебные поля:
+
+```text
+status
+startedAt
+finishedAt
+durationSeconds
+selectedProfile
+attempts
+firstPass
+commitHash
+failureReason
+```
+
+Если служебного поля ещё нет, его можно добавить в объект задачи.
+
+Пример успешно завершённой задачи:
+
+```json
+{
+  "id": "TASK-001",
+  "order": 1,
+  "type": "feature",
+  "title": "Название задачи",
+  "description": "Описание задачи",
+  "relevantFiles": [
+    "path/to/File.kt"
+  ],
+  "acceptanceCriteria": [
+    "Критерий выполнен",
+    "Тесты проходят"
+  ],
+  "status": "completed",
+  "selectedProfile": "Feature",
+  "startedAt": "2026-07-27T10:00:00Z",
+  "finishedAt": "2026-07-27T10:07:30Z",
+  "durationSeconds": 450,
+  "attempts": 1,
+  "firstPass": true,
+  "commitHash": "abc1234",
+  "failureReason": null
+}
+```
+
+## Ошибка задачи
+
+Разрешена одна самостоятельная попытка исправления после первой неудачной проверки.
+
+Последовательность:
+
+1. Проанализировать конкретную ошибку.
+2. Исправить реализацию.
+3. Повторно запустить проверку.
+
+Если повторная проверка снова не прошла:
+
+1. Не создавать Git-коммит.
+2. Изменить статус задачи на `failed`.
+3. Записать конкретную причину в `failureReason`.
+4. Зафиксировать время.
+5. Остановить весь execution loop.
+
+Не переходить к следующей задаче после `failed`.
+
+## Блокировка задачи
+
+Если задача объективно не может быть выполнена из-за окружения:
+
+1. Изменить статус на `blocked`.
+2. Записать конкретную причину в `failureReason`.
+3. Не создавать Git-коммит.
+4. Остановить execution loop.
+
+Не использовать `blocked` вместо анализа сложной задачи.
+
+## Защита от зацикливания
+
+Остановить задачу как `failed`, если Codex:
+
+* повторяет одну и ту же неуспешную команду;
+* повторно вносит одинаковое изменение;
+* получает одну и ту же ошибку после одинакового исправления;
+* не добивается нового результата за две последовательные попытки.
+
+В этом случае использовать:
+
+```json
+"failureReason": "Loop detected: повторяется одинаковое действие и одинаковая ошибка"
+```
+
+## Автономность
+
+После запуска execution loop запрещено:
+
+* задавать пользователю вопросы;
+* просить подтвердить план;
+* просить разрешение изменить файл;
+* просить разрешение выполнить тест;
+* просить разрешение создать коммит;
+* предлагать пользователю вручную исправить ошибку;
+* ждать новой команды между задачами.
+
+Решения, необходимые для выполнения задачи, принимать самостоятельно на основе:
+
+* исходного кода;
+* `AGENTS.md`;
+* документации проекта;
+* тестов;
+* критериев приёмки.
+
+## Specialized agent fallback
+
+Specialized agents may be used when available, but they are not required for the execution loop.
+
+If `researcher`, `implementer`, `reviewer`, `test-writer`, or another specialized agent cannot start because of sandbox, configuration, platform, or tooling problems:
+
+1. Do not mark the current task as `blocked` solely for that reason.
+2. Continue the task in the main agent.
+3. Perform the missing role directly:
+
+   * inspect the relevant repository code;
+   * establish the implementation scope;
+   * implement the task;
+   * add or update tests;
+   * review the complete diff;
+   * run validation;
+   * create the task commit.
+4. Record the unavailable specialized agent only as a run note, not as the task failure reason.
+
+A missing specialized-agent sandbox is a genuine blocker only if the main agent also cannot safely perform the required repository operation.
+
+## Завершение цикла
+
+Цикл заканчивается в одном из трёх случаев:
+
+1. Все задачи имеют статус `completed`.
+2. Текущая задача получила статус `failed`.
+3. Текущая задача получила статус `blocked`.
+
+В конце вывести краткий итог:
+
+```text
+Execution loop finished
+Completed consecutively: N
+Continuous time: N minutes
+First-pass tasks: N
+Average completed task time: N minutes
+Stopped on: TASK-ID or none
+Reason: failure reason or all tasks completed
+```
+
+## Pre-existing validation failures
+
+A task must not be marked `failed` solely because a broader test suite contains a failure that demonstrably existed before the current task and is unrelated to its changes.
+
+When a broad validation command fails:
+
+1. Identify the exact failing test or compilation unit.
+2. Run the focused tests for the current task.
+3. Verify that the changed production code compiles.
+4. Determine whether the broad-suite failure is related to the current diff.
+5. When practical, confirm that the same unrelated test fails on the task's parent commit or without the current task changes.
+
+The task may be marked `completed` when all of the following are true:
+
+* focused tests for the task pass;
+* changed production code compiles;
+* acceptance criteria specific to the task are satisfied;
+* the broad-suite failure is clearly unrelated to the current diff;
+* the unrelated failure is recorded in the task result;
+* no new test failures were introduced by the task.
+
+Record the unrelated failure in:
+
+```json
+"validationWarnings": [
+  "Pre-existing failure: CalendarToolDefinitionsTest fails on malformed escaped JSON fixture"
+]
+```
+
+A pre-existing unrelated failure is a validation warning, not a task failure.
+
+Do not modify unrelated code merely to make a broad suite green unless the current task explicitly requires it.
+

@@ -36,4 +36,55 @@ class ChatSettingsTest {
         )
         assertEquals("my-registry/custom-model:latest", ChatSettings.normalizeLocalModelTag("my-registry/custom-model:latest"))
     }
+
+    @Test
+    fun blankLocalModelTagsUseDefault() {
+        assertEquals(ChatSettings.DEFAULT_LOCAL_MODEL, ChatSettings.normalizeLocalModelTag(null))
+        assertEquals(ChatSettings.DEFAULT_LOCAL_MODEL, ChatSettings.normalizeLocalModelTag(""))
+        assertEquals(ChatSettings.DEFAULT_LOCAL_MODEL, ChatSettings.normalizeLocalModelTag("   "))
+    }
+
+    @Test
+    fun localModelTagsTrimOuterWhitespaceAndPreserveValidValues() {
+        assertEquals(
+            "registry.example/custom-model:v2",
+            ChatSettings.normalizeLocalModelTag("  registry.example/custom-model:v2  ")
+        )
+        assertEquals(
+            ChatSettings.LOCAL_MODEL_Q5,
+            ChatSettings.normalizeLocalModelTag(ChatSettings.LOCAL_MODEL_Q5)
+        )
+    }
+
+    @Test
+    fun privateVpsBaseUrlRejectsBlankValuesAndCollapsesTrailingSlashes() {
+        assertEquals(null, ChatSettings.normalizePrivateVpsBaseUrl(null))
+        assertEquals(null, ChatSettings.normalizePrivateVpsBaseUrl(""))
+        assertEquals(null, ChatSettings.normalizePrivateVpsBaseUrl("   "))
+        assertEquals(
+            "https://example.com/",
+            ChatSettings.normalizePrivateVpsBaseUrl("  https://example.com///  ")
+        )
+    }
+
+    @Test
+    fun privateVpsBaseUrlPreservesValidPathAndRemovesApiSuffix() {
+        assertEquals(
+            "https://example.com/v1/",
+            ChatSettings.normalizePrivateVpsBaseUrl("https://example.com/v1")
+        )
+        assertEquals(
+            "https://example.com/",
+            ChatSettings.normalizePrivateVpsBaseUrl("https://example.com/api/")
+        )
+    }
+
+    @Test
+    fun openAiModelNamesTrimOuterWhitespaceAndKeepValidNames() {
+        assertEquals(ChatSettings.DEFAULT_OPENAI_MODEL, ChatSettings.normalizeOpenAiModel(null))
+        assertEquals(ChatSettings.DEFAULT_OPENAI_MODEL, ChatSettings.normalizeOpenAiModel(""))
+        assertEquals(ChatSettings.DEFAULT_OPENAI_MODEL, ChatSettings.normalizeOpenAiModel("   "))
+        assertEquals("gpt-4.1", ChatSettings.normalizeOpenAiModel("  gpt-4.1  "))
+        assertEquals("gpt-4.1", ChatSettings.normalizeOpenAiModel("  openai/gpt-4.1  "))
+    }
 }

@@ -34,6 +34,35 @@ The user must not be required to enumerate implementation defects that violate a
 already approved behavioral contract. Those defects belong to the automatic
 reviewer-to-implementer corrective loop.
 
+### Execution loop workflow exception
+
+When an execution loop is explicitly started, the normal implementation workflow above is replaced by the autonomous workflow described in:
+
+```text
+execution-loop/EXECUTION_LOOP.md
+```
+
+During an execution loop:
+
+* The main agent may inspect, modify, test, review, and commit repository changes directly.
+* Using the `researcher`, `implementer`, `reviewer`, `test-writer`, or other specialized subagents is optional, not mandatory.
+* Failure to start a specialized subagent is not a task blocker when the main agent can perform the same work using its own repository tools.
+* The main agent must not stop for human approval between research, planning, implementation, testing, review, commit, or consecutive tasks.
+* The task acceptance criteria and repository rules serve as approval for the bounded task.
+* The main agent must perform an internal research, implementation, self-review, and validation sequence before completing each task.
+* The main agent must stop only when all tasks are completed or when the current task has a genuine implementation or environment blocker that the main agent cannot work around safely.
+* Missing optional subagent infrastructure is not by itself a valid `blocked` reason.
+* A task may be marked `blocked` only when the main agent itself cannot read the required source, edit the required files, run the necessary validation, or create the requested commit.
+
+This exception applies only while processing tasks from:
+
+```text
+execution-loop/tasks.json
+```
+
+The standard required agent workflow remains in effect for normal interactive implementation requests.
+
+
 ## Technology stack
 
 - Kotlin with Gradle Kotlin DSL; the Gradle wrapper is the project build entry point.
@@ -446,3 +475,21 @@ Ask the user before:
 - changing module boundaries;
 - modifying more than one feature module;
 - deleting code whose purpose is unclear.
+
+## Execution loop
+
+When the user requests an execution loop, read and follow:
+
+```text
+execution-loop/EXECUTION_LOOP.md
+```
+
+The task queue is located at:
+
+```text
+execution-loop/tasks.json
+```
+
+During an execution loop, process tasks sequentially in ascending `order`, starting with the first task whose status is `pending`.
+
+Do not request confirmation or additional instructions between tasks.

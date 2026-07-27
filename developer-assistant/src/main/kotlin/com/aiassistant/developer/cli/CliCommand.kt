@@ -3,6 +3,7 @@ package com.aiassistant.developer.cli
 sealed interface CliCommand {
     data class Help(val question: String) : CliCommand
     data object Status : CliCommand
+    data object Diagnostics : CliCommand
     data object Reindex : CliCommand
     data object Diff : CliCommand
     data class Goal(val text: String) : CliCommand
@@ -16,6 +17,7 @@ object CommandParser {
         return when {
             value == "/exit" -> CliCommand.Exit
             value == "/status" -> CliCommand.Status
+            value == "/diagnostics" -> CliCommand.Diagnostics
             value == "/reindex" -> CliCommand.Reindex
             value == "/diff" -> CliCommand.Diff
             value == "/help" -> CliCommand.Invalid("Usage: /help <question>")
@@ -23,7 +25,7 @@ object CommandParser {
                 if (it.isBlank()) CliCommand.Invalid("Usage: /help <question>") else CliCommand.Help(it)
             }
             value.isBlank() -> CliCommand.Invalid("")
-            value.startsWith("/") -> CliCommand.Invalid("Unknown command. Use /help <question>, /status, /reindex, /diff, or /exit.")
+            value.startsWith("/") -> CliCommand.Invalid("Unknown command. Use /help <question>, /status, /diagnostics, /reindex, /diff, or /exit.")
             else -> CliCommand.Goal(value)
         }
     }
