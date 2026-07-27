@@ -446,3 +446,21 @@ Ask the user before:
 - changing module boundaries;
 - modifying more than one feature module;
 - deleting code whose purpose is unclear.
+
+## Execution loop
+
+When the user requests an execution loop, read and follow:
+
+```text
+execution-loop/EXECUTION_LOOP.md
+```
+
+The task queue is located at:
+
+```text
+execution-loop/tasks.json
+```
+
+During an execution loop, process tasks sequentially in ascending `order`, starting with the first task whose status is `pending`.
+
+Do not request confirmation or additional instructions between tasks.

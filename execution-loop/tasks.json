@@ -1,0 +1,356 @@
+{
+  "schemaVersion": 1,
+  "project": "Android AI Assistant",
+  "description": "Task pool for Day 5 autonomous Codex execution-loop experiment",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "order": 1,
+      "type": "feature",
+      "title": "Реализовать очистку summary в настройках",
+      "description": "В SettingsScreen кнопка очистки summary содержит TODO. Реализовать действие через существующие UI event, ViewModel и repository/data-store слои, не помещая бизнес-логику в Compose.",
+      "relevantFiles": [
+        "feature/settings/src/main/java/com/aiassistant/feature/settings/presentation/screen/SettingsScreen.kt",
+        "feature/settings/src/main/java/com/aiassistant/feature/settings/presentation/SettingsUiEvent.kt",
+        "feature/settings/src/main/java/com/aiassistant/feature/settings/presentation/viewmodel/SettingsViewModel.kt"
+      ],
+      "acceptanceCriteria": [
+        "Кнопка очистки summary больше не содержит TODO и вызывает отдельное UI-событие",
+        "Очистка выполняется через ViewModel и существующую абстракцию хранения данных",
+        "После очистки UI отображает пустое summary",
+        "Добавлен автоматический тест поведения ViewModel или соответствующего слоя",
+        "Затронутые тесты проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-002",
+      "order": 2,
+      "type": "test",
+      "title": "Добавить тесты нормализации ChatSettings",
+      "description": "Расширить тесты фабричных и нормализующих функций ChatSettings для provider tag, Private VPS URL и model name.",
+      "relevantFiles": [
+        "core/domain/src/main/java/com/aiassistant/core/domain/entity/ChatSettings.kt",
+        "core/domain/src/test/java/com/aiassistant/core/domain/entity/ChatSettingsTest.kt"
+      ],
+      "acceptanceCriteria": [
+        "Проверены пустые значения и строки из пробелов",
+        "Проверено удаление завершающего слеша у Private VPS URL",
+        "Проверено удаление внешних пробелов у model name",
+        "Проверено сохранение корректных значений",
+        "Тесты модуля core:domain проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-003",
+      "order": 3,
+      "type": "bug",
+      "title": "Защитить чат от повторной отправки во время активного запроса",
+      "description": "Предотвратить создание второго запроса при повторном нажатии отправки, пока предыдущая отправка ещё выполняется.",
+      "relevantFiles": [
+        "feature/chat/src/main/java/com/aiassistant/feature/chat/presentation/viewmodel/ChatViewModel.kt",
+        "feature/chat/src/main/java/com/aiassistant/feature/chat/presentation/ChatUiState.kt",
+        "feature/chat/src/main/java/com/aiassistant/feature/chat/presentation/ChatUiEvent.kt"
+      ],
+      "acceptanceCriteria": [
+        "Повторное событие отправки во время loading не запускает второй запрос",
+        "После успеха или ошибки отправка снова разрешена",
+        "Состояние loading остаётся согласованным",
+        "Добавлен regression unit test",
+        "Тесты feature:chat проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-004",
+      "order": 4,
+      "type": "test",
+      "title": "Покрыть тестами ошибки подключения к локальной Ollama",
+      "description": "Добавить тесты преобразования ошибок локальной Ollama в LlmClientImpl: некорректный URL, отказ соединения и пустой ответ модели.",
+      "relevantFiles": [
+        "core/data/src/main/java/com/aiassistant/core/data/client/LlmClientImpl.kt"
+      ],
+      "acceptanceCriteria": [
+        "Есть тест некорректного base URL",
+        "Есть тест ошибки соединения",
+        "Есть тест пустого ответа модели",
+        "Ошибки содержат понятное сообщение и не раскрывают секреты",
+        "Тесты core:data проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-005",
+      "order": 5,
+      "type": "refactor",
+      "title": "Вынести формирование сообщений ошибок Ollama из LlmClientImpl",
+      "description": "Уменьшить ответственность LlmClientImpl, вынеся построение пользовательских сообщений ошибок Ollama в отдельный mapper или formatter в core:data.",
+      "relevantFiles": [
+        "core/data/src/main/java/com/aiassistant/core/data/client/LlmClientImpl.kt",
+        "core/data/src/main/java/com/aiassistant/core/data/mapper"
+      ],
+      "acceptanceCriteria": [
+        "Формирование сообщений ошибок Ollama находится вне LlmClientImpl",
+        "Публичное поведение и тексты ошибок не изменены без необходимости",
+        "Новый компонент покрыт unit-тестами",
+        "LlmClientImpl стал проще и использует новый компонент",
+        "Тесты core:data проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-006",
+      "order": 6,
+      "type": "test",
+      "title": "Добавить тест HTTP 429 для Private VPS",
+      "description": "Проверить отображение rate-limit ошибки Private VPS, включая заголовок Retry-After и fallback при его отсутствии.",
+      "relevantFiles": [
+        "core/data/src/main/java/com/aiassistant/core/data/mapper/PrivateVpsErrors.kt",
+        "core/data/src/main/java/com/aiassistant/core/data/client/LlmClientImpl.kt"
+      ],
+      "acceptanceCriteria": [
+        "HTTP 429 классифицируется как ограничение частоты запросов",
+        "Retry-After отражается в сообщении при наличии",
+        "Без Retry-After используется понятный fallback",
+        "Другие HTTP-коды не классифицируются как 429",
+        "Тесты core:data проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-007",
+      "order": 7,
+      "type": "bug",
+      "title": "Нормализовать URL локальной Ollama перед созданием API",
+      "description": "Обеспечить единое безопасное представление localBaseUrl до передачи в OllamaApiFactory, включая пробелы и завершающий слеш.",
+      "relevantFiles": [
+        "core/data/src/main/java/com/aiassistant/core/data/client/LlmClientImpl.kt",
+        "core/network/src/main/java/com/aiassistant/core/network/api/OllamaApiFactory.kt",
+        "core/domain/src/main/java/com/aiassistant/core/domain/entity/ChatSettings.kt"
+      ],
+      "acceptanceCriteria": [
+        "URL без завершающего слеша работает",
+        "URL с завершающим слешем не получает двойной слеш",
+        "Внешние пробелы удаляются",
+        "Некорректный URL возвращает контролируемую ошибку",
+        "Добавлены unit-тесты"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-008",
+      "order": 8,
+      "type": "documentation",
+      "title": "Обновить документацию по настройке LLM-провайдеров",
+      "description": "Сверить README и API_KEY_SETUP.md с текущими OpenAI, Local Ollama и Private VPS настройками приложения.",
+      "relevantFiles": [
+        "README.md",
+        "API_KEY_SETUP.md",
+        "core/domain/src/main/java/com/aiassistant/core/domain/entity/AiProvider.kt",
+        "feature/settings/src/main/java/com/aiassistant/feature/settings/presentation/screen/SettingsScreen.kt"
+      ],
+      "acceptanceCriteria": [
+        "Документированы все реально поддерживаемые провайдеры",
+        "Для каждого провайдера указаны обязательные настройки",
+        "Примеры не содержат настоящих ключей",
+        "Команды и названия параметров соответствуют текущему коду",
+        "Удалены или исправлены устаревшие инструкции"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-009",
+      "order": 9,
+      "type": "test",
+      "title": "Расширить тесты CalendarToolDefinitions",
+      "description": "Добавить негативные тесты парсинга календарных tool calls: пустой JSON, отсутствующий tool, неизвестный tool и отсутствующие arguments.",
+      "relevantFiles": [
+        "feature/chat/src/main/java/com/aiassistant/feature/chat/calendar/CalendarToolDefinitions.kt",
+        "feature/chat/src/test/java/com/aiassistant/feature/chat/calendar/CalendarToolDefinitionsTest.kt"
+      ],
+      "acceptanceCriteria": [
+        "Покрыт пустой или невалидный JSON",
+        "Покрыто отсутствие поля tool",
+        "Покрыт неизвестный tool",
+        "Покрыто отсутствие arguments",
+        "Существующие успешные сценарии продолжают проходить"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-010",
+      "order": 10,
+      "type": "refactor",
+      "title": "Разделить валидацию календарного события и Android-запись",
+      "description": "Вынести проверки названия и временного диапазона события из AndroidCalendarRepository в тестируемый Kotlin-компонент без Android-зависимостей.",
+      "relevantFiles": [
+        "feature/chat/src/main/java/com/aiassistant/feature/chat/calendar/AndroidCalendarRepository.kt",
+        "feature/chat/src/main/java/com/aiassistant/feature/chat/calendar/CalendarModels.kt"
+      ],
+      "acceptanceCriteria": [
+        "Валидация события доступна без Android framework",
+        "AndroidCalendarRepository использует вынесенную валидацию",
+        "Проверяются пустое название и неверный диапазон времени",
+        "Добавлены JVM unit-тесты",
+        "Поведение успешного создания события не изменено"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-011",
+      "order": 11,
+      "type": "bug",
+      "title": "Сделать clearMessages согласованным по идентификатору ветки",
+      "description": "Проверить и устранить несогласованность именования chatId и branchId между ClearChatHistoryUseCase, ChatRepository и DAO.",
+      "relevantFiles": [
+        "core/domain/src/main/java/com/aiassistant/core/domain/usecase/ClearChatHistoryUseCase.kt",
+        "core/domain/src/main/java/com/aiassistant/core/domain/repository/ChatRepository.kt",
+        "core/data/src/main/java/com/aiassistant/core/data/repository/ChatRepositoryImpl.kt",
+        "core/data/src/main/java/com/aiassistant/core/data/database/ChatMessageDao.kt"
+      ],
+      "acceptanceCriteria": [
+        "На всех уровнях однозначно используется идентификатор ветки или чата",
+        "Очистка затрагивает только выбранную ветку",
+        "Ветка main по умолчанию продолжает работать",
+        "Добавлен regression test",
+        "Тесты core:domain и core:data проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-012",
+      "order": 12,
+      "type": "test",
+      "title": "Добавить тесты PathGuard для абсолютных путей и symlink",
+      "description": "Расширить защитные тесты developer-assistant для путей вне project root и символических ссылок наружу.",
+      "relevantFiles": [
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/files/PathGuard.kt",
+        "developer-assistant/src/test/kotlin/com/aiassistant/developer/files/ProjectFileToolsTest.kt"
+      ],
+      "acceptanceCriteria": [
+        "Абсолютный путь вне project root отклоняется",
+        "Путь с .. за пределы root отклоняется",
+        "Обычный путь внутри root разрешён",
+        "Внешний symlink отклоняется на поддерживаемой файловой системе",
+        "Тесты developer-assistant проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-013",
+      "order": 13,
+      "type": "feature",
+      "title": "Добавить историю operation log в developer-assistant",
+      "description": "Сохранить совместимость с last-operation.json и дополнительно вести append-only JSONL журнал операций.",
+      "relevantFiles": [
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/agent/OperationLog.kt"
+      ],
+      "acceptanceCriteria": [
+        "last-operation.json продолжает перезаписываться последней операцией",
+        "Каждая операция добавляется отдельной строкой в operations.jsonl",
+        "Запись не удаляет предыдущие операции",
+        "Лог не содержит содержимое файлов или секреты",
+        "Добавлены unit-тесты записи лога"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-014",
+      "order": 14,
+      "type": "test",
+      "title": "Проверить остановку ProjectFileAgent по лимиту инструментов",
+      "description": "Добавить детерминированный тест превышения maxIterations и корректного завершения без бесконечного цикла.",
+      "relevantFiles": [
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/agent/ProjectFileAgent.kt",
+        "developer-assistant/src/test/kotlin/com/aiassistant/developer/agent/ProjectFileAgentIntegrationTest.kt"
+      ],
+      "acceptanceCriteria": [
+        "Тест использует небольшой настраиваемый лимит",
+        "После превышения лимита выполнение завершается",
+        "Ошибка содержит фактическое значение лимита",
+        "Staged changes очищаются или остаются в документированном безопасном состоянии",
+        "Тесты developer-assistant проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-015",
+      "order": 15,
+      "type": "refactor",
+      "title": "Сделать лимит итераций ProjectFileAgent конфигурируемым",
+      "description": "Перенести фиксированное значение maxIterations из конструктора по умолчанию в конфигурацию developer-assistant с безопасным значением по умолчанию.",
+      "relevantFiles": [
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/agent/ProjectFileAgent.kt",
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/config/AssistantConfig.kt"
+      ],
+      "acceptanceCriteria": [
+        "Лимит задаётся через AssistantConfig или ConfigLoader",
+        "Значение по умолчанию сохраняет текущее поведение",
+        "Нулевое и отрицательное значение отклоняются",
+        "Добавлены тесты конфигурации",
+        "Существующий CLI продолжает работать"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-016",
+      "order": 16,
+      "type": "documentation",
+      "title": "Документировать ограничения developer-assistant",
+      "description": "Дополнить developer-assistant/README.md реальными ограничениями файловых инструментов, подтверждения записи, лимита итераций и Git-возможностей.",
+      "relevantFiles": [
+        "developer-assistant/README.md",
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/cli/CommandLoop.kt",
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/files/ProjectFileTools.kt"
+      ],
+      "acceptanceCriteria": [
+        "Описано обязательное подтверждение записи в интерактивном режиме",
+        "Описаны ограничения project root и секретных файлов",
+        "Описан лимит tool iterations",
+        "Точно описаны доступные Git-действия",
+        "Документация соответствует текущему коду"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-017",
+      "order": 17,
+      "type": "test",
+      "title": "Добавить тесты атомарной записи RAG storage",
+      "description": "Проверить сохранение и повторное чтение RAG manifest/index, а также поведение при замене существующего файла.",
+      "relevantFiles": [
+        "rag-core/src/main/kotlin/com/aiassistant/rag/Storage.kt",
+        "rag-core/src/test/kotlin/com/aiassistant/rag/StorageTest.kt"
+      ],
+      "acceptanceCriteria": [
+        "Записанные данные читаются без потери полей",
+        "Повторная запись заменяет предыдущую версию целиком",
+        "После успешной записи не остаётся временного файла",
+        "Ошибка записи не оставляет заведомо частичный итоговый JSON",
+        "Тесты rag-core проходят"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "TASK-018",
+      "order": 18,
+      "type": "feature",
+      "title": "Добавить CLI-команду диагностики developer-assistant",
+      "description": "Добавить read-only команду, которая проверяет готовность developer-assistant и выводит безопасную сводку конфигурации без значений секретов.",
+      "relevantFiles": [
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/Main.kt",
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/cli/CliCommand.kt",
+        "developer-assistant/src/main/kotlin/com/aiassistant/developer/config/AssistantConfig.kt"
+      ],
+      "acceptanceCriteria": [
+        "Команда выводит project root и выбранную модель",
+        "Наличие API-ключа отображается только как configured или not configured",
+        "Значение API-ключа никогда не выводится",
+        "Команда не изменяет файлы проекта",
+        "Добавлены unit-тесты парсинга и безопасного вывода"
+      ],
+      "status": "pending"
+    }
+  ]
+}
