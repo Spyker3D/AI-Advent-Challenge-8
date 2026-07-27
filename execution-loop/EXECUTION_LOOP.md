@@ -335,6 +335,27 @@ failureReason
 * тестов;
 * критериев приёмки.
 
+## Specialized agent fallback
+
+Specialized agents may be used when available, but they are not required for the execution loop.
+
+If `researcher`, `implementer`, `reviewer`, `test-writer`, or another specialized agent cannot start because of sandbox, configuration, platform, or tooling problems:
+
+1. Do not mark the current task as `blocked` solely for that reason.
+2. Continue the task in the main agent.
+3. Perform the missing role directly:
+
+   * inspect the relevant repository code;
+   * establish the implementation scope;
+   * implement the task;
+   * add or update tests;
+   * review the complete diff;
+   * run validation;
+   * create the task commit.
+4. Record the unavailable specialized agent only as a run note, not as the task failure reason.
+
+A missing specialized-agent sandbox is a genuine blocker only if the main agent also cannot safely perform the required repository operation.
+
 ## Завершение цикла
 
 Цикл заканчивается в одном из трёх случаев:
@@ -354,3 +375,37 @@ Average completed task time: N minutes
 Stopped on: TASK-ID or none
 Reason: failure reason or all tasks completed
 ```
+
+## Pre-existing validation failures
+
+A task must not be marked `failed` solely because a broader test suite contains a failure that demonstrably existed before the current task and is unrelated to its changes.
+
+When a broad validation command fails:
+
+1. Identify the exact failing test or compilation unit.
+2. Run the focused tests for the current task.
+3. Verify that the changed production code compiles.
+4. Determine whether the broad-suite failure is related to the current diff.
+5. When practical, confirm that the same unrelated test fails on the task's parent commit or without the current task changes.
+
+The task may be marked `completed` when all of the following are true:
+
+* focused tests for the task pass;
+* changed production code compiles;
+* acceptance criteria specific to the task are satisfied;
+* the broad-suite failure is clearly unrelated to the current diff;
+* the unrelated failure is recorded in the task result;
+* no new test failures were introduced by the task.
+
+Record the unrelated failure in:
+
+```json
+"validationWarnings": [
+  "Pre-existing failure: CalendarToolDefinitionsTest fails on malformed escaped JSON fixture"
+]
+```
+
+A pre-existing unrelated failure is a validation warning, not a task failure.
+
+Do not modify unrelated code merely to make a broad suite green unless the current task explicitly requires it.
+
