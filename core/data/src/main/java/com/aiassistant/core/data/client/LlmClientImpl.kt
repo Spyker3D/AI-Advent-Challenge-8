@@ -16,6 +16,7 @@ import com.aiassistant.core.network.api.PrivateVpsApi
 import com.aiassistant.core.network.interceptor.PrivateVpsCredentials
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.domain.repository.SettingsRepository
+import com.aiassistant.core.data.mapper.OllamaErrorFormatter
 import com.aiassistant.core.data.mapper.toOllamaOptionsDto
 import com.aiassistant.core.data.mapper.buildPrivateVpsRequest
 import com.aiassistant.core.data.mapper.privateVpsEndpoint
@@ -135,7 +136,7 @@ class LlmClientImpl @Inject constructor(
             )
             val assistantMessage = response.response.trim()
             if (assistantMessage.isBlank()) {
-                Result.failure(Exception("Empty response from local LLM"))
+                Result.failure(Exception(OllamaErrorFormatter.emptyResponse()))
             } else {
                 val metrics = LocalGenerationMetrics(
                     model = model,
@@ -161,20 +162,17 @@ class LlmClientImpl @Inject constructor(
                 ))
             }
         } catch (e: IllegalArgumentException) {
-            Result.failure(Exception("Invalid Ollama Base URL: $baseUrl"))
+            Result.failure(Exception(OllamaErrorFormatter.invalidBaseUrl(baseUrl)))
         } catch (e: UnknownHostException) {
-            Result.failure(Exception(localOllamaConnectionError(baseUrl)))
+            Result.failure(Exception(OllamaErrorFormatter.connectionError(baseUrl)))
         } catch (e: SocketTimeoutException) {
-            Result.failure(Exception("Local LLM request timed out. Check that Ollama is running and the model is responding."))
+            Result.failure(Exception(OllamaErrorFormatter.timeout()))
         } catch (e: HttpException) {
-            val message = if (e.code() == 404) {
-                ollamaModelNotFoundMessage(model)
-            } else {
-                "Ollama HTTP ${e.code()}: ${e.message()}"
-            }
-            Result.failure(Exception(message))
+            Result.failure(
+                Exception(OllamaErrorFormatter.httpError(e.code(), e.message(), model))
+            )
         } catch (e: Exception) {
-            Result.failure(Exception(localOllamaConnectionError(baseUrl), e))
+            Result.failure(Exception(OllamaErrorFormatter.connectionError(baseUrl), e))
         }
     }
 
@@ -223,11 +221,4 @@ class LlmClientImpl @Inject constructor(
         }
     }
 
-    private fun localOllamaConnectionError(baseUrl: String): String {
-        return "Не удалось подключиться к локальной LLM.\nПроверь, что Ollama запущена и доступна по $baseUrl"
-    }
-
-    private fun ollamaModelNotFoundMessage(model: String): String {
-        return "Модель $model не установлена.\nВыполните:\nollama pull $model"
-    }
 }
