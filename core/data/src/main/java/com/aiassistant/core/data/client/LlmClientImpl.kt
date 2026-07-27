@@ -15,7 +15,7 @@ import com.aiassistant.core.network.api.OllamaApiFactory
 import com.aiassistant.core.network.api.PrivateVpsApi
 import com.aiassistant.core.network.interceptor.PrivateVpsCredentials
 import com.aiassistant.core.data.config.ApiConfig
-import com.aiassistant.core.data.datastore.SettingsDataStore
+import com.aiassistant.core.domain.repository.SettingsRepository
 import com.aiassistant.core.data.mapper.toOllamaOptionsDto
 import com.aiassistant.core.data.mapper.buildPrivateVpsRequest
 import com.aiassistant.core.data.mapper.privateVpsEndpoint
@@ -37,7 +37,7 @@ class LlmClientImpl @Inject constructor(
     private val privateVpsApi: PrivateVpsApi,
     private val privateVpsCredentials: PrivateVpsCredentials,
     private val ollamaApiFactory: OllamaApiFactory,
-    private val settingsDataStore: SettingsDataStore,
+    private val settingsRepository: SettingsRepository,
     private val apiConfig: ApiConfig
 ) : LlmClient {
     
@@ -51,7 +51,7 @@ class LlmClientImpl @Inject constructor(
     }
 
     override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> = withContext(Dispatchers.IO) {
-        val settings = settingsDataStore.chatSettings.first()
+        val settings = settingsRepository.getChatSettings().first()
         when (settings.provider) {
             AiProvider.OPENAI -> sendViaOpenAi(messages, maxTokens, model, settings)
             AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages)
@@ -114,7 +114,7 @@ class LlmClientImpl @Inject constructor(
     }
 
     private suspend fun sendViaOllama(messages: List<Message>): Result<ChatResponse> {
-        val settings = settingsDataStore.chatSettings.first()
+        val settings = settingsRepository.getChatSettings().first()
         val baseUrl = settings.localBaseUrl.ifBlank { ChatSettings.DEFAULT_LOCAL_BASE_URL }
         val model = settings.localModel.ifBlank { ChatSettings.DEFAULT_LOCAL_MODEL }
 
