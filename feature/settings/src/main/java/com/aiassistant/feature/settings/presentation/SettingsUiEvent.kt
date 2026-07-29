@@ -37,4 +37,5 @@ sealed class SettingsUiEvent {
     // Context compression events
     data class UseContextCompressionChanged(val useContextCompression: Boolean) : SettingsUiEvent()
     data class KeepLastMessagesCountChanged(val keepLastMessagesCount: Int) : SettingsUiEvent()
+    object ClearConversationSummary : SettingsUiEvent()
 }

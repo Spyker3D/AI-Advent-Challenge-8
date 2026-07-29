@@ -14,7 +14,7 @@ class ProjectFileAgent(
     private val dryRun: Boolean,
     private val llm: LlmClient? = null,
     private val logger: OperationLogger = OperationLogger(root),
-    private val maxIterations: Int = 10
+    private val maxIterations: Int
 ) {
     private val used = mutableListOf<String>()
     private val read = linkedSetOf<String>()

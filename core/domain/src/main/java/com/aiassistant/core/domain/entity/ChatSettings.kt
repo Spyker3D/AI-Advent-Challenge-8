@@ -29,6 +29,7 @@ data class ChatSettings(
     // Context compression fields
     val useContextCompression: Boolean = false,
     val keepLastMessagesCount: Int = 6,
+    val conversationSummary: String = "",
     // Context strategy field
     val contextStrategy: ContextStrategy = ContextStrategy.SLIDING_WINDOW
 ) {

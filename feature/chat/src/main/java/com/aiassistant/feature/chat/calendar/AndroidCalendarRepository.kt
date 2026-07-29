@@ -41,7 +41,7 @@ class AndroidCalendarRepository @Inject constructor(private val context: Context
     } }
 
     override suspend fun createEvent(event: CalendarEventDraft) = withContext(Dispatchers.IO) { runCatching {
-        require(event.title.isNotBlank()) { "Название события не указано" }; require(event.endMillis > event.startMillis) { "Конец события должен быть позже начала" }
+        CalendarEventValidator.validate(event)
         val calendarId = event.calendarId ?: error("Не выбран календарь для записи")
         val values = ContentValues().apply { put(CalendarContract.Events.CALENDAR_ID, calendarId); put(CalendarContract.Events.TITLE, event.title); put(CalendarContract.Events.DTSTART, event.startMillis); put(CalendarContract.Events.DTEND, event.endMillis); put(CalendarContract.Events.EVENT_TIMEZONE, event.timeZone); event.location?.let { put(CalendarContract.Events.EVENT_LOCATION, it) }; event.description?.let { put(CalendarContract.Events.DESCRIPTION, it) } }
         val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values) ?: error("Calendar Provider не создал событие")
@@ -53,7 +53,7 @@ class AndroidCalendarRepository @Inject constructor(private val context: Context
         event: CalendarEventDraft
     ): Result<UpdatedCalendarEvent> = providerWriteScope.async {
         runCatching {
-            require(event.endMillis > event.startMillis) { "Конец события должен быть позже начала" }
+            CalendarEventValidator.validate(event)
             val values = ContentValues().apply {
                 put(CalendarContract.Events.TITLE, event.title)
                 put(CalendarContract.Events.DTSTART, event.startMillis)

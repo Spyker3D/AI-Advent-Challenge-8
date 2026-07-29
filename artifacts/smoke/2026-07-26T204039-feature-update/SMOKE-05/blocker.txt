@@ -1,0 +1,6 @@
+BLOCKED before the dependent voice-recognition steps.
+
+The configured mobile automation supplied no real audio stream, and the
+application/repository exposes no documented device smoke-test mechanism for
+injecting a final recognition result. Per the documented scenario, microphone
+permission testing is not evidence of recognition-result behavior.

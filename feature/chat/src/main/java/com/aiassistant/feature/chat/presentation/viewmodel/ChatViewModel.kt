@@ -161,7 +161,8 @@ class ChatViewModel @Inject constructor(
                     stopSequenceText = settings.stopSequenceText,
                     // Context compression fields
                     useContextCompression = settings.useContextCompression,
-                    keepLastMessagesCount = settings.keepLastMessagesCount
+                    keepLastMessagesCount = settings.keepLastMessagesCount,
+                    conversationSummary = settings.conversationSummary
                 )
                 // Update token estimates when settings change
                 updateTokenEstimates()
@@ -532,8 +533,9 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun sendMessage() {
-        val currentMessage = _uiState.value.currentMessage.trim()
-        if (currentMessage.isBlank() || _uiState.value.isLoading) return
+        val currentState = _uiState.value
+        if (!currentState.canSendMessage()) return
+        val currentMessage = currentState.currentMessage.trim()
 
         if (calendarAssistant.canHandle(currentMessage)) {
             sendCalendarMessage(currentMessage)
@@ -1563,6 +1565,10 @@ class ChatViewModel @Inject constructor(
             summaryMessageCount = 0,
             lastSummaryMessageCount = 0
         )
+        viewModelScope.launch {
+            val settings = getChatSettingsUseCase().first()
+            saveChatSettingsUseCase(settings.copy(conversationSummary = ""))
+        }
         // Update token estimates after clearing summary
         updateTokenEstimates()
     }
@@ -1631,6 +1637,13 @@ $limitedConversationText""".trimIndent()
                             lastSummaryMessageCount = _uiState.value.messages.size
                         )
                         
+                        viewModelScope.launch {
+                            val settings = getChatSettingsUseCase().first()
+                            saveChatSettingsUseCase(
+                                settings.copy(conversationSummary = response.message)
+                            )
+                        }
+
                         // Update token estimates
                         updateTokenEstimates()
                         

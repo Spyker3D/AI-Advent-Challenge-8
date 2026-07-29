@@ -54,6 +54,7 @@ class SettingsDataStore @Inject constructor(
         // Context compression fields
         val USE_CONTEXT_COMPRESSION = androidx.datastore.preferences.core.booleanPreferencesKey("use_context_compression")
         val KEEP_LAST_MESSAGES_COUNT = intPreferencesKey("keep_last_messages_count")
+        val CONVERSATION_SUMMARY = stringPreferencesKey("conversation_summary")
     }
 
     val chatSettings: Flow<ChatSettings> = context.dataStore.data.map { preferences ->
@@ -104,7 +105,8 @@ class SettingsDataStore @Inject constructor(
             stopSequenceText = preferences[PreferencesKeys.STOP_SEQUENCE_TEXT] ?: "",
             // Context compression fields
             useContextCompression = preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] ?: false,
-            keepLastMessagesCount = preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] ?: 6
+            keepLastMessagesCount = preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] ?: 6,
+            conversationSummary = preferences[PreferencesKeys.CONVERSATION_SUMMARY].orEmpty()
         )
     }
 
@@ -140,6 +142,7 @@ class SettingsDataStore @Inject constructor(
             // Context compression fields
             preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] = settings.useContextCompression
             preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] = settings.keepLastMessagesCount
+            preferences[PreferencesKeys.CONVERSATION_SUMMARY] = settings.conversationSummary
         }
     }
 
