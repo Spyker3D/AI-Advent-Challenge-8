@@ -1,0 +1,25 @@
+Model: qwen2.5:7b-instruct
+Evaluation mode: labels system prompt
+System prompt: Выбери ровно одну метку из списка:
+NETWORK_UNAVAILABLE
+OPENAI_RATE_LIMIT
+OPENAI_TIMEOUT
+EMPTY_AI_RESPONSE
+LOCAL_HISTORY_UNAVAILABLE
+
+Верни только метку без объяснений.
+Dataset: C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\tools\day6-finetuning\data\hard_eval.jsonl
+Examples: 25
+Exact accuracy: 24/25 = 96.00%
+Normalized accuracy: 24/25 = 96.00%
+Format compliance: 25/25 = 100.00%
+
+Per-class exact accuracy:
+  EMPTY_AI_RESPONSE: 5/5 = 100.00%
+  LOCAL_HISTORY_UNAVAILABLE: 5/5 = 100.00%
+  NETWORK_UNAVAILABLE: 5/5 = 100.00%
+  OPENAI_RATE_LIMIT: 4/5 = 80.00%
+  OPENAI_TIMEOUT: 5/5 = 100.00%
+
+Failed examples: 1
+  #10: expected=OPENAI_RATE_LIMIT, response='NETWORK_UNAVAILABLE'

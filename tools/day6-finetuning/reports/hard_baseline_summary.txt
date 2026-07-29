@@ -1,0 +1,12 @@
+Model: qwen2.5:7b-instruct
+Examples: 25
+Exact accuracy: 23/25 = 92.00%
+Normalized accuracy: 23/25 = 92.00%
+Format compliance: 25/25 = 100.00%
+
+Per-class exact accuracy:
+  EMPTY_AI_RESPONSE: 5/5 = 100.00%
+  LOCAL_HISTORY_UNAVAILABLE: 5/5 = 100.00%
+  NETWORK_UNAVAILABLE: 5/5 = 100.00%
+  OPENAI_RATE_LIMIT: 4/5 = 80.00%
+  OPENAI_TIMEOUT: 4/5 = 80.00%

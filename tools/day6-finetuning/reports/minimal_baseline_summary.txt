@@ -1,0 +1,42 @@
+Model: qwen2.5:7b-instruct
+Evaluation mode: minimal system prompt
+System prompt: Классифицируй ошибку. Верни только одну метку.
+Dataset: C:\Users\Spyker3D\AndroidStudioProjects\AiAdvent8\tools\day6-finetuning\data\hard_eval.jsonl
+Examples: 25
+Exact accuracy: 0/25 = 0.00%
+Normalized accuracy: 0/25 = 0.00%
+Format compliance: 0/25 = 0.00%
+
+Per-class exact accuracy:
+  EMPTY_AI_RESPONSE: 0/5 = 0.00%
+  LOCAL_HISTORY_UNAVAILABLE: 0/5 = 0.00%
+  NETWORK_UNAVAILABLE: 0/5 = 0.00%
+  OPENAI_RATE_LIMIT: 0/5 = 0.00%
+  OPENAI_TIMEOUT: 0/5 = 0.00%
+
+Failed examples: 25
+  #1: expected=NETWORK_UNAVAILABLE, response='的技术错误'
+  #2: expected=NETWORK_UNAVAILABLE, response='的技术错误'
+  #3: expected=NETWORK_UNAVAILABLE, response='的技术问题'
+  #4: expected=NETWORK_UNAVAILABLE, response='сеть'
+  #5: expected=NETWORK_UNAVAILABLE, response='的技术错误'
+  #6: expected=OPENAI_RATE_LIMIT, response='-APIОшибка'
+  #7: expected=OPENAI_RATE_LIMIT, response='Ошибка_лимит_запросов'
+  #8: expected=OPENAI_RATE_LIMIT, response='技术和错误类型: 逻辑错误'
+  #9: expected=OPENAI_RATE_LIMIT, response='Ошибка сервера'
+  #10: expected=OPENAI_RATE_LIMIT, response='временная ошибка'
+  #11: expected=OPENAI_TIMEOUT, response='техническая'
+  #12: expected=OPENAI_TIMEOUT, response='ETIMEOUT'
+  #13: expected=OPENAI_TIMEOUT, response='временнаяОшибка'
+  #14: expected=OPENAI_TIMEOUT, response='延误请求'
+  #15: expected=OPENAI_TIMEOUT, response='"\';}catch(e){console.log(e)}finally{console.log("Закрытие со'
+  #16: expected=EMPTY_AI_RESPONSE, response='Отсутствие ответа'
+  #17: expected=EMPTY_AI_RESPONSE, response='Пустое значение'
+  #18: expected=EMPTY_AI_RESPONSE, response='-APIОшибка'
+  #19: expected=EMPTY_AI_RESPONSE, response='Неверное сообщение'
+  #20: expected=EMPTY_AI_RESPONSE, response='нет_тайм-аута'
+  #21: expected=LOCAL_HISTORY_UNAVAILABLE, response='проблема_с_данными'
+  #22: expected=LOCAL_HISTORY_UNAVAILABLE, response='проблема'
+  #23: expected=LOCAL_HISTORY_UNAVAILABLE, response='техническая проблема'
+  #24: expected=LOCAL_HISTORY_UNAVAILABLE, response='База данных'
+  #25: expected=LOCAL_HISTORY_UNAVAILABLE, response='的技术'
