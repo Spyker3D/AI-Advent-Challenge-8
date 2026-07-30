@@ -54,7 +54,7 @@ class LlmClientImpl @Inject constructor(
         val settings = settingsDataStore.chatSettings.first()
         when (settings.provider) {
             AiProvider.OPENAI -> sendViaOpenAi(messages, maxTokens, model, settings)
-            AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages)
+            AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages, model, settings)
             AiProvider.PRIVATE_VPS -> sendViaPrivateVps(messages, maxTokens, settings)
         }
     }
@@ -113,10 +113,13 @@ class LlmClientImpl @Inject constructor(
         else -> "OpenAI отклонил запрос (HTTP $code)."
     }
 
-    private suspend fun sendViaOllama(messages: List<Message>): Result<ChatResponse> {
-        val settings = settingsDataStore.chatSettings.first()
+    private suspend fun sendViaOllama(
+        messages: List<Message>,
+        modelOverride: String?,
+        settings: ChatSettings
+    ): Result<ChatResponse> {
         val baseUrl = settings.localBaseUrl.ifBlank { ChatSettings.DEFAULT_LOCAL_BASE_URL }
-        val model = settings.localModel.ifBlank { ChatSettings.DEFAULT_LOCAL_MODEL }
+        val model = selectOllamaModel(modelOverride, settings.localModel)
 
         return try {
             val systemPrompt = messages
@@ -128,7 +131,11 @@ class LlmClientImpl @Inject constructor(
                 OllamaGenerateRequestDto(
                     model = model,
                     prompt = prompt,
-                    system = settings.localSystemPrompt.takeIf { it.isNotBlank() } ?: systemPrompt,
+                    system = if (modelOverride.isNullOrBlank()) {
+                        settings.localSystemPrompt.takeIf { it.isNotBlank() } ?: systemPrompt
+                    } else {
+                        systemPrompt ?: settings.localSystemPrompt.takeIf { it.isNotBlank() }
+                    },
                     stream = false,
                     options = settings.toOllamaOptionsDto()
                 )
@@ -173,6 +180,8 @@ class LlmClientImpl @Inject constructor(
                 "Ollama HTTP ${e.code()}: ${e.message()}"
             }
             Result.failure(Exception(message))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(localOllamaConnectionError(baseUrl), e))
         }

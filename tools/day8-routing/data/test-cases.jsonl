@@ -1,0 +1,10 @@
+﻿{"id":"simple-1","input":"Что такое RecyclerView?","expectedRoute":"SMALL"}
+{"id":"simple-2","input":"Переведи слово network на русский.","expectedRoute":"SMALL"}
+{"id":"simple-3","input":"Назови столицу Франции.","expectedRoute":"SMALL"}
+{"id":"simple-4","input":"Объясни разницу между val и var в Kotlin одним предложением.","expectedRoute":"SMALL"}
+{"id":"simple-5","input":"Напиши функцию сложения двух Int.","expectedRoute":"SMALL"}
+{"id":"complex-1","input":"Проанализируй архитектуру Android-приложения и предложи миграцию с MVP на Clean Architecture.","expectedRoute":"LARGE"}
+{"id":"complex-2","input":"Почему приложение иногда теряет историю чатов? Возможные причины: Room, Flow, корутины или race condition.","expectedRoute":"LARGE"}
+{"id":"complex-3","input":"Напиши подробный план миграции большого проекта с Retrofit на Ktor с сохранением совместимости.","expectedRoute":"LARGE"}
+{"id":"complex-4","input":"Сравни несколько вариантов реализации RAG и выбери оптимальный при противоречивых требованиях.","expectedRoute":"LARGE"}
+{"id":"complex-5","input":"Я не уверен, что ошибка связана с сетью: иногда есть timeout, иногда 429. Определи причину.","expectedRoute":"LARGE"}
