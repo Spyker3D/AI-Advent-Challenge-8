@@ -1,0 +1,42 @@
+Model: qwen2.5:7b-instruct
+Mode: controlled
+Examples: 30
+
+Accepted: 30
+Unsure: 0
+Failed: 0
+Rejected total: 0/30 = 0.00%
+
+Correct accepted predictions: 19
+Incorrect accepted predictions: 0
+
+Examples requiring repeated inference: 30/30 = 100.00%
+Format retries: 0
+Self-check calls: 19
+Total model calls: 71
+Average model calls per example: 2.37
+
+Average latency: 6629.81 ms
+Median latency: 5661.64 ms
+P95 latency: 8500.30 ms
+
+Ambiguous examples:
+  Total: 11
+  Accepted: 11
+  Rejected: 0
+  Rejection rate: 0/11 = 0.00%
+
+Prompt tokens: 21452
+Completion tokens: 3613
+Estimated local model cost: $0.00
+
+Results by category:
+  correct: total=10, accepted=10, rejected=0
+  boundary: total=10, accepted=10, rejected=0
+  noisy: total=10, accepted=10, rejected=0
+
+Incorrect accepted examples:
+  None
+
+Rejected examples:
+  None
