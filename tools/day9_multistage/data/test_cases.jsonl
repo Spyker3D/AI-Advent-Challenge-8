@@ -1,0 +1,15 @@
+{"id":"case_001","category":"simple","input":"Сервер вернул HTTP 429 Too Many Requests.","expected_category":"OPENAI_RATE_LIMIT","expected_action":"RETRY_WITH_BACKOFF"}
+{"id":"case_002","category":"simple","input":"Телефон в авиарежиме, запрос не отправляется.","expected_category":"NETWORK_UNAVAILABLE","expected_action":"CHECK_NETWORK"}
+{"id":"case_003","category":"simple","input":"Истекло время ожидания ответа модели.","expected_category":"OPENAI_TIMEOUT","expected_action":"RETRY_REQUEST"}
+{"id":"case_004","category":"simple","input":"Ответ ассистента пришёл, но текст пустой.","expected_category":"EMPTY_AI_RESPONSE","expected_action":"SHOW_EMPTY_RESPONSE_ERROR"}
+{"id":"case_005","category":"simple","input":"После перезапуска не загружается локальная история чатов.","expected_category":"LOCAL_HISTORY_UNAVAILABLE","expected_action":"RELOAD_LOCAL_HISTORY"}
+{"id":"case_006","category":"boundary","input":"Запрос выполнялся долго, а затем сервер вернул 429.","expected_category":"OPENAI_RATE_LIMIT","expected_action":"RETRY_WITH_BACKOFF"}
+{"id":"case_007","category":"boundary","input":"Сначала пропала сеть, после восстановления запрос завершился по тайм-ауту.","expected_category":"AMBIGUOUS","expected_action":"REQUEST_MORE_INFORMATION"}
+{"id":"case_008","category":"boundary","input":"История чата открылась, но часть сообщений отсутствует.","expected_category":"LOCAL_HISTORY_UNAVAILABLE","expected_action":"RELOAD_LOCAL_HISTORY"}
+{"id":"case_009","category":"boundary","input":"Приложение не получило ответ: возможно, нет сети или сервер слишком долго отвечает.","expected_category":"AMBIGUOUS","expected_action":"REQUEST_MORE_INFORMATION"}
+{"id":"case_010","category":"boundary","input":"Ответ существует, но состоит только из пробелов.","expected_category":"EMPTY_AI_RESPONSE","expected_action":"SHOW_EMPTY_RESPONSE_ERROR"}
+{"id":"case_011","category":"noisy","input":"429 опять, инет вроде норм, запросов много походу","expected_category":"OPENAI_RATE_LIMIT","expected_action":"RETRY_WITH_BACKOFF"}
+{"id":"case_012","category":"noisy","input":"ждал ждал и всё timeout","expected_category":"OPENAI_TIMEOUT","expected_action":"RETRY_REQUEST"}
+{"id":"case_013","category":"noisy","input":"чаты после рестарта пропали локально не грузяца","expected_category":"LOCAL_HISTORY_UNAVAILABLE","expected_action":"RELOAD_LOCAL_HISTORY"}
+{"id":"case_014","category":"noisy","input":"эээ сеть то есть то нет и потом запрос умер","expected_category":"AMBIGUOUS","expected_action":"REQUEST_MORE_INFORMATION"}
+{"id":"case_015","category":"noisy","input":"empty response плюс ещё network problem, что именно сломалось непонятно","expected_category":"AMBIGUOUS","expected_action":"REQUEST_MORE_INFORMATION"}
