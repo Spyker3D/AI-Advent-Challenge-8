@@ -112,6 +112,9 @@ import com.aiassistant.core.ui.components.MessageBubble
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.feature.chat.BuildConfig
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
+import com.aiassistant.feature.chat.presentation.component.InferenceDebugBlock
+import com.aiassistant.feature.chat.presentation.component.InferenceModeSelector
+import com.aiassistant.feature.chat.presentation.inference.isInferenceSelectorVisible
 import com.aiassistant.feature.chat.presentation.routing.isRoutingToggleVisible
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
@@ -365,9 +368,15 @@ fun ChatScreen(
                                     Text(if (uiState.routingEnabled) "Routing: ON" else "Routing: OFF", style = MaterialTheme.typography.labelMedium)
                                     Switch(
                                         checked = uiState.routingEnabled,
-                                        enabled = !uiState.isLoading,
+                                        enabled = !uiState.isLoading && uiState.inferenceMode == null,
                                         onCheckedChange = { viewModel.handleEvent(ChatUiEvent.RoutingToggled(it)) },
                                         modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                }
+                                if (uiState.inferenceMode != null) {
+                                    Text(
+                                        "Routing \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0432 Day 9 inference mode.",
+                                        style = MaterialTheme.typography.labelSmall
                                     )
                                 }
                             }
@@ -482,6 +491,17 @@ fun ChatScreen(
                         onPause = { viewModel.handleEvent(ChatUiEvent.PauseTask) },
                         onResume = { viewModel.handleEvent(ChatUiEvent.ResumeTask) },
                         onContinue = { viewModel.handleEvent(ChatUiEvent.ContinueTask) }
+                    )
+                }
+
+                if (isInferenceSelectorVisible(uiState)) {
+                    InferenceModeSelector(
+                        selectedMode = uiState.inferenceMode,
+                        onModeSelected = { mode ->
+                            viewModel.handleEvent(ChatUiEvent.InferenceModeSelected(mode))
+                        },
+                        enabled = !uiState.isLoading,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
 
@@ -789,6 +809,13 @@ fun ChatScreen(
                                         }
                                         if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
                                             if (BuildConfig.DEBUG) {
+                                                if (uiState.inferenceModeByMessageId.containsKey(message.id)) {
+                                                    InferenceDebugBlock(
+                                                        mode = uiState.inferenceModeByMessageId[message.id],
+                                                        metadata = uiState.inferenceDebugByMessageId[message.id],
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                                    )
+                                                }
                                                 uiState.routingDebugByMessageId[message.id]?.let { metadata ->
                                                     RoutingDebugBlock(
                                                         metadata = metadata,

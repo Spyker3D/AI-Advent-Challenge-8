@@ -2,6 +2,7 @@ package com.aiassistant.feature.chat.presentation
 
 import android.net.Uri
 import com.aiassistant.core.domain.entity.ContextStrategy
+import com.aiassistant.core.domain.inference.InferenceMode
 
 sealed class ChatUiEvent {
     data class MessageChanged(val message: String) : ChatUiEvent()
@@ -30,6 +31,7 @@ sealed class ChatUiEvent {
     object CloseChatDrawer : ChatUiEvent()
     data class RagToggled(val enabled: Boolean) : ChatUiEvent()
     data class RoutingToggled(val enabled: Boolean) : ChatUiEvent()
+    data class InferenceModeSelected(val mode: InferenceMode?) : ChatUiEvent()
     data class Day23ImprovedRetrievalToggled(val enabled: Boolean) : ChatUiEvent()
 
     object PauseTask : ChatUiEvent()
