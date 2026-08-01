@@ -541,11 +541,11 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Clear Summary")
-                        // Note: This would require implementing a way to communicate with the chat ViewModel
-                        // For now, we'll leave this as a placeholder
                         Button(
-                            onClick = { /* TODO: Implement clear summary functionality */ },
-                            enabled = false // Disabled until implemented
+                            onClick = {
+                                viewModel.handleEvent(SettingsUiEvent.ClearConversationSummary)
+                            },
+                            enabled = uiState.settings.conversationSummary.isNotEmpty() && !uiState.isLoading
                         ) {
                             Text("Clear")
                         }

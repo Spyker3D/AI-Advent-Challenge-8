@@ -49,7 +49,7 @@ OPENAI_API_KEY=your-api-key
 
 Environment имеет приоритет. Если ключ не найден, CLI завершается с понятной ошибкой. `local.properties` исключён из Git и RAG-сканирования, а значение ключа не выводится в логах. Через CLI-параметры ключ не принимается.
 
-Также доступны `--embedding-base-url`, `--embedding-model`, `--openai-base-url`, `--generation-model`, `--mcp-url`, `--top-k`, `--chunk-size`, `--chunk-overlap`, `--max-file-size`, `--debug`.
+Также доступны `--embedding-base-url`, `--embedding-model`, `--openai-base-url`, `--generation-model`, `--mcp-url`, `--top-k`, `--chunk-size`, `--chunk-overlap`, `--max-file-size`, `--max-tool-iterations`, `--debug`.
 
 ## Команды и индекс
 
@@ -85,3 +85,11 @@ GitHub Actions использует `--rag-mode=off`, чтобы не устан
 ## Ограничения
 
 Chunking эвристический, без полного AST; watch mode отсутствует. MCP настраивается одним project root при старте, CLI намеренно не вызывает Git напрямую. При недоступном MCP `/help` продолжает работу и сообщает, что ветка недоступна. Без Ollama embeddings обновление и поиск невозможны; Ollama для генерации не используется, OpenAI Embeddings API не используется.
+
+## Project file assistant safety limits
+
+- Interactive writes are staged as a unified diff and require an explicit `y` or `yes` confirmation. Pressing Enter, answering anything else, or using `--dry-run` leaves project files unchanged.
+- File tools resolve every path against `--project-root`. Absolute paths, `..` traversal, and symbolic links that escape that root are rejected.
+- Secret files such as `local.properties`, `.env*`, keystores, service-account JSON, and credentials JSON cannot be read or changed. Binary, non-UTF-8, and oversized files are also rejected; the default size limit is 1 MiB and `--max-file-size` can override it.
+- A goal may use at most 10 file-tool iterations by default. Configure a positive limit with `--max-tool-iterations=<count>` or `DEVELOPER_ASSISTANT_MAX_TOOL_ITERATIONS`; zero and negative values are rejected.
+- Git access is read-only and goes through MCP. The CLI can obtain the current branch, list files changed between two refs, and read their diff. It does not expose commit, checkout, merge, reset, push, or other Git write operations.

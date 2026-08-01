@@ -1,6 +1,7 @@
 package com.aiassistant.developer
 
 import com.aiassistant.developer.cli.CommandLoop
+import com.aiassistant.developer.cli.DiagnosticsReport
 import com.aiassistant.developer.config.ConfigLoader
 import com.aiassistant.developer.llm.DeveloperAssistantService
 import com.aiassistant.developer.llm.OpenAiConfig
@@ -25,8 +26,13 @@ import kotlinx.coroutines.runBlocking
 
 fun main(args: Array<String>) {
     val reviewMode = args.firstOrNull() == "review-pr"
-    val config = try { ConfigLoader.load(args) } catch (error: Exception) {
+    val diagnosticsMode = args.firstOrNull() == "diagnostics"
+    val config = try { ConfigLoader.load(args, requireApiKey = !diagnosticsMode) } catch (error: Exception) {
         System.err.println("Error: ${error.message}"); exitProcess(2)
+    }
+    if (diagnosticsMode) {
+        println(DiagnosticsReport.create(config))
+        return
     }
     if (args.firstOrNull() == "index-support-knowledge") {
         val options = args.filter { it.startsWith("--") }.associate { val p = it.removePrefix("--").split('=', limit = 2); p[0] to p.getOrElse(1) { "" } }
@@ -109,11 +115,11 @@ fun main(args: Array<String>) {
     println("Branch: ${branch.branch ?: "unavailable"}")
     println("MCP: ${if (branch.connected) "connected" else "disconnected"}")
     println("Mode: ${if (config.dryRun) "dry-run (writes disabled)" else "interactive writes with confirmation"}")
-    println("\nEnter a project goal, or use:\n  /help <question>\n  /status\n  /reindex\n  /diff\n  /exit\n")
+    println("\nEnter a project goal, or use:\n  /help <question>\n  /status\n  /diagnostics\n  /reindex\n  /diff\n  /exit\n")
 
     val service = DeveloperAssistantService(config.projectRoot, indexStorage, ProjectRetriever(embedding, config.topK), git, llm)
     val fileTools = ProjectFileTools(config.projectRoot, config.maxFileSizeBytes)
-    val fileAgent = ProjectFileAgent(config.projectRoot, fileTools, config.dryRun, llm)
+    val fileAgent = ProjectFileAgent(config.projectRoot, fileTools, config.dryRun, llm, maxIterations = config.maxToolIterations)
     var lastDiff = "No proposed changes."
     val loop = CommandLoop(
         BufferedReader(InputStreamReader(System.`in`, StandardCharsets.UTF_8)),
@@ -128,7 +134,7 @@ Last indexed: ${formatTime(manifest.lastIndexedEpochMillis)}
 Index path: $indexPath
 MCP status: ${if (currentBranch.connected) "connected" else "disconnected"}
 Embedding service: ${if (runBlocking { runCatching { embedding.embed(listOf("health check")) }.isSuccess }) "connected" else "disconnected"}"""
-    }, {
+    }, diagnostics = { DiagnosticsReport.create(config) }, reindex = {
         println("Force rebuilding project index...")
         val result = runBlocking { indexer.update(force = true, progress = ::println) }
         updateText(result)
