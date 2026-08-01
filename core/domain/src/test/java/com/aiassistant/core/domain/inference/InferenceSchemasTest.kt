@@ -31,6 +31,15 @@ class InferenceSchemasTest {
         }
     }
 
+    @Test
+    fun `presentation schemas allow only mapped user actions`() {
+        val expected = IncidentAction.entries.map { it.userFacingText() }
+        listOf(InferenceSchemas.MONOLITHIC, InferenceSchemas.PRESENTATION).forEach { schema ->
+            val properties = JsonParser.parseString(schema).asJsonObject.getAsJsonObject("properties")
+            assertEquals(expected, properties.enumNames("user_action"))
+        }
+    }
+
     private fun com.google.gson.JsonObject.enumNames(name: String): List<String> =
         getAsJsonObject(name).getAsJsonArray("enum").map { it.asString }
 }

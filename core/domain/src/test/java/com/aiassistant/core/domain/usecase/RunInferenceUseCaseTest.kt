@@ -6,6 +6,8 @@ import com.aiassistant.core.domain.agent.LlmRequestOptions
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.inference.InferenceEngine
 import com.aiassistant.core.domain.inference.InferenceMode
+import com.aiassistant.core.domain.inference.IncidentAction
+import com.aiassistant.core.domain.inference.userFacingText
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertSame
@@ -25,7 +27,7 @@ class RunInferenceUseCaseTest {
         ).getOrThrow()
 
         assertEquals("observed timeout", client.userInput)
-        assertTrue(result.finalText.contains("Retry"))
+        assertTrue(result.finalText.contains(IncidentAction.RETRY_REQUEST.userFacingText()))
         assertEquals(InferenceMode.MONOLITHIC, result.debugMetadata.mode)
     }
 
@@ -75,6 +77,6 @@ class RunInferenceUseCaseTest {
     }
 
     private companion object {
-        const val MONOLITHIC_JSON = """{"normalized_summary":"timeout","category":"OPENAI_TIMEOUT","severity":"HIGH","action":"RETRY_REQUEST","confidence":0.9,"evidence_state":"SUPPORTED","supporting_evidence":["request exceeded allowed response time"],"contradicting_evidence":[],"title":"Retry","message":"Timed out","user_action":"Try again"}"""
+        val MONOLITHIC_JSON = """{"normalized_summary":"timeout","category":"OPENAI_TIMEOUT","severity":"HIGH","action":"RETRY_REQUEST","confidence":0.9,"evidence_state":"SUPPORTED","supporting_evidence":["request exceeded allowed response time"],"contradicting_evidence":[],"title":"${IncidentAction.RETRY_REQUEST.userFacingText()}","message":"${IncidentAction.RETRY_REQUEST.userFacingText()}","user_action":"${IncidentAction.RETRY_REQUEST.userFacingText()}"}"""
     }
 }

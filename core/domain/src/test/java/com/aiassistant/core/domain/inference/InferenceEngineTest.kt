@@ -21,7 +21,7 @@ class InferenceEngineTest {
         val llm = FakeLlmClient(mutableListOf(Outcome.Return(Result.success(ChatResponse(monolithicJson)))))
         val result = InferenceEngine(llm).execute("incident", InferenceMode.MONOLITHIC).getOrThrow()
 
-        assertTrue(result.finalText.contains("title"))
+        assertTrue(result.finalText.contains(IncidentAction.RETRY_REQUEST.userFacingText()))
         assertEquals(IncidentCategory.OPENAI_TIMEOUT, result.debugMetadata.decision?.category)
         assertEquals(InferenceConfig.MONOLITHIC_MODEL, llm.calls.single().model)
         assertEquals(InferenceSchemas.MONOLITHIC, llm.calls.single().options.jsonSchema)
@@ -57,7 +57,7 @@ class InferenceEngineTest {
         val llm = FakeLlmClient(mutableListOf(
             Outcome.Return(Result.success(ChatResponse(normalized))),
             Outcome.Return(Result.success(ChatResponse(decision))),
-            Outcome.Return(Result.success(ChatResponse(presentationJson)))
+            Outcome.Return(Result.success(ChatResponse(presentationJson(IncidentAction.RETRY_WITH_BACKOFF))))
         ))
 
         val result = InferenceEngine(llm).execute("HTTP 429 + интернет работает", InferenceMode.MULTI_STAGE).getOrThrow()
@@ -68,6 +68,35 @@ class InferenceEngineTest {
         assertEquals(IncidentAction.RETRY_WITH_BACKOFF, result.debugMetadata.decision?.action)
         assertEquals(EvidenceState.SUPPORTED, result.debugMetadata.decision?.evidenceState)
         assertTrue(result.debugMetadata.decision?.contradictingEvidence?.isEmpty() == true)
+    }
+
+    @Test
+    fun `rate limit sample has the same Russian presentation in both modes`() = runBlocking {
+        val title = russian(1055, 1088, 1077, 1074, 1099, 1096, 1077, 1085, 32, 1083, 1080, 1084, 1080, 1090, 32, 1079, 1072, 1087, 1088, 1086, 1089, 1086, 1074)
+        val message = russian(1055, 1086, 1076, 1086, 1078, 1076, 1080, 1090, 1077, 32, 1085, 1077, 1084, 1085, 1086, 1075, 1086, 32, 1080, 32, 1087, 1086, 1074, 1090, 1086, 1088, 1080, 1090, 1077, 32, 1079, 1072, 1087, 1088, 1086, 1089, 46)
+        val action = IncidentAction.RETRY_WITH_BACKOFF.userFacingText()
+        val expected = "$title\n\n$message\n\n$action"
+        val decision = """{"category":"OPENAI_RATE_LIMIT","severity":"MEDIUM","action":"RETRY_WITH_BACKOFF","confidence":0.8567,"evidence_state":"SUPPORTED","supporting_evidence":["server rate limit"],"contradicting_evidence":[]}"""
+        val presentation = """{"title":"$title","message":"$message","user_action":"$action"}"""
+        val monolithic = """{"normalized_summary":"server rate limit","category":"OPENAI_RATE_LIMIT","severity":"MEDIUM","action":"RETRY_WITH_BACKOFF","confidence":0.8567,"evidence_state":"SUPPORTED","supporting_evidence":["server rate limit"],"contradicting_evidence":[],"title":"$title","message":"$message","user_action":"$action"}"""
+
+        val multiClient = FakeLlmClient(mutableListOf(
+            Outcome.Return(Result.success(ChatResponse("""{"observed_facts":["server rate limit"],"normalized_summary":"server rate limit"}"""))),
+            Outcome.Return(Result.success(ChatResponse(decision))),
+            Outcome.Return(Result.success(ChatResponse(presentation)))
+        ))
+        val monoClient = FakeLlmClient(mutableListOf(Outcome.Return(Result.success(ChatResponse(monolithic)))))
+
+        val multi = InferenceEngine(multiClient).execute("HTTP 429 Too Many Requests. Internet works.", InferenceMode.MULTI_STAGE).getOrThrow()
+        val mono = InferenceEngine(monoClient).execute("HTTP 429 Too Many Requests. Internet works.", InferenceMode.MONOLITHIC).getOrThrow()
+
+        listOf(multi, mono).forEach { result ->
+            assertEquals(expected, result.finalText)
+            assertEquals(IncidentCategory.OPENAI_RATE_LIMIT, result.debugMetadata.decision?.category)
+            assertEquals(IncidentAction.RETRY_WITH_BACKOFF, result.debugMetadata.decision?.action)
+        }
+        assertEquals(3, multiClient.calls.size)
+        assertEquals(1, monoClient.calls.size)
     }
 
     @Test
@@ -108,6 +137,30 @@ class InferenceEngineTest {
         assertEquals(StageStatus.FORMAT_ERROR, result.debugMetadata.stageMetadata.last().status)
         assertTrue(result.finalText.isNotBlank())
         assertEquals(IncidentCategory.OPENAI_TIMEOUT, result.debugMetadata.decision?.category)
+    }
+
+    @Test
+    fun `deterministic fallback uses the exact label for every action`() = runBlocking {
+        IncidentCategory.entries.forEach { category ->
+            val action = category.requiredAction()
+            val ambiguous = category == IncidentCategory.AMBIGUOUS
+            val evidenceState = if (ambiguous) EvidenceState.INSUFFICIENT else EvidenceState.SUPPORTED
+            val evidence = if (ambiguous) emptyList() else listOf("explicit fact")
+            val supporting = com.google.gson.Gson().toJson(evidence)
+            val decision = """{"category":"${category.name}","severity":"MEDIUM","action":"${action.name}","confidence":0.8,"evidence_state":"${evidenceState.name}","supporting_evidence":$supporting,"contradicting_evidence":[]}"""
+            val llm = FakeLlmClient(mutableListOf(
+                Outcome.Return(Result.success(ChatResponse(normalizationJson))),
+                Outcome.Return(Result.success(ChatResponse(decision))),
+                Outcome.Return(Result.success(ChatResponse("not json")))
+            ))
+            val result = InferenceEngine(llm).execute("incident", InferenceMode.MULTI_STAGE).getOrThrow()
+
+            assertTrue(result.finalText.endsWith(action.userFacingText()))
+            assertTrue(IncidentAction.entries.none { result.finalText.contains(it.name) })
+            assertEquals(category, result.debugMetadata.decision?.category)
+            assertEquals(action, result.debugMetadata.decision?.action)
+            assertFalse(result.debugMetadata.formatCompliant)
+        }
     }
 
     @Test
@@ -270,7 +323,10 @@ class InferenceEngineTest {
     private companion object {
         const val normalizationJson = """{"observed_facts":["request exceeded allowed response time"],"normalized_summary":"timeout"}"""
         const val decisionJson = """{"category":"OPENAI_TIMEOUT","severity":"HIGH","action":"RETRY_REQUEST","confidence":0.9,"evidence_state":"SUPPORTED","supporting_evidence":["request exceeded allowed response time"],"contradicting_evidence":[]}"""
-        const val presentationJson = """{"title":"title","message":"message","user_action":"retry"}"""
-        const val monolithicJson = """{"normalized_summary":"timeout","category":"OPENAI_TIMEOUT","severity":"HIGH","action":"RETRY_REQUEST","confidence":0.9,"evidence_state":"SUPPORTED","supporting_evidence":["request exceeded allowed response time"],"contradicting_evidence":[],"title":"title","message":"message","user_action":"retry"}"""
+        val presentationJson = presentationJson(IncidentAction.RETRY_REQUEST)
+        val monolithicJson = """{"normalized_summary":"timeout","category":"OPENAI_TIMEOUT","severity":"HIGH","action":"RETRY_REQUEST","confidence":0.9,"evidence_state":"SUPPORTED","supporting_evidence":["request exceeded allowed response time"],"contradicting_evidence":[],"title":"${IncidentAction.RETRY_REQUEST.userFacingText()}","message":"${IncidentAction.RETRY_REQUEST.userFacingText()}","user_action":"${IncidentAction.RETRY_REQUEST.userFacingText()}"}"""
+        fun presentationJson(action: IncidentAction) =
+            """{"title":"${action.userFacingText()}","message":"${action.userFacingText()}","user_action":"${action.userFacingText()}"}"""
+        fun russian(vararg codePoints: Int): String = String(codePoints, 0, codePoints.size)
     }
 }

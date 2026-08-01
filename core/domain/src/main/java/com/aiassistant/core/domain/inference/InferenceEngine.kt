@@ -35,7 +35,9 @@ class InferenceEngine @Inject constructor(private val llmClient: LlmClient) {
         calls += s2.calls; stages += s2.metadata
         val decision = s2.value ?: return failedWithSkipped(InferenceMode.MULTI_STAGE,start,stages,s2.error,normalized,calls)
         val presentationInput = "{\"normalized_summary\":${com.google.gson.Gson().toJson(normalized.normalizedSummary)},\"decision\":${InferenceParsers.decisionJson(decision)}}"
-        val s3 = parsedCall("presentation", InferenceConfig.PRESENTATION_MODEL, MultiStagePrompts.PRESENTATION, presentationInput, 120, InferenceSchemas.PRESENTATION, InferenceParsers::presentation)
+        val s3 = parsedCall("presentation", InferenceConfig.PRESENTATION_MODEL, MultiStagePrompts.PRESENTATION, presentationInput, 120, InferenceSchemas.PRESENTATION) { raw ->
+            InferenceParsers.presentation(raw, decision.action)
+        }
         calls += s3.calls; stages += s3.metadata
         val presentation = s3.value ?: fallback(decision)
         val debug = InferenceDebugMetadata(InferenceMode.MULTI_STAGE, normalized.normalizedSummary, decision, stages, now()-start, calls, stages.all { it.status == StageStatus.OK })
@@ -95,7 +97,7 @@ class InferenceEngine @Inject constructor(private val llmClient: LlmClient) {
         IncidentAction.SHOW_EMPTY_RESPONSE_ERROR->UserFacingIncidentResult("Пустой ответ","Модель вернула пустой ответ.","Повторите запрос.")
         IncidentAction.RELOAD_LOCAL_HISTORY->UserFacingIncidentResult("История недоступна","Локальная история чатов не загрузилась.","Перезагрузите историю.")
         IncidentAction.REQUEST_MORE_INFORMATION->UserFacingIncidentResult("Нужно уточнение","Недостаточно данных для точного определения проблемы.","Уточните наблюдаемые симптомы.")
-    }
+    }.copy(userAction=d.action.userFacingText())
     private fun format(p:UserFacingIncidentResult)="${p.title}\n\n${p.message}\n\n${p.userAction}"
     private fun now()=System.currentTimeMillis()
     private data class Call(val response:ChatResponse?,val metadata:InferenceStageMetadata,val error:String)
