@@ -1,9 +1,11 @@
 package com.aiassistant.core.data.client
 
 import android.util.Log
+import com.google.gson.JsonParser
 import com.aiassistant.core.data.BuildConfig
 import com.aiassistant.core.domain.agent.ChatResponse
 import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.agent.LlmRequestOptions
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.Message
@@ -50,11 +52,16 @@ class LlmClientImpl @Inject constructor(
         private const val TAG = "OpenAiRequest"
     }
 
-    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> = withContext(Dispatchers.IO) {
+    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> =
+        sendChat(messages, maxTokens, model, LlmRequestOptions())
+
+    override suspend fun sendChat(
+        messages: List<Message>, maxTokens: Int?, model: String?, options: LlmRequestOptions
+    ): Result<ChatResponse> = withContext(Dispatchers.IO) {
         val settings = settingsDataStore.chatSettings.first()
         when (settings.provider) {
             AiProvider.OPENAI -> sendViaOpenAi(messages, maxTokens, model, settings)
-            AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages, model, settings)
+            AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages, model, settings, options)
             AiProvider.PRIVATE_VPS -> sendViaPrivateVps(messages, maxTokens, settings)
         }
     }
@@ -116,7 +123,8 @@ class LlmClientImpl @Inject constructor(
     private suspend fun sendViaOllama(
         messages: List<Message>,
         modelOverride: String?,
-        settings: ChatSettings
+        settings: ChatSettings,
+        requestOptions: LlmRequestOptions
     ): Result<ChatResponse> {
         val baseUrl = settings.localBaseUrl.ifBlank { ChatSettings.DEFAULT_LOCAL_BASE_URL }
         val model = selectOllamaModel(modelOverride, settings.localModel)
@@ -136,8 +144,12 @@ class LlmClientImpl @Inject constructor(
                     } else {
                         systemPrompt ?: settings.localSystemPrompt.takeIf { it.isNotBlank() }
                     },
-                    stream = false,
-                    options = settings.toOllamaOptionsDto()
+                    stream = requestOptions.stream ?: false,
+                    format = requestOptions.toOllamaFormat(),
+                    options = settings.toOllamaOptionsDto().copy(
+                        temperature = requestOptions.temperature ?: settings.toOllamaOptionsDto().temperature,
+                        numPredict = requestOptions.numPredict ?: settings.toOllamaOptionsDto().numPredict
+                    )
                 )
             )
             val assistantMessage = response.response.trim()
@@ -240,3 +252,4 @@ class LlmClientImpl @Inject constructor(
         return "Модель $model не установлена.\nВыполните:\nollama pull $model"
     }
 }
+internal fun LlmRequestOptions.toOllamaFormat() = jsonSchema?.let(JsonParser::parseString)

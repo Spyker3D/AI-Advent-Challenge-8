@@ -7,6 +7,7 @@ import com.aiassistant.core.domain.entity.AiChatResponse
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.ChatRequest
 import com.aiassistant.core.domain.entity.ChatSettings
+import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.FormattedAiResponse
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.MessageRole
@@ -45,6 +46,7 @@ import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SendMessageUseCase
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
+import com.aiassistant.feature.chat.presentation.routing.routingRequestSnapshot
 import com.aiassistant.feature.chat.presentation.ChatUiState
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.calendar.CalendarAssistantService
@@ -136,6 +138,7 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
     private val ragAnswerConfig = RagAnswerConfig()
     private var pendingCalendarWrite: PendingCalendarAction? = null
+    private var currentSettings = ChatSettings()
 
         init {
         voiceInputCoordinator.attach(this)
@@ -147,8 +150,12 @@ class ChatViewModel @Inject constructor(
     private fun observeChatSettings() {
         getChatSettingsUseCase()
             .onEach { settings ->
+                currentSettings = settings
                 _uiState.value = _uiState.value.copy(
                     selectedModel = settings.selectedModel,
+                    provider = settings.provider,
+                    localModel = settings.localModel,
+                    routingEnabled = _uiState.value.routingEnabled && settings.provider == AiProvider.LOCAL_OLLAMA,
                     temperature = settings.temperature,
                     maxTokens = settings.maxTokens,
                     systemPrompt = settings.systemPrompt,
@@ -161,7 +168,8 @@ class ChatViewModel @Inject constructor(
                     stopSequenceText = settings.stopSequenceText,
                     // Context compression fields
                     useContextCompression = settings.useContextCompression,
-                    keepLastMessagesCount = settings.keepLastMessagesCount
+                    keepLastMessagesCount = settings.keepLastMessagesCount,
+                    selectedContextStrategy = settings.contextStrategy
                 )
                 // Update token estimates when settings change
                 updateTokenEstimates()
@@ -455,7 +463,11 @@ class ChatViewModel @Inject constructor(
             
             // Context strategy events
             is ChatUiEvent.ContextStrategySelected -> {
-                _uiState.value = _uiState.value.copy(selectedContextStrategy = event.strategy)
+                if (!_uiState.value.isLoading) {
+                    _uiState.value = _uiState.value.copy(selectedContextStrategy = event.strategy)
+                    currentSettings = currentSettings.copy(contextStrategy = event.strategy)
+                    viewModelScope.launch { saveChatSettingsUseCase(currentSettings) }
+                }
             }
             is ChatUiEvent.CreateBranch -> {
                 createBranch(event.branchName)
@@ -482,6 +494,11 @@ class ChatViewModel @Inject constructor(
             }
             is ChatUiEvent.CloseChatDrawer -> {
                 _uiState.value = _uiState.value.copy(isChatDrawerOpen = false)
+            }
+            is ChatUiEvent.RoutingToggled -> {
+                if (_uiState.value.provider == AiProvider.LOCAL_OLLAMA && !_uiState.value.isLoading) {
+                    _uiState.value = _uiState.value.copy(routingEnabled = event.enabled)
+                }
             }
             is ChatUiEvent.RagToggled -> {
                 _uiState.value = _uiState.value.copy(ragEnabled = event.enabled)
@@ -564,7 +581,13 @@ class ChatViewModel @Inject constructor(
         } else {
             currentMessage
         }
-        val sendingChatId = _uiState.value.currentChatId
+        val contextStrategySnapshot = _uiState.value.selectedContextStrategy
+        val routingSnapshot = routingRequestSnapshot(
+            provider = _uiState.value.provider,
+            routingEnabled = _uiState.value.routingEnabled,
+            localModel = _uiState.value.localModel
+        )
+                val sendingChatId = _uiState.value.currentChatId
         val sendingBranchId = _uiState.value.currentBranchId
         val sendingTaskContextId = _uiState.value.chats
             .find { it.id == sendingChatId }
@@ -581,7 +604,7 @@ class ChatViewModel @Inject constructor(
         }
         
         // Debug logging for BRANCHING strategy
-        if (_uiState.value.selectedContextStrategy == ContextStrategy.BRANCHING) {
+        if (contextStrategySnapshot == ContextStrategy.BRANCHING) {
             android.util.Log.d("ChatViewModel", "BRANCHING: Sending message: $finalMessage")
             val currentBranch = _uiState.value.branches.find { it.id == _uiState.value.currentBranchId }
             android.util.Log.d("ChatViewModel", "BRANCHING: Current branch messages count: ${currentBranch?.messages?.size ?: 0}")
@@ -602,7 +625,7 @@ class ChatViewModel @Inject constructor(
         
         // Check if we need to generate a new summary BEFORE adding the user message
         // Generate summary only when: numberOfNewMessagesSinceLastSummary >= 10
-        val shouldGenerateSummary = _uiState.value.useContextCompression && 
+        val shouldGenerateSummary = contextStrategySnapshot != ContextStrategy.NONE && _uiState.value.useContextCompression &&
             (_uiState.value.messages.size + 1) >= _uiState.value.lastSummaryMessageCount + 10
             
         if (shouldGenerateSummary) {
@@ -627,13 +650,13 @@ class ChatViewModel @Inject constructor(
             try {
                 // For Sticky Facts strategy, update facts before sending message
                 var updatedFacts = _uiState.value.stickyFacts
-                if (_uiState.value.selectedContextStrategy == ContextStrategy.STICKY_FACTS) {
+                if (contextStrategySnapshot == ContextStrategy.STICKY_FACTS) {
                     updatedFacts = updateStickyFacts(finalMessage)
                 }
-                val recentMessagesForRag = _uiState.value.messages.takeLast(8)
-                val taskContextForRag = loadCurrentTaskContext(sendingTaskContextId)
+                val recentMessagesForRag = if (contextStrategySnapshot == ContextStrategy.NONE) emptyList() else _uiState.value.messages.takeLast(8)
+                val taskContextForRag = if (contextStrategySnapshot == ContextStrategy.NONE) null else loadCurrentTaskContext(sendingTaskContextId)
                 
-                val ragContext = if (_uiState.value.ragEnabled) {
+                val ragContext = if (_uiState.value.ragEnabled && contextStrategySnapshot != ContextStrategy.NONE) {
                     buildRagContext(
                         question = finalMessage,
                         taskContext = taskContextForRag,
@@ -646,7 +669,7 @@ class ChatViewModel @Inject constructor(
                         results = emptyList()
                     )
                 }
-                val messageForLlm = if (_uiState.value.ragEnabled) {
+                val messageForLlm = if (_uiState.value.ragEnabled && contextStrategySnapshot != ContextStrategy.NONE) {
                     ragContext.prompt
                 } else {
                     finalMessage
@@ -695,7 +718,7 @@ class ChatViewModel @Inject constructor(
                     updateTokenEstimates()
                     return@launch
                 }
-                if (_uiState.value.ragEnabled) {
+                if (_uiState.value.ragEnabled && contextStrategySnapshot != ContextStrategy.NONE) {
                     android.util.Log.d(
                         "RAG_DAY23",
                         "FINAL_RAG_PROMPT_PREVIEW=${messageForLlm.previewForLog(2000)}"
@@ -706,8 +729,9 @@ class ChatViewModel @Inject constructor(
                 val requestTokens = TokenCounter.countTokens(messageForLlm)
                 
                 // Build the appropriate history based on the selected context strategy
-                val (effectiveHistory, historyTokens) = when (_uiState.value.selectedContextStrategy) {
-                    ContextStrategy.NO_STRATEGY -> {
+                val (effectiveHistory, historyTokens) = when (contextStrategySnapshot) {
+                    ContextStrategy.NONE -> Pair(emptyList(), 0)
+                    ContextStrategy.FULL_HISTORY -> {
                         buildFullHistory(finalMessage, requestTokens)
                     }
                     ContextStrategy.SLIDING_WINDOW -> {
@@ -734,7 +758,10 @@ class ChatViewModel @Inject constructor(
                     maxTokens = _uiState.value.maxTokens,
                     systemPrompt = _uiState.value.systemPrompt,
                     history = historyForLlm,
-                    invariantsEnabled = _uiState.value.invariantsEnabled
+                    invariantsEnabled = _uiState.value.invariantsEnabled,
+                    routingAvailable = routingSnapshot.available,
+                    routingEnabled = routingSnapshot.enabled,
+                    modelOverride = routingSnapshot.modelOverride
                 )
 
                 // Send message using ChatAgent with context strategy
@@ -745,14 +772,14 @@ class ChatViewModel @Inject constructor(
                         limitLength = _uiState.value.limitLength,
                         useStopSequence = _uiState.value.useStopSequence,
                         stopSequenceText = _uiState.value.stopSequenceText,
-                        contextStrategy = _uiState.value.selectedContextStrategy,
+                        contextStrategy = contextStrategySnapshot,
                         chatId = sendingChatId,
                         taskContextId = sendingTaskContextId
                     )
                 } else {
                     chatAgent.sendMessage(
                         chatRequest = chatRequest,
-                        contextStrategy = _uiState.value.selectedContextStrategy,
+                        contextStrategy = contextStrategySnapshot,
                         chatId = sendingChatId,
                         taskContextId = sendingTaskContextId
                     )
@@ -813,6 +840,9 @@ class ChatViewModel @Inject constructor(
                             messages = updatedMessages,
                             branches = updatedBranches,
                             ragSourcesByMessageId = updatedRagSources,
+                            routingDebugByMessageId = response.routingDebugMetadata?.let {
+                                _uiState.value.routingDebugByMessageId + (assistantMessage.id to it)
+                            } ?: _uiState.value.routingDebugByMessageId,
                             isLoading = false,
                             // Clear attached file after sending
                             attachedFileName = null,
@@ -1756,7 +1786,7 @@ $limitedConversationText""".trimIndent()
     }
     
     private fun buildFullHistory(finalMessage: String, requestTokens: Int): Pair<List<Message>, Int> {
-        // For NO_STRATEGY, send the full conversation history
+        // For FULL_HISTORY, send the full conversation history
         // Exclude the latest user message to avoid duplication
         val previousMessages = _uiState.value.messages.dropLast(1)
 

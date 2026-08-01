@@ -26,6 +26,7 @@ import javax.inject.Inject
 
 class ChatAgent @Inject constructor(
     private val llmClient: LlmClient,
+    private val chatLlmExecutor: ChatLlmExecutor,
     private val memoryOrchestrator: MemoryOrchestrator,
     private val promptBuilder: PromptBuilder,
     private val invariantRepository: InvariantRepository,
@@ -140,7 +141,10 @@ class ChatAgent @Inject constructor(
             val result = sendValidated(
                 messages = messagesToSend,
                 maxTokens = chatRequest.maxTokens,
-                model = chatRequest.model.modelName,
+                model = chatRequest.modelOverride ?: chatRequest.model.modelName,
+                routingAvailable = chatRequest.routingAvailable,
+                routingEnabled = chatRequest.routingEnabled,
+                contextStrategy = contextStrategy,
                 invariants = invariants
             )
             
@@ -149,11 +153,11 @@ class ChatAgent @Inject constructor(
                 val tokenMetrics = TokenMetrics(
                     currentRequestTokens = currentRequestTokens,
                     historyTokens = historyTokens,
-                    completionTokens = chatResponse.completionTokens
+                    completionTokens = chatResponse.response.completionTokens
                 )
                 
                 // Return the response with token metrics
-                AiChatResponse(chatResponse.message, chatResponse.metadata, tokenMetrics)
+                AiChatResponse(chatResponse.response.message, chatResponse.response.metadata, tokenMetrics, chatResponse.routingMetadata)
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -241,7 +245,10 @@ class ChatAgent @Inject constructor(
             val result = sendValidated(
                 messages = messagesToSend,
                 maxTokens = chatRequest.maxTokens,
-                model = chatRequest.model.modelName,
+                model = chatRequest.modelOverride ?: chatRequest.model.modelName,
+                routingAvailable = chatRequest.routingAvailable,
+                routingEnabled = chatRequest.routingEnabled,
+                contextStrategy = contextStrategy,
                 invariants = invariants
             )
             
@@ -250,11 +257,11 @@ class ChatAgent @Inject constructor(
                 val tokenMetrics = TokenMetrics(
                     currentRequestTokens = currentRequestTokens,
                     historyTokens = historyTokens,
-                    completionTokens = chatResponse.completionTokens
+                    completionTokens = chatResponse.response.completionTokens
                 )
                 
                 // Return the response with token metrics
-                AiChatResponse(chatResponse.message, chatResponse.metadata, tokenMetrics)
+                AiChatResponse(chatResponse.response.message, chatResponse.response.metadata, tokenMetrics, chatResponse.routingMetadata)
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -284,10 +291,10 @@ class ChatAgent @Inject constructor(
         taskContextId: String?,
         contextStrategy: ContextStrategy
     ): MemoryContext? {
-        if (chatId == null) return null
+        if (chatId == null || contextStrategy == ContextStrategy.NONE) return null
 
         val shortTermLimit = when (contextStrategy) {
-            ContextStrategy.NO_STRATEGY -> Int.MAX_VALUE
+            ContextStrategy.FULL_HISTORY -> Int.MAX_VALUE
             else -> 5
         }
 
@@ -319,53 +326,36 @@ class ChatAgent @Inject constructor(
         messages: List<Message>,
         maxTokens: Int?,
         model: String?,
+        routingAvailable: Boolean,
+        routingEnabled: Boolean,
+        contextStrategy: ContextStrategy,
         invariants: List<Invariant>
-    ): Result<ChatResponse> {
-        val firstResponse = llmClient.sendChat(messages, maxTokens, model).getOrElse {
+    ): Result<ChatExecutionResult> {
+        val firstExecution = chatLlmExecutor.execute(messages, maxTokens, model, routingAvailable, routingEnabled, contextStrategy).getOrElse {
             return Result.failure(it)
         }
+        val firstResponse = firstExecution.response
         val firstValidation = invariantValidator.validateResponse(firstResponse.message, invariants)
         Log.d("INVARIANTS", "validation=${firstValidation::class.simpleName}")
-        if (firstValidation is InvariantValidationResult.Pass) {
-            return Result.success(firstResponse)
-        }
+        if (firstValidation is InvariantValidationResult.Pass) return Result.success(firstExecution)
 
         firstValidation as InvariantValidationResult.Fail
         Log.w("INVARIANTS", "violations=${firstValidation.violations.joinToString()}")
         val retryMessages = messages + listOf(
-            Message(
-                id = UUID.randomUUID().toString(),
-                content = firstValidation.originalResponse,
-                role = MessageRole.ASSISTANT
-            ),
-            Message(
-                id = UUID.randomUUID().toString(),
-                content = InvariantResponsePolicy.retryPrompt(firstValidation),
-                role = MessageRole.USER
-            )
+            Message(UUID.randomUUID().toString(), firstValidation.originalResponse, MessageRole.ASSISTANT),
+            Message(UUID.randomUUID().toString(), InvariantResponsePolicy.retryPrompt(firstValidation), MessageRole.USER)
         )
-        val retryResponse = llmClient.sendChat(retryMessages, maxTokens, model).getOrElse {
+        val retryResponse = llmClient.sendChat(retryMessages, maxTokens, firstExecution.finalModel ?: model).getOrElse {
             return Result.failure(it)
         }
-        val retryValidation = invariantValidator.validateResponse(retryResponse.message, invariants)
-        Log.d("INVARIANTS", "validation=${retryValidation::class.simpleName}")
-        return when (retryValidation) {
-            is InvariantValidationResult.Pass -> Result.success(retryResponse)
-            is InvariantValidationResult.Fail -> {
-                Log.w("INVARIANTS", "violations=${retryValidation.violations.joinToString()}")
-                Result.success(
-                    ChatResponse(
-                        message = InvariantResponsePolicy.safeRefusal(
-                            retryValidation.violations,
-                            invariants
-                        ),
-                        completionTokens = retryResponse.completionTokens
-                    )
-                )
-            }
+        return when (val validation = invariantValidator.validateResponse(retryResponse.message, invariants)) {
+            is InvariantValidationResult.Pass -> Result.success(firstExecution.copy(response = retryResponse))
+            is InvariantValidationResult.Fail -> Result.success(firstExecution.copy(response = ChatResponse(
+                message = InvariantResponsePolicy.safeRefusal(validation.violations, invariants),
+                completionTokens = retryResponse.completionTokens
+            )))
         }
     }
-
     private fun List<Message>.withInvariants(invariants: List<Invariant>): List<Message> {
         if (isEmpty() || first().role != MessageRole.SYSTEM) return this
         val section = promptBuilder.buildInvariantSection(invariants)
@@ -391,6 +381,7 @@ class ChatAgent @Inject constructor(
             .orEmpty()
 
         val baseHistory = when {
+            contextStrategy == ContextStrategy.NONE -> emptyList()
             memoryContext == null -> chatRequest.history
             contextStrategy == ContextStrategy.STICKY_FACTS -> chatRequest.history
             contextStrategy == ContextStrategy.BRANCHING -> chatRequest.history

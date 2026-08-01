@@ -1,5 +1,6 @@
 package com.aiassistant.core.network.dto
 
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 
 data class OllamaGenerateRequestDto(
@@ -7,6 +8,7 @@ data class OllamaGenerateRequestDto(
     val prompt: String,
     val system: String? = null,
     val stream: Boolean = false,
+    val format: JsonElement? = null,
     val options: OllamaOptionsDto? = null
 )
 

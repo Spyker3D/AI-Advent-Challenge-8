@@ -1,8 +1,10 @@
 package com.aiassistant.core.network.dto
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OllamaGenerateRequestDtoTest {
@@ -44,5 +46,20 @@ class OllamaGenerateRequestDtoTest {
         )).asJsonObject
 
         assertEquals("qwen2.5:7b-instruct-q5_K_M", json["model"].asString)
+    }
+    @Test
+    fun serializesRoutingSchemaAsJsonObject() {
+        val schema = JsonParser.parseString("""{"type":"object","required":["ambiguity","sufficient_context"],"properties":{"ambiguity":{"enum":["LOW","MEDIUM","HIGH"]},"sufficient_context":{"type":"boolean"}}}""")
+        val json = Gson().toJsonTree(OllamaGenerateRequestDto(
+            model = "llama3.2:3b",
+            prompt = "question",
+            format = schema
+        )).asJsonObject
+
+        assertTrue(json["format"].isJsonObject)
+        val format = json.getAsJsonObject("format")
+        assertEquals("object", format["type"].asString)
+        assertEquals(listOf("LOW", "MEDIUM", "HIGH"), format.getAsJsonObject("properties")
+            .getAsJsonObject("ambiguity")["enum"].asJsonArray.map { it.asString })
     }
 }

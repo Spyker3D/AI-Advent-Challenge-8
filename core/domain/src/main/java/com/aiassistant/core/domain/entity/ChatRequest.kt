@@ -7,5 +7,8 @@ data class ChatRequest(
     val maxTokens: Int,
     val systemPrompt: String? = null,
     val history: List<Message> = emptyList(),
-    val invariantsEnabled: Boolean = true
+    val invariantsEnabled: Boolean = true,
+    val routingAvailable: Boolean = false,
+    val routingEnabled: Boolean = false,
+    val modelOverride: String? = null
 )

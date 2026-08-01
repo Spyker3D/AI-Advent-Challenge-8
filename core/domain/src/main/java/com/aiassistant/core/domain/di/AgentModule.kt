@@ -1,6 +1,7 @@
 package com.aiassistant.core.domain.di
 
 import com.aiassistant.core.domain.agent.ChatAgent
+import com.aiassistant.core.domain.agent.ChatLlmExecutor
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.memory.MemoryOrchestrator
 import com.aiassistant.core.domain.memory.PromptBuilder
@@ -23,6 +24,7 @@ class AgentModule {
     @Singleton
     fun provideChatAgent(
         llmClient: LlmClient,
+        chatLlmExecutor: ChatLlmExecutor,
         memoryOrchestrator: MemoryOrchestrator,
         promptBuilder: PromptBuilder,
         invariantRepository: InvariantRepository,
@@ -31,6 +33,7 @@ class AgentModule {
     ): ChatAgent {
         return ChatAgent(
             llmClient,
+            chatLlmExecutor,
             memoryOrchestrator,
             promptBuilder,
             invariantRepository,

@@ -1,6 +1,8 @@
 package com.aiassistant.feature.chat.presentation
 
 import com.aiassistant.core.domain.entity.AiModel
+import com.aiassistant.core.domain.entity.AiProvider
+import com.aiassistant.core.domain.routing.RoutingDebugMetadata
 import com.aiassistant.core.domain.entity.Message
 import com.aiassistant.core.domain.entity.ContextStrategy
 import com.aiassistant.core.domain.entity.StickyFacts
@@ -15,6 +17,10 @@ data class ChatUiState(
     val messages: List<Message> = emptyList(),
     val isLoading: Boolean = false,
     val selectedModel: AiModel = AiModel.getDefault(),
+    val provider: AiProvider = AiProvider.OPENAI,
+    val localModel: String = "qwen2.5:7b-instruct",
+    val routingEnabled: Boolean = false,
+    val routingDebugByMessageId: Map<String, RoutingDebugMetadata> = emptyMap(),
     val temperature: Float = 0.7f,
     val maxTokens: Int = 1000,
     val systemPrompt: String = "You are a helpful AI assistant.",
