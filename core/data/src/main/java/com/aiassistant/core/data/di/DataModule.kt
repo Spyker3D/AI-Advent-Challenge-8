@@ -28,6 +28,8 @@ import com.aiassistant.core.domain.repository.WorkingMemoryRepository
 import com.aiassistant.core.domain.repository.PrivateVpsConnectionTester
 import com.aiassistant.core.domain.support.SupportKnowledgeProvider
 import com.aiassistant.core.domain.support.SupportTicketProvider
+import com.aiassistant.core.domain.routing.RoutingDiagnosticsLogger
+import com.aiassistant.core.data.routing.AndroidRoutingDiagnosticsLogger
 import com.aiassistant.core.data.support.AssetSupportKnowledgeProvider
 import com.aiassistant.core.data.support.McpSupportTicketProvider
 import com.aiassistant.core.data.repository.PrivateVpsConnectionTesterImpl
@@ -73,6 +75,11 @@ abstract class DataModule {
     abstract fun bindLlmClient(
         llmClientImpl: LlmClientImpl
     ): LlmClient
+
+    @Binds
+    abstract fun bindRoutingDiagnosticsLogger(
+        logger: AndroidRoutingDiagnosticsLogger
+    ): RoutingDiagnosticsLogger
 
     @Binds
     abstract fun bindRagIndexLoader(

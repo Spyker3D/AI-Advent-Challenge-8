@@ -1,0 +1,30 @@
+{"id":"correct_001","category":"correct","input":"Телефон находится в авиарежиме, поэтому запрос не отправляется.","expected":"NETWORK_UNAVAILABLE"}
+{"id":"correct_002","category":"correct","input":"Приложение сообщает, что подключение к интернету отсутствует.","expected":"NETWORK_UNAVAILABLE"}
+{"id":"correct_003","category":"correct","input":"Не удалось отправить запрос: сеть недоступна.","expected":"NETWORK_UNAVAILABLE"}
+{"id":"correct_004","category":"correct","input":"Сервер вернул HTTP 429 Too Many Requests.","expected":"OPENAI_RATE_LIMIT"}
+{"id":"correct_005","category":"correct","input":"Превышен лимит запросов к OpenAI API.","expected":"OPENAI_RATE_LIMIT"}
+{"id":"correct_006","category":"correct","input":"Слишком много запросов, повторите попытку позже.","expected":"OPENAI_RATE_LIMIT"}
+{"id":"correct_007","category":"correct","input":"Запрос выполнялся слишком долго и завершился по тайм-ауту.","expected":"OPENAI_TIMEOUT"}
+{"id":"correct_008","category":"correct","input":"Истекло время ожидания ответа OpenAI.","expected":"OPENAI_TIMEOUT"}
+{"id":"correct_009","category":"correct","input":"Ассистент вернул пустое сообщение без текста.","expected":"EMPTY_AI_RESPONSE"}
+{"id":"correct_010","category":"correct","input":"Локальная история чатов не загрузилась из базы данных.","expected":"LOCAL_HISTORY_UNAVAILABLE"}
+{"id":"boundary_001","category":"boundary","input":"Запрос долго выполнялся, а затем появилось сообщение о превышении лимита запросов.","expected":"OPENAI_RATE_LIMIT"}
+{"id":"boundary_002","category":"boundary","input":"Сначала пропала сеть, после восстановления запрос завершился по тайм-ауту.","expected":null}
+{"id":"boundary_003","category":"boundary","input":"История открылась, но часть локальных сообщений отсутствует.","expected":null}
+{"id":"boundary_004","category":"boundary","input":"Ответ ассистента появился, но содержал только пробелы и переносы строк.","expected":"EMPTY_AI_RESPONSE"}
+{"id":"boundary_005","category":"boundary","input":"Приложение не получило ответ, возможно из-за сети или слишком долгого ожидания.","expected":null}
+{"id":"boundary_006","category":"boundary","input":"Сервер временно не отвечает и предлагает повторить запрос позднее.","expected":null}
+{"id":"boundary_007","category":"boundary","input":"После ошибки 429 запрос продолжил выполняться и затем завершился по тайм-ауту.","expected":null}
+{"id":"boundary_008","category":"boundary","input":"История чата отображается пустой, хотя локальный файл существует.","expected":null}
+{"id":"boundary_009","category":"boundary","input":"Соединение было нестабильным, но точная причина отмены запроса неизвестна.","expected":null}
+{"id":"boundary_010","category":"boundary","input":"Модель прислала ответ, но поле с текстом оказалось пустым.","expected":"EMPTY_AI_RESPONSE"}
+{"id":"noisy_001","category":"noisy","input":"кароч запрос не идет инета походу нет","expected":"NETWORK_UNAVAILABLE"}
+{"id":"noisy_002","category":"noisy","input":"429 опять вылезло, слишком много запросов типа","expected":"OPENAI_RATE_LIMIT"}
+{"id":"noisy_003","category":"noisy","input":"ждал ждал и всё timeout","expected":"OPENAI_TIMEOUT"}
+{"id":"noisy_004","category":"noisy","input":"ответ есть но там вообще ничего пустота","expected":"EMPTY_AI_RESPONSE"}
+{"id":"noisy_005","category":"noisy","input":"чаты после рестарта пропали локально не грузяца","expected":"LOCAL_HISTORY_UNAVAILABLE"}
+{"id":"noisy_006","category":"noisy","input":"эээ сеть вроде была потом нет потом запрос умер хз","expected":null}
+{"id":"noisy_007","category":"noisy","input":"429 или timeout не понял слишком долго и потом ошибка","expected":null}
+{"id":"noisy_008","category":"noisy","input":"!!! empty response ??? но приложение ещё пишет network problem","expected":null}
+{"id":"noisy_009","category":"noisy","input":"historiya chatov ne gruzitsya iz local storage","expected":"LOCAL_HISTORY_UNAVAILABLE"}
+{"id":"noisy_010","category":"noisy","input":"ошбка какаята запрос тютю","expected":null}

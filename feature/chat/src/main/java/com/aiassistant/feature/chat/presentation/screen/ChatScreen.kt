@@ -109,7 +109,10 @@ import com.aiassistant.core.domain.mcp.McpExecutionLogItem
 import com.aiassistant.core.domain.mcp.McpExecutionStatus
 import com.aiassistant.core.ui.components.LoadingIndicator
 import com.aiassistant.core.ui.components.MessageBubble
+import com.aiassistant.core.domain.entity.AiProvider
+import com.aiassistant.feature.chat.BuildConfig
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
+import com.aiassistant.feature.chat.presentation.routing.isRoutingToggleVisible
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.presentation.viewmodel.ChatViewModel
 import com.aiassistant.feature.chat.calendar.CalendarDateTime
@@ -355,10 +358,20 @@ fun ChatScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(
-                            text = "AI Assistant",
-                            style = MaterialTheme.typography.headlineSmall
-                        )
+                        Column {
+                            Text(text = "AI Assistant", style = MaterialTheme.typography.headlineSmall)
+                            if (isRoutingToggleVisible(uiState.provider)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (uiState.routingEnabled) "Routing: ON" else "Routing: OFF", style = MaterialTheme.typography.labelMedium)
+                                    Switch(
+                                        checked = uiState.routingEnabled,
+                                        enabled = !uiState.isLoading,
+                                        onCheckedChange = { viewModel.handleEvent(ChatUiEvent.RoutingToggled(it)) },
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                }
+                            }
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = {
@@ -477,8 +490,16 @@ fun ChatScreen(
                     selectedStrategy = uiState.selectedContextStrategy,
                     onStrategySelected = { strategy ->
                         viewModel.handleEvent(ChatUiEvent.ContextStrategySelected(strategy))
-                    }
+                    },
+                    enabled = !uiState.isLoading
                 )
+                if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.NONE) {
+                    Text(
+                        "Only the current request will be sent to the model without previous history.",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
 
                 // Branching Strategy UI
                 if (uiState.selectedContextStrategy == com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING) {
@@ -767,6 +788,14 @@ fun ChatScreen(
                                             }
                                         }
                                         if (message.role == com.aiassistant.core.domain.entity.MessageRole.ASSISTANT) {
+                                            if (BuildConfig.DEBUG) {
+                                                uiState.routingDebugByMessageId[message.id]?.let { metadata ->
+                                                    RoutingDebugBlock(
+                                                        metadata = metadata,
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                                    )
+                                                }
+                                            }
                                             uiState.ragSourcesByMessageId[message.id]?.takeIf { it.isNotEmpty() }?.let { sources ->
                                                 RagSourcesBlock(
                                                     sources = sources,
@@ -1159,7 +1188,8 @@ fun TokenMetricsMessage(
                 contextStrategy?.let { strategy ->
                     Text(
                                                 text = "Context Strategy: ${when (strategy) {
-                            com.aiassistant.core.domain.entity.ContextStrategy.NO_STRATEGY -> "Full History"
+                            com.aiassistant.core.domain.entity.ContextStrategy.NONE -> "No context"
+                            com.aiassistant.core.domain.entity.ContextStrategy.FULL_HISTORY -> "Full History"
                             com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
                             com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
                             com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
@@ -1284,7 +1314,8 @@ fun getFileName(context: android.content.Context, uri: Uri): String {
 @Composable
 fun ContextStrategySelector(
     selectedStrategy: com.aiassistant.core.domain.entity.ContextStrategy,
-    onStrategySelected: (com.aiassistant.core.domain.entity.ContextStrategy) -> Unit
+    onStrategySelected: (com.aiassistant.core.domain.entity.ContextStrategy) -> Unit,
+    enabled: Boolean = true
 ) {
     Card(
         modifier = Modifier
@@ -1309,7 +1340,8 @@ fun ContextStrategySelector(
                         label = {
                             Text(
                                 text = when (strategy) {
-                                    com.aiassistant.core.domain.entity.ContextStrategy.NO_STRATEGY -> "Full History"
+                                    com.aiassistant.core.domain.entity.ContextStrategy.NONE -> "No context"
+                            com.aiassistant.core.domain.entity.ContextStrategy.FULL_HISTORY -> "Full History"
                                     com.aiassistant.core.domain.entity.ContextStrategy.SLIDING_WINDOW -> "Sliding Window"
                                     com.aiassistant.core.domain.entity.ContextStrategy.STICKY_FACTS -> "Sticky Facts"
                                     com.aiassistant.core.domain.entity.ContextStrategy.BRANCHING -> "Branching"
@@ -1318,7 +1350,7 @@ fun ContextStrategySelector(
                             )
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = selectedStrategy != strategy
+                        enabled = enabled && selectedStrategy != strategy
                     )
                 }
             }

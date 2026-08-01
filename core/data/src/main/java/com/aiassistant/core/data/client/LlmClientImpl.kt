@@ -1,9 +1,11 @@
 package com.aiassistant.core.data.client
 
 import android.util.Log
+import com.google.gson.JsonParser
 import com.aiassistant.core.data.BuildConfig
 import com.aiassistant.core.domain.agent.ChatResponse
 import com.aiassistant.core.domain.agent.LlmClient
+import com.aiassistant.core.domain.agent.LlmRequestOptions
 import com.aiassistant.core.domain.entity.AiProvider
 import com.aiassistant.core.domain.entity.ChatSettings
 import com.aiassistant.core.domain.entity.Message
@@ -51,11 +53,16 @@ class LlmClientImpl @Inject constructor(
         private const val TAG = "OpenAiRequest"
     }
 
-    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> = withContext(Dispatchers.IO) {
-        val settings = settingsRepository.getChatSettings().first()
+    override suspend fun sendChat(messages: List<Message>, maxTokens: Int?, model: String?): Result<ChatResponse> =
+        sendChat(messages, maxTokens, model, LlmRequestOptions())
+
+    override suspend fun sendChat(
+        messages: List<Message>, maxTokens: Int?, model: String?, options: LlmRequestOptions
+    ): Result<ChatResponse> = withContext(Dispatchers.IO) {
+        val settings = settingsDataStore.chatSettings.first()
         when (settings.provider) {
             AiProvider.OPENAI -> sendViaOpenAi(messages, maxTokens, model, settings)
-            AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages)
+            AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages, model, settings, options)
             AiProvider.PRIVATE_VPS -> sendViaPrivateVps(messages, maxTokens, settings)
         }
     }
@@ -114,10 +121,14 @@ class LlmClientImpl @Inject constructor(
         else -> "OpenAI отклонил запрос (HTTP $code)."
     }
 
-    private suspend fun sendViaOllama(messages: List<Message>): Result<ChatResponse> {
-        val settings = settingsRepository.getChatSettings().first()
+    private suspend fun sendViaOllama(
+        messages: List<Message>,
+        modelOverride: String?,
+        settings: ChatSettings,
+        requestOptions: LlmRequestOptions
+    ): Result<ChatResponse> {
         val baseUrl = settings.localBaseUrl.ifBlank { ChatSettings.DEFAULT_LOCAL_BASE_URL }
-        val model = settings.localModel.ifBlank { ChatSettings.DEFAULT_LOCAL_MODEL }
+        val model = selectOllamaModel(modelOverride, settings.localModel)
 
         return try {
             val systemPrompt = messages
@@ -129,9 +140,17 @@ class LlmClientImpl @Inject constructor(
                 OllamaGenerateRequestDto(
                     model = model,
                     prompt = prompt,
-                    system = settings.localSystemPrompt.takeIf { it.isNotBlank() } ?: systemPrompt,
-                    stream = false,
-                    options = settings.toOllamaOptionsDto()
+                    system = if (modelOverride.isNullOrBlank()) {
+                        settings.localSystemPrompt.takeIf { it.isNotBlank() } ?: systemPrompt
+                    } else {
+                        systemPrompt ?: settings.localSystemPrompt.takeIf { it.isNotBlank() }
+                    },
+                    stream = requestOptions.stream ?: false,
+                    format = requestOptions.toOllamaFormat(),
+                    options = settings.toOllamaOptionsDto().copy(
+                        temperature = requestOptions.temperature ?: settings.toOllamaOptionsDto().temperature,
+                        numPredict = requestOptions.numPredict ?: settings.toOllamaOptionsDto().numPredict
+                    )
                 )
             )
             val assistantMessage = response.response.trim()
@@ -168,9 +187,14 @@ class LlmClientImpl @Inject constructor(
         } catch (e: SocketTimeoutException) {
             Result.failure(Exception(OllamaErrorFormatter.timeout()))
         } catch (e: HttpException) {
-            Result.failure(
-                Exception(OllamaErrorFormatter.httpError(e.code(), e.message(), model))
-            )
+            val message = if (e.code() == 404) {
+                ollamaModelNotFoundMessage(model)
+            } else {
+                "Ollama HTTP ${e.code()}: ${e.message()}"
+            }
+            Result.failure(Exception(message))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(Exception(OllamaErrorFormatter.connectionError(baseUrl), e))
         }
@@ -222,3 +246,4 @@ class LlmClientImpl @Inject constructor(
     }
 
 }
+internal fun LlmRequestOptions.toOllamaFormat() = jsonSchema?.let(JsonParser::parseString)

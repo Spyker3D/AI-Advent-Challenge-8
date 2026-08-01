@@ -1,0 +1,49 @@
+Model: qwen2.5:7b-instruct
+Mode: controlled
+Examples: 30
+
+Accepted: 22
+Unsure: 7
+Failed: 1
+Rejected total: 8/30 = 26.67%
+
+Correct accepted predictions: 19
+Incorrect accepted predictions: 0
+
+Examples requiring repeated inference: 30/30 = 100.00%
+Format retries: 1
+Self-check calls: 21
+Total model calls: 68
+Average model calls per example: 2.27
+
+Average latency: 6552.00 ms
+Median latency: 5745.53 ms
+P95 latency: 8898.43 ms
+
+Ambiguous examples:
+  Total: 11
+  Accepted: 3
+  Rejected: 8
+  Rejection rate: 8/11 = 72.73%
+
+Prompt tokens: 25400
+Completion tokens: 4077
+Estimated local model cost: $0.00
+
+Results by category:
+  correct: total=10, accepted=10, rejected=0
+  boundary: total=10, accepted=6, rejected=4
+  noisy: total=10, accepted=6, rejected=4
+
+Incorrect accepted examples:
+  None
+
+Rejected examples:
+  boundary_005: status=UNSURE, reason=NO_CONSENSUS
+  boundary_006: status=UNSURE, reason=NO_CONSENSUS
+  boundary_007: status=UNSURE, reason=NO_CONSENSUS
+  boundary_009: status=UNSURE, reason=NO_CONSENSUS
+  noisy_006: status=UNSURE, reason=NO_CONSENSUS
+  noisy_007: status=UNSURE, reason=NO_CONSENSUS
+  noisy_008: status=UNSURE, reason=NO_CONSENSUS
+  noisy_010: status=FAIL, reason=FORMAT_ERROR

@@ -12,6 +12,7 @@ import com.aiassistant.core.domain.entity.AiProvider
 import androidx.datastore.preferences.preferencesDataStore
 import com.aiassistant.core.domain.entity.AiModel
 import com.aiassistant.core.domain.entity.ChatSettings
+import com.aiassistant.core.domain.entity.ContextStrategy
 import com.aiassistant.core.data.config.ApiConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -54,7 +55,7 @@ class SettingsDataStore @Inject constructor(
         // Context compression fields
         val USE_CONTEXT_COMPRESSION = androidx.datastore.preferences.core.booleanPreferencesKey("use_context_compression")
         val KEEP_LAST_MESSAGES_COUNT = intPreferencesKey("keep_last_messages_count")
-        val CONVERSATION_SUMMARY = stringPreferencesKey("conversation_summary")
+        val CONTEXT_STRATEGY = stringPreferencesKey("context_strategy")
     }
 
     val chatSettings: Flow<ChatSettings> = context.dataStore.data.map { preferences ->
@@ -106,7 +107,7 @@ class SettingsDataStore @Inject constructor(
             // Context compression fields
             useContextCompression = preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] ?: false,
             keepLastMessagesCount = preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] ?: 6,
-            conversationSummary = preferences[PreferencesKeys.CONVERSATION_SUMMARY].orEmpty()
+            contextStrategy = ContextStrategy.fromStoredValue(preferences[PreferencesKeys.CONTEXT_STRATEGY])
         )
     }
 
@@ -142,7 +143,7 @@ class SettingsDataStore @Inject constructor(
             // Context compression fields
             preferences[PreferencesKeys.USE_CONTEXT_COMPRESSION] = settings.useContextCompression
             preferences[PreferencesKeys.KEEP_LAST_MESSAGES_COUNT] = settings.keepLastMessagesCount
-            preferences[PreferencesKeys.CONVERSATION_SUMMARY] = settings.conversationSummary
+            preferences[PreferencesKeys.CONTEXT_STRATEGY] = settings.contextStrategy.name
         }
     }
 
