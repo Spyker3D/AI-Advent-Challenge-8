@@ -17,11 +17,11 @@ class ProjectFileAgentIntegrationTest {
         root.resolve("tickets.json").writeText("[]")
         val output = root.resolve("docs/generated/support-assistant-usage.md")
 
-        val dry = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true).execute("Найди все использования SupportAssistantService и создай отчёт") { error("must not confirm") }
+        val dry = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true, maxIterations = 10).execute("Найди все использования SupportAssistantService и создай отчёт") { error("must not confirm") }
         assertContains(dry.diff, "support-assistant-usage.md"); assertFalse(Files.exists(output)); assertTrue(dry.iterations >= 6)
 
         var asked = false
-        val saved = ProjectFileAgent(root, ProjectFileTools(root), dryRun = false).execute("Найди все использования SupportAssistantService и создай отчёт") { asked = true; true }
+        val saved = ProjectFileAgent(root, ProjectFileTools(root), dryRun = false, maxIterations = 10).execute("Найди все использования SupportAssistantService и создай отчёт") { asked = true; true }
         assertTrue(asked); assertEquals(listOf("docs/generated/support-assistant-usage.md"), saved.changedFiles)
         assertContains(output.readText(), "SampleScreen.kt")
     }
@@ -31,7 +31,7 @@ class ProjectFileAgentIntegrationTest {
         root.resolve("OpenAiClient.kt").writeText("class OpenAiClient // OpenAI API")
         root.resolve("ApiConfig.kt").writeText("const val URL = \"https://api.openai.com/v1\"")
         root.resolve("README.md").writeText("# Sample\nOpenAI")
-        val result = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true).execute("Найди все места, где проект использует OpenAI API, и создай отчёт") { false }
+        val result = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true, maxIterations = 10).execute("Найди все места, где проект использует OpenAI API, и создай отчёт") { false }
         assertContains(result.diff, "docs/generated/openai-api-usage.md")
         assertContains(result.diff, "OpenAiClient.kt")
     }
@@ -44,7 +44,7 @@ class ProjectFileAgentIntegrationTest {
         val misleadingLlm = object : LlmClient {
             override suspend fun generate(instructions: String, input: String) = error("Known alias must not call LLM")
         }
-        val result = ProjectFileAgent(root, ProjectFileTools(root), true, misleadingLlm)
+        val result = ProjectFileAgent(root, ProjectFileTools(root), true, misleadingLlm, maxIterations = 10)
             .execute("Найди все места, где используется API OpenAi и создай отчет.") { false }
         assertContains(result.diff, "docs/generated/openai-api-usage.md")
         assertContains(result.diff, "OpenAiApi.kt")
@@ -55,7 +55,7 @@ class ProjectFileAgentIntegrationTest {
         root.resolve("OpenAiClient.kt").writeText("class OpenAiClient // OpenAI API")
         root.resolve("ApiConfig.kt").writeText("const val OPENAI = \"https://api.openai.com/v1\"")
         root.resolve("README.md").writeText("# Sample")
-        val result = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true).execute("Изучи реализацию OpenAI API и обнови README, чтобы документация соответствовала коду") { false }
+        val result = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true, maxIterations = 10).execute("Изучи реализацию OpenAI API и обнови README, чтобы документация соответствовала коду") { false }
         assertContains(result.diff, "Current implementation: OpenAI API")
         assertFalse(result.diff.contains("support implementation"))
     }
@@ -77,9 +77,25 @@ class ProjectFileAgentIntegrationTest {
 
 The application calls the OpenAI Responses API directly and uses `Authorization: Bearer <key>` (`OpenAiApi.kt:1`). HTTP 400, 401, 403, 429 and server failures are handled by the client (`LlmClientImpl.kt:1`)."""
         }
-        val result = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true, llm = fake).execute("Изучи реализацию OpenAI API и обнови README") { false }
+        val result = ProjectFileAgent(root, ProjectFileTools(root), dryRun = true, llm = fake, maxIterations = 10).execute("Изучи реализацию OpenAI API и обнови README") { false }
         assertContains(result.diff, "calls the OpenAI Responses API directly")
         assertContains(result.diff, "Authorization: Bearer <key>")
         assertContains(result.diff, "HTTP 400, 401, 403, 429")
+    }
+
+    @Test fun `agent stops at configured tool iteration limit and clears staged changes`() = runBlocking {
+        val root = Files.createTempDirectory("day34-agent-limit")
+        root.resolve("SampleService.kt").writeText("class SupportAssistantService")
+        val tools = ProjectFileTools(root)
+        tools.proposeWrite("staged-before-run.md", "must be cleared")
+        val agent = ProjectFileAgent(root, tools, dryRun = true, maxIterations = 1)
+
+        val error = assertFailsWith<IllegalStateException> {
+            agent.execute("Find SupportAssistantService usage") { false }
+        }
+
+        assertContains(error.message.orEmpty(), "MAX_TOOL_ITERATIONS=1")
+        assertTrue(tools.proposedChanges().isEmpty())
+        assertFalse(Files.exists(root.resolve("staged-before-run.md")))
     }
 }

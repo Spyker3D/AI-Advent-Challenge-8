@@ -41,4 +41,25 @@ class ConfigLoaderTest {
         val config = ConfigLoader.load(arrayOf("--project-root=$root"), mapOf("OPENAI_API_KEY" to "environment-key"))
         assertEquals("environment-key", config.openAiApiKey)
     }
+
+    @Test fun `uses default and configured tool iteration limits`() {
+        val root = Files.createTempDirectory("assistant-tool-limit")
+        val environment = mapOf("OPENAI_API_KEY" to "test-key")
+
+        assertEquals(10, ConfigLoader.load(arrayOf("--project-root=$root"), environment).maxToolIterations)
+        assertEquals(3, ConfigLoader.load(arrayOf("--project-root=$root", "--max-tool-iterations=3"), environment).maxToolIterations)
+        assertEquals(4, ConfigLoader.load(arrayOf("--project-root=$root"), environment + ("DEVELOPER_ASSISTANT_MAX_TOOL_ITERATIONS" to "4")).maxToolIterations)
+    }
+
+    @Test fun `rejects non-positive tool iteration limits`() {
+        val root = Files.createTempDirectory("assistant-invalid-tool-limit")
+        val environment = mapOf("OPENAI_API_KEY" to "test-key")
+
+        assertFailsWith<IllegalArgumentException> {
+            ConfigLoader.load(arrayOf("--project-root=$root", "--max-tool-iterations=0"), environment)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ConfigLoader.load(arrayOf("--project-root=$root", "--max-tool-iterations=-1"), environment)
+        }
+    }
 }
