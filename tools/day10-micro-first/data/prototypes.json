@@ -1,0 +1,7 @@
+{
+ "NETWORK_UNAVAILABLE":["Интернет отсутствует","Телефон находится в авиарежиме","Не удалось подключиться к сети","Запрос не отправляется без интернета","Network unavailable","No internet connection","сеть недоступна","cant connect im offline"],
+ "OPENAI_RATE_LIMIT":["Сервер вернул HTTP 429","Превышен лимит запросов","Too Many Requests","Слишком много запросов к API","Повторите попытку позже","OpenAI rate limit exceeded","429 again","апи режет частоту запросов"],
+ "OPENAI_TIMEOUT":["Запрос завершился по тайм-ауту","Истекло время ожидания","Ответ не пришёл вовремя","Request timed out","Сервер слишком долго отвечает","OpenAI response timeout","таймаут","AI request hangs until deadline"],
+ "EMPTY_AI_RESPONSE":["Ассистент вернул пустой ответ","В сообщении нет текста","Ответ состоит только из пробелов","Получен пустой блок","Empty response","AI returned no content","ответ пуст","model output was blank"],
+ "LOCAL_HISTORY_UNAVAILABLE":["Локальная история не загрузилась","После перезапуска пропали чаты","Не удалось прочитать историю из базы","Сообщения не восстанавливаются локально","Local chat history unavailable","Chat database cannot be opened","история чата пропала","old conversations missing on device"]
+}

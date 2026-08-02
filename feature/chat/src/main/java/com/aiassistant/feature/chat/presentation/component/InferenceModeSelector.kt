@@ -19,7 +19,9 @@ import com.aiassistant.core.domain.inference.InferenceMode
 @Composable
 internal fun InferenceModeSelector(
     selectedMode: InferenceMode?,
+    microFirstEnabled: Boolean,
     onModeSelected: (InferenceMode?) -> Unit,
+    onMicroFirstSelected: () -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -28,7 +30,7 @@ internal fun InferenceModeSelector(
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         inferenceModeOptions.forEach { option ->
-            val isSelected = selectedMode == option.mode
+            val isSelected = !microFirstEnabled && selectedMode == option.mode
             OutlinedButton(
                 onClick = { onModeSelected(option.mode) },
                 enabled = enabled,
@@ -42,6 +44,14 @@ internal fun InferenceModeSelector(
                 }
             ) { Text(option.label) }
         }
+        OutlinedButton(
+            onClick = onMicroFirstSelected,
+            enabled = enabled,
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = if (microFirstEnabled) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+            ),
+            modifier = Modifier.semantics { selected = microFirstEnabled; role = Role.RadioButton }
+        ) { Text("Micro first") }
     }
 }
 
