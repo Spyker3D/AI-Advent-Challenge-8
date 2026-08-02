@@ -60,6 +60,9 @@ class LlmClientImpl @Inject constructor(
         messages: List<Message>, maxTokens: Int?, model: String?, options: LlmRequestOptions
     ): Result<ChatResponse> = withContext(Dispatchers.IO) {
         val settings = settingsDataStore.chatSettings.first()
+        providerAffinityFailure(settings.provider, options.requiredProvider)?.let {
+            return@withContext Result.failure(it)
+        }
         when (settings.provider) {
             AiProvider.OPENAI -> sendViaOpenAi(messages, maxTokens, model, settings)
             AiProvider.LOCAL_OLLAMA -> sendViaOllama(messages, model, settings, options)
@@ -247,3 +250,12 @@ class LlmClientImpl @Inject constructor(
 
 }
 internal fun LlmRequestOptions.toOllamaFormat() = jsonSchema?.let(JsonParser::parseString)
+
+internal fun providerAffinityFailure(
+    configuredProvider: AiProvider,
+    requiredProvider: AiProvider?
+): IllegalStateException? = if (requiredProvider != null && configuredProvider != requiredProvider) {
+    IllegalStateException("Required provider $requiredProvider is not active")
+} else {
+    null
+}

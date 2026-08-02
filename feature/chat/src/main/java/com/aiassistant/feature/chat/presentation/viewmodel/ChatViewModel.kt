@@ -44,9 +44,18 @@ import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SendMessageUseCase
+import com.aiassistant.core.domain.usecase.RunInferenceUseCase
+import com.aiassistant.core.domain.inference.InferenceMode
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
 import com.aiassistant.feature.chat.presentation.routing.routingRequestSnapshot
+import com.aiassistant.feature.chat.presentation.inference.inferenceRequestMode
+import com.aiassistant.feature.chat.presentation.inference.normalizeInferenceRouting
+import com.aiassistant.feature.chat.presentation.inference.ownsCurrentMcpExecution
+import com.aiassistant.feature.chat.presentation.inference.selectInferenceMode
+import com.aiassistant.feature.chat.presentation.inference.toggleRouting
+import com.aiassistant.feature.chat.presentation.inference.withInferenceMetadata
+import com.aiassistant.feature.chat.presentation.inference.withInferenceMode
 import com.aiassistant.feature.chat.presentation.ChatUiState
 import com.aiassistant.feature.chat.presentation.RagSourceUi
 import com.aiassistant.feature.chat.calendar.CalendarAssistantService
@@ -67,6 +76,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -131,8 +141,10 @@ class ChatViewModel @Inject constructor(
     private val taskMemoryUpdater: TaskMemoryUpdater,
     private val taskMemoryMerger: TaskMemoryMerger,
     private val calendarAssistant: CalendarAssistantService,
-    private val voiceInputCoordinator: VoiceInputCoordinator
+    private val voiceInputCoordinator: VoiceInputCoordinator,
+    private val runInferenceUseCase: RunInferenceUseCase
 ) : ViewModel(), VoiceInputCoordinator.Observer {
+    private var mcpExecutionGeneration: Long = 0L
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -170,7 +182,7 @@ class ChatViewModel @Inject constructor(
                     useContextCompression = settings.useContextCompression,
                     keepLastMessagesCount = settings.keepLastMessagesCount,
                     selectedContextStrategy = settings.contextStrategy
-                )
+                ).normalizeInferenceRouting()
                 // Update token estimates when settings change
                 updateTokenEstimates()
             }
@@ -236,6 +248,12 @@ class ChatViewModel @Inject constructor(
     
     fun refreshSettings() {
         observeChatSettings()
+    }
+
+    fun setInferenceMode(mode: InferenceMode?) {
+        if (!_uiState.value.isLoading) {
+            _uiState.value = _uiState.value.selectInferenceMode(mode).normalizeInferenceRouting()
+        }
     }
     
         private fun clearChatHistory() {
@@ -497,8 +515,11 @@ class ChatViewModel @Inject constructor(
             }
             is ChatUiEvent.RoutingToggled -> {
                 if (_uiState.value.provider == AiProvider.LOCAL_OLLAMA && !_uiState.value.isLoading) {
-                    _uiState.value = _uiState.value.copy(routingEnabled = event.enabled)
+                    _uiState.value = _uiState.value.toggleRouting(event.enabled)
                 }
+            }
+            is ChatUiEvent.InferenceModeSelected -> {
+                setInferenceMode(event.mode)
             }
             is ChatUiEvent.RagToggled -> {
                 _uiState.value = _uiState.value.copy(ragEnabled = event.enabled)
@@ -588,6 +609,12 @@ class ChatViewModel @Inject constructor(
             routingEnabled = _uiState.value.routingEnabled,
             localModel = _uiState.value.localModel
         )
+        val inferenceModeSnapshot = inferenceRequestMode(
+            provider = _uiState.value.provider,
+            configuredMode = _uiState.value.inferenceMode
+        )
+        val isLocalOrdinarySnapshot = _uiState.value.provider == AiProvider.LOCAL_OLLAMA &&
+            inferenceModeSnapshot == null
                 val sendingChatId = _uiState.value.currentChatId
         val sendingBranchId = _uiState.value.currentBranchId
         val sendingTaskContextId = _uiState.value.chats
@@ -649,6 +676,48 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                if (inferenceModeSnapshot != null) {
+                    val inferenceResult = runInferenceUseCase(finalMessage, inferenceModeSnapshot)
+                    inferenceResult.onSuccess { response ->
+                        val assistantMessage = Message(
+                            id = UUID.randomUUID().toString(),
+                            content = response.finalText,
+                            role = MessageRole.ASSISTANT,
+                            timestamp = System.currentTimeMillis()
+                        )
+                        chatRepository.saveMessage(assistantMessage, sendingChatId)
+                        chatRepository.updateChatMeta(
+                            sendingChatId,
+                            generateChatTitleIfNeeded(finalMessage),
+                            response.finalText.take(80)
+                        )
+                        _uiState.value = _uiState.value.copy(
+                            inferenceModeByMessageId = _uiState.value.inferenceModeByMessageId
+                                .withInferenceMode(assistantMessage.id, inferenceModeSnapshot),
+                            inferenceDebugByMessageId = _uiState.value.inferenceDebugByMessageId
+                                .withInferenceMetadata(assistantMessage.id, response.debugMetadata)
+                        )
+                        if (_uiState.value.currentChatId == sendingChatId) {
+                            _uiState.value = _uiState.value.copy(
+                                messages = _uiState.value.messages + assistantMessage,
+                                branches = updateBranchWithMessage(sendingBranchId, assistantMessage),
+                                isLoading = false,
+                                attachedFileName = null,
+                                attachedFileText = null
+                            )
+                            updateTokenEstimates()
+                        }
+                    }.onFailure { throwable ->
+                        if (throwable is CancellationException) throw throwable
+                        if (_uiState.value.currentChatId == sendingChatId) {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = throwable.message ?: "An unknown error occurred"
+                            )
+                        }
+                    }
+                    return@launch
+                }
                 // For Sticky Facts strategy, update facts before sending message
                 var updatedFacts = _uiState.value.stickyFacts
                 if (contextStrategySnapshot == ContextStrategy.STICKY_FACTS) {
@@ -689,6 +758,13 @@ class ChatViewModel @Inject constructor(
                             sendingChatId,
                             generateChatTitleIfNeeded(finalMessage),
                             assistantMessage.content.take(80)
+                        )
+                    }
+
+                    if (isLocalOrdinarySnapshot) {
+                        _uiState.value = _uiState.value.copy(
+                            inferenceModeByMessageId = _uiState.value.inferenceModeByMessageId
+                                .withInferenceMode(assistantMessage.id, null)
                         )
                     }
 
@@ -815,6 +891,13 @@ class ChatViewModel @Inject constructor(
                             chatRepository.updateChatMeta(sendingChatId, title, preview)
                         }
 
+                        if (isLocalOrdinarySnapshot) {
+                            _uiState.value = _uiState.value.copy(
+                                inferenceModeByMessageId = _uiState.value.inferenceModeByMessageId
+                                    .withInferenceMode(assistantMessage.id, null)
+                            )
+                        }
+
                         if (_uiState.value.currentChatId != sendingChatId) {
                             return@onSuccess
                         }
@@ -866,6 +949,11 @@ class ChatViewModel @Inject constructor(
                             error = throwable.message ?: "An unknown error occurred"
                         )
                     }
+            } catch (e: CancellationException) {
+                if (_uiState.value.currentChatId == sendingChatId) {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                }
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -1154,6 +1242,7 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun sendMcpPipelineMessage(currentMessage: String) {
+        val executionGeneration = ++mcpExecutionGeneration
         val state = _uiState.value
         val chatId = state.currentChatId
         val branchId = state.currentBranchId
@@ -1173,12 +1262,14 @@ class ChatViewModel @Inject constructor(
             branches = updateBranchWithMessage(branchId, userMessage),
             currentMessage = "",
             isLoading = true,
+            isMcpExecutionActive = true,
             error = null
         )
 
         viewModelScope.launch {
-            chatRepository.saveMessage(userMessage, chatId)
-            runCatching {
+            try {
+                chatRepository.saveMessage(userMessage, chatId)
+                runCatching {
                 val pipelineResult = mcpPipelineAgent.run(finalMessage)
                 mcpPipelineAgent.formatChatAnswer(pipelineResult)
             }.onSuccess { assistantText ->
@@ -1203,16 +1294,21 @@ class ChatViewModel @Inject constructor(
                     attachedFileName = null,
                     attachedFileText = null
                 )
-            }.onFailure { throwable ->
+                }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = throwable.message ?: "MCP pipeline failed"
                 )
+                }
+            } finally {
+                finishMcpExecution(executionGeneration)
             }
         }
     }
 
     private fun sendMcpOrchestrationMessage(currentMessage: String) {
+        val executionGeneration = ++mcpExecutionGeneration
         val state = _uiState.value
         val chatId = state.currentChatId
         val branchId = state.currentBranchId
@@ -1235,12 +1331,14 @@ class ChatViewModel @Inject constructor(
             branches = updateBranchWithMessage(branchId, userMessage),
             currentMessage = "",
             isLoading = true,
+            isMcpExecutionActive = true,
             error = null
         )
 
         viewModelScope.launch {
-            chatRepository.saveMessage(userMessage, chatId)
-            runCatching {
+            try {
+                chatRepository.saveMessage(userMessage, chatId)
+                runCatching {
                 val orchestrationResult = mcpOrchestratorAgent.run(
                     userRequest = finalMessage,
                     demoDelayMs = MCP_EXECUTION_DEMO_DELAY_MS,
@@ -1269,7 +1367,8 @@ class ChatViewModel @Inject constructor(
                     attachedFileName = null,
                     attachedFileText = null
                 )
-            }.onFailure { throwable ->
+                }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
                 addMcpExecutionLog(
                     McpExecutionLogItem(
                         timestamp = currentTimestampText(),
@@ -1281,7 +1380,16 @@ class ChatViewModel @Inject constructor(
                     isLoading = false,
                     error = throwable.message ?: "MCP orchestration failed"
                 )
+                }
+            } finally {
+                finishMcpExecution(executionGeneration)
             }
+        }
+    }
+
+    private fun finishMcpExecution(executionGeneration: Long) {
+        if (ownsCurrentMcpExecution(mcpExecutionGeneration, executionGeneration)) {
+            _uiState.value = _uiState.value.copy(isMcpExecutionActive = false)
         }
     }
 

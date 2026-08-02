@@ -9,6 +9,8 @@ import com.aiassistant.core.domain.entity.StickyFacts
 import com.aiassistant.core.domain.entity.ChatBranch
 import com.aiassistant.core.domain.entity.Chat
 import com.aiassistant.core.domain.memory.TaskContext
+import com.aiassistant.core.domain.inference.InferenceDebugMetadata
+import com.aiassistant.core.domain.inference.InferenceMode
 import com.aiassistant.core.domain.mcp.McpExecutionLogItem
 import com.aiassistant.feature.chat.calendar.CalendarUiState
 import com.aiassistant.feature.chat.voice.VoiceInputState
@@ -21,6 +23,9 @@ data class ChatUiState(
     val localModel: String = "qwen2.5:7b-instruct",
     val routingEnabled: Boolean = false,
     val routingDebugByMessageId: Map<String, RoutingDebugMetadata> = emptyMap(),
+    val inferenceMode: InferenceMode? = null,
+    val inferenceModeByMessageId: Map<String, InferenceMode?> = emptyMap(),
+    val inferenceDebugByMessageId: Map<String, InferenceDebugMetadata> = emptyMap(),
     val temperature: Float = 0.7f,
     val maxTokens: Int = 1000,
     val systemPrompt: String = "You are a helpful AI assistant.",
@@ -59,6 +64,7 @@ data class ChatUiState(
     val activeTaskContext: TaskContext? = null,
     val mcpExecutionLogs: List<McpExecutionLogItem> = emptyList(),
     val isMcpExecutionVisible: Boolean = false,
+    val isMcpExecutionActive: Boolean = false,
     val ragEnabled: Boolean = false,
     val day23ImprovedRetrievalEnabled: Boolean = true,
     val ragSourcesByMessageId: Map<String, List<RagSourceUi>> = emptyMap(),
