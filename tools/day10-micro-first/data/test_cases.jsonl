@@ -1,0 +1,30 @@
+{"id":"s01","group":"simple","input":"Нет подключения к интернету","expected_label":"NETWORK_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"s02","group":"simple","input":"I am offline","expected_label":"NETWORK_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"s03","group":"simple","input":"API ответил кодом 429","expected_label":"OPENAI_RATE_LIMIT","expected_route":"MICRO"}
+{"id":"s04","group":"simple","input":"The service is temporarily refusing new calls because its request quota is exhausted.","expected_label":"OPENAI_RATE_LIMIT","expected_route":"MICRO"}
+{"id":"s05","group":"simple","input":"Истек таймаут модели","expected_label":"OPENAI_TIMEOUT","expected_route":"MICRO"}
+{"id":"s06","group":"simple","input":"Waiting for the generated reply ends with an expiration error.","expected_label":"OPENAI_TIMEOUT","expected_route":"MICRO"}
+{"id":"s07","group":"simple","input":"Модель ничего не вернула","expected_label":"EMPTY_AI_RESPONSE","expected_route":"MICRO"}
+{"id":"s08","group":"simple","input":"Blank AI output","expected_label":"EMPTY_AI_RESPONSE","expected_route":"MICRO"}
+{"id":"s09","group":"simple","input":"Исчезла локальная история сообщений","expected_label":"LOCAL_HISTORY_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"s10","group":"simple","input":"My saved chats are gone","expected_label":"LOCAL_HISTORY_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"b01","group":"boundary","input":"инета нет, запрос не ушел","expected_label":"NETWORK_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"b02","group":"boundary","input":"После быстрой серии обращений сервис велел сделать паузу из-за их количества","expected_label":"OPENAI_RATE_LIMIT","expected_route":"MICRO"}
+{"id":"b03","group":"boundary","input":"ждал до дедлайна, соединение активно","expected_label":"OPENAI_TIMEOUT","expected_route":"MICRO"}
+{"id":"b04","group":"boundary","input":"ответ — одни пробелы","expected_label":"EMPTY_AI_RESPONSE","expected_route":"MICRO"}
+{"id":"b05","group":"boundary","input":"новые сообщения есть, старые локальные диалоги не открываются","expected_label":"LOCAL_HISTORY_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"b06","group":"boundary","input":"запрос завис, потом показало 429","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"b07","group":"boundary","input":"то ли сеть, то ли сервер долго думает","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"b08","group":"boundary","input":"неясно, история пропала или модель молчит","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"b09","group":"boundary","input":"ошибка помощника","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"b10","group":"boundary","input":"Попробуйте снова позже","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"c01","group":"complex-noisy","input":"В метро авиарежим; отправка вопроса сообщает, что соединения нет.","expected_label":"NETWORK_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"c02","group":"complex-noisy","input":"After a burst of prompts every call gets 429 and asks to retry later.","expected_label":"OPENAI_RATE_LIMIT","expected_route":"MICRO"}
+{"id":"c03","group":"complex-noisy","input":"интирнет работает но модель очинь долго молчала и срок ожидания уже истек","expected_label":"OPENAI_TIMEOUT","expected_route":"MICRO"}
+{"id":"c04","group":"complex-noisy","input":"Generation succeeds, yet the assistant bubble contains only whitespace.","expected_label":"EMPTY_AI_RESPONSE","expected_route":"MICRO"}
+{"id":"c05","group":"complex-noisy","input":"После обновления новые чаты создаются, сохранённые разговоры не читаются.","expected_label":"LOCAL_HISTORY_UNAVAILABLE","expected_route":"MICRO"}
+{"id":"c06","group":"complex-noisy","input":"Wi-Fi died while OpenAI was slow; timeout or offline is unclear.","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"c07","group":"complex-noisy","input":"Сначала ограничение частоты, затем пустой ответ; причина непонятна.","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"c08","group":"complex-noisy","input":"После рестарта сообщения пустые: база или пустой ответ модели.","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"c09","group":"complex-noisy","input":"памагите оно долго думало и ничиво не написало","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}
+{"id":"c10","group":"complex-noisy","input":"Several things failed; operation could not be completed.","expected_label":"AMBIGUOUS","expected_route":"FALLBACK"}

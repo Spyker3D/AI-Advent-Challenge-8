@@ -12,6 +12,7 @@ import com.aiassistant.core.domain.memory.TaskContext
 import com.aiassistant.core.domain.inference.InferenceDebugMetadata
 import com.aiassistant.core.domain.inference.InferenceMode
 import com.aiassistant.core.domain.mcp.McpExecutionLogItem
+import com.aiassistant.core.domain.microfirst.MicroFirstResult
 import com.aiassistant.feature.chat.calendar.CalendarUiState
 import com.aiassistant.feature.chat.voice.VoiceInputState
 
@@ -26,6 +27,8 @@ data class ChatUiState(
     val inferenceMode: InferenceMode? = null,
     val inferenceModeByMessageId: Map<String, InferenceMode?> = emptyMap(),
     val inferenceDebugByMessageId: Map<String, InferenceDebugMetadata> = emptyMap(),
+    val microFirstEnabled: Boolean = false,
+    val microFirstResultByMessageId: Map<String, MicroFirstResult> = emptyMap(),
     val temperature: Float = 0.7f,
     val maxTokens: Int = 1000,
     val systemPrompt: String = "You are a helpful AI assistant.",

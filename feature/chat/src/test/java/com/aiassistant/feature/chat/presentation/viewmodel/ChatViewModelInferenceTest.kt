@@ -28,6 +28,8 @@ import com.aiassistant.core.domain.usecase.ClearChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatHistoryUseCase
 import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.RunInferenceUseCase
+import com.aiassistant.core.domain.usecase.RunMicroFirstInferenceUseCase
+import com.aiassistant.core.domain.microfirst.MicroFirstResult
 import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SendMessageUseCase
 import com.aiassistant.feature.chat.calendar.CalendarAssistantService
@@ -99,6 +101,45 @@ class ChatViewModelInferenceTest {
         fixture.viewModel.handleEvent(ChatUiEvent.RoutingToggled(true))
         assertTrue(fixture.viewModel.uiState.value.routingEnabled)
         assertNull(fixture.viewModel.uiState.value.inferenceMode)
+
+        fixture.viewModel.handleEvent(ChatUiEvent.MicroFirstToggled(true))
+        assertTrue(fixture.viewModel.uiState.value.microFirstEnabled)
+        assertFalse(fixture.viewModel.uiState.value.routingEnabled)
+        assertNull(fixture.viewModel.uiState.value.inferenceMode)
+
+        fixture.viewModel.handleEvent(ChatUiEvent.RoutingToggled(true))
+        assertFalse(fixture.viewModel.uiState.value.microFirstEnabled)
+    }
+
+    @Test
+    fun `micro first uses current input only and binds result to persisted assistant`() = runTest(dispatcher) {
+        val fixture = fixture(AiProvider.LOCAL_OLLAMA)
+        fixture.viewModel.handleEvent(ChatUiEvent.MicroFirstToggled(true))
+        fixture.viewModel.handleEvent(ChatUiEvent.FileAttached("note.txt", "attachment"))
+        val result = microFirstResult(fallback = false)
+        whenever(fixture.microFirst.invoke(any())).thenReturn(Result.success(result))
+
+        fixture.send("incident")
+        advanceUntilIdle()
+
+        verify(fixture.microFirst).invoke("incident")
+        verify(fixture.chatAgent, never()).sendMessage(any(), any(), anyOrNull(), anyOrNull())
+        verify(fixture.inference, never()).invoke(any(), any())
+        val captor = argumentCaptor<Message>()
+        verify(fixture.repository, times(2)).saveMessage(captor.capture(), any())
+        val assistant = captor.allValues.single { it.role == MessageRole.ASSISTANT }
+        assertEquals(result, fixture.viewModel.uiState.value.microFirstResultByMessageId[assistant.id])
+    }
+
+    @Test
+    fun `micro first fallback result is returned without ordinary agent`() = runTest(dispatcher) {
+        val fixture = fixture(AiProvider.LOCAL_OLLAMA)
+        fixture.viewModel.handleEvent(ChatUiEvent.MicroFirstToggled(true))
+        whenever(fixture.microFirst.invoke(any())).thenReturn(Result.success(microFirstResult(fallback = true)))
+        fixture.send("incident")
+        advanceUntilIdle()
+        assertEquals("fallback", fixture.viewModel.uiState.value.messages.last().content)
+        verify(fixture.chatAgent, never()).sendMessage(any(), any(), anyOrNull(), anyOrNull())
     }
 
     @Test
@@ -139,11 +180,14 @@ class ChatViewModelInferenceTest {
             val fixture = fixture(provider)
             fixture.viewModel.setInferenceMode(InferenceMode.MONOLITHIC)
             assertNull(fixture.viewModel.uiState.value.inferenceMode)
+            fixture.viewModel.handleEvent(ChatUiEvent.MicroFirstToggled(true))
+            assertFalse(fixture.viewModel.uiState.value.microFirstEnabled)
             whenever(fixture.chatAgent.sendMessage(any(), any(), anyOrNull(), anyOrNull()))
                 .thenReturn(Result.success(AiChatResponse("ordinary", null)))
             fixture.send("hello")
             advanceUntilIdle()
             verify(fixture.inference, never()).invoke(any(), any())
+            verify(fixture.microFirst, never()).invoke(any())
             verify(fixture.chatAgent).sendMessage(any(), any(), anyOrNull(), anyOrNull())
         }
     }
@@ -152,6 +196,7 @@ class ChatViewModelInferenceTest {
     fun `MCP completion and failure restore selector eligibility`() = runTest(dispatcher) {
         listOf(false, true).forEach { fails ->
             val fixture = fixture(AiProvider.LOCAL_OLLAMA, mcpPipelineHandles = true)
+            fixture.viewModel.handleEvent(ChatUiEvent.MicroFirstToggled(true))
             if (fails) {
                 whenever(fixture.mcpPipeline.run(any())).thenThrow(IllegalStateException("failed"))
             } else {
@@ -162,6 +207,8 @@ class ChatViewModelInferenceTest {
 
             fixture.send("weather")
             advanceUntilIdle()
+
+            verify(fixture.microFirst, never()).invoke(any())
 
             assertFalse(fixture.viewModel.uiState.value.isMcpExecutionActive)
             assertTrue(
@@ -242,6 +289,7 @@ class ChatViewModelInferenceTest {
         val repository = mock<ChatRepository>()
         val chatAgent = mock<ChatAgent>()
         val inference = mock<RunInferenceUseCase>()
+        val microFirst = mock<RunMicroFirstInferenceUseCase>()
         val settings = mock<GetChatSettingsUseCase>()
         val history = mock<GetChatHistoryUseCase>()
         val chatA = Chat("chat-a", "A", 0, 0)
@@ -262,10 +310,10 @@ class ChatViewModelInferenceTest {
             mock<RagIndexLoader>(), mock<RagEmbeddingClient>(), mock<RagRetriever>(), mock<RagPromptBuilder>(),
             mock<QueryRewriter>(), mock<TaskMemoryUpdater>(), mock<TaskMemoryMerger>(),
             mock<CalendarAssistantService> { on { canHandle(any()) }.thenReturn(false) },
-            mock<VoiceInputCoordinator>(), inference
+            mock<VoiceInputCoordinator>(), inference, microFirst
         )
         advanceUntilIdle()
-        return Fixture(viewModel, repository, chatAgent, inference, history, mcpPipeline)
+        return Fixture(viewModel, repository, chatAgent, inference, microFirst, history, mcpPipeline)
     }
 
     private fun Fixture.send(text: String) {
@@ -278,11 +326,25 @@ class ChatViewModelInferenceTest {
         InferenceDebugMetadata(mode, null, null, emptyList(), 1, 1, true)
     )
 
+    private fun microFirstResult(fallback: Boolean) = MicroFirstResult(
+        finalText = if (fallback) "fallback" else "micro",
+        handledByMicro = !fallback,
+        fallbackUsed = fallback,
+        microResult = null,
+        fallbackModel = if (fallback) "large" else null,
+        microLatencyMs = 1,
+        fallbackLatencyMs = if (fallback) 2 else null,
+        totalLatencyMs = if (fallback) 3 else 1,
+        largeLlmCalls = if (fallback) 1 else 0,
+        fallbackReason = null
+    )
+
     private data class Fixture(
         val viewModel: ChatViewModel,
         val repository: ChatRepository,
         val chatAgent: ChatAgent,
         val inference: RunInferenceUseCase,
+        val microFirst: RunMicroFirstInferenceUseCase,
         val history: GetChatHistoryUseCase,
         val mcpPipeline: McpPipelineAgent
     )

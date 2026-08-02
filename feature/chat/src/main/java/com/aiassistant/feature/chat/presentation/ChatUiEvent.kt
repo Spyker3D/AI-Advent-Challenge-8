@@ -32,6 +32,7 @@ sealed class ChatUiEvent {
     data class RagToggled(val enabled: Boolean) : ChatUiEvent()
     data class RoutingToggled(val enabled: Boolean) : ChatUiEvent()
     data class InferenceModeSelected(val mode: InferenceMode?) : ChatUiEvent()
+    data class MicroFirstToggled(val enabled: Boolean) : ChatUiEvent()
     data class Day23ImprovedRetrievalToggled(val enabled: Boolean) : ChatUiEvent()
 
     object PauseTask : ChatUiEvent()

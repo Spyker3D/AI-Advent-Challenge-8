@@ -40,6 +40,7 @@ android {
 }
 
 android.sourceSets["main"].assets.srcDir("../../support-knowledge")
+android.sourceSets["main"].assets.srcDir("../../tools/day10-micro-first/data")
 
 dependencies {
     implementation(project(":core:domain"))

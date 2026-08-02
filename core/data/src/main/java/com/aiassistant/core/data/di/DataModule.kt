@@ -9,6 +9,8 @@ import com.aiassistant.core.data.datastore.SettingsDataStore
 import com.aiassistant.core.data.config.ApiConfig
 import com.aiassistant.core.data.mapper.ChatMessageMapper
 import com.aiassistant.core.data.mcp.McpAgentRepositoryImpl
+import com.aiassistant.core.data.microfirst.AssetMicroPrototypeProvider
+import com.aiassistant.core.data.microfirst.OllamaEmbeddingClient
 import com.aiassistant.core.data.rag.AndroidOllamaEmbeddingClient
 import com.aiassistant.core.data.rag.AndroidRagIndexLoader
 import com.aiassistant.core.data.repository.ChatRepositoryImpl
@@ -18,6 +20,8 @@ import com.aiassistant.core.data.repository.SettingsRepositoryImpl
 import com.aiassistant.core.data.repository.WorkingMemoryRepositoryImpl
 import com.aiassistant.core.domain.agent.LlmClient
 import com.aiassistant.core.domain.mcp.McpAgentRepository
+import com.aiassistant.core.domain.microfirst.EmbeddingClient
+import com.aiassistant.core.domain.microfirst.MicroPrototypeProvider
 import com.aiassistant.core.domain.rag.RagEmbeddingClient
 import com.aiassistant.core.domain.rag.RagIndexLoader
 import com.aiassistant.core.domain.repository.ChatRepository
@@ -90,6 +94,12 @@ abstract class DataModule {
     abstract fun bindRagEmbeddingClient(
         androidOllamaEmbeddingClient: AndroidOllamaEmbeddingClient
     ): RagEmbeddingClient
+
+    @Binds
+    abstract fun bindEmbeddingClient(impl: OllamaEmbeddingClient): EmbeddingClient
+
+    @Binds
+    abstract fun bindMicroPrototypeProvider(impl: AssetMicroPrototypeProvider): MicroPrototypeProvider
 
     @Binds
     abstract fun bindPrivateVpsConnectionTester(impl: PrivateVpsConnectionTesterImpl): PrivateVpsConnectionTester

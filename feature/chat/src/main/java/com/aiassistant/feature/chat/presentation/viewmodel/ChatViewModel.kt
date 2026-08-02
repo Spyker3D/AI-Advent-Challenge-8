@@ -45,6 +45,7 @@ import com.aiassistant.core.domain.usecase.GetChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SaveChatSettingsUseCase
 import com.aiassistant.core.domain.usecase.SendMessageUseCase
 import com.aiassistant.core.domain.usecase.RunInferenceUseCase
+import com.aiassistant.core.domain.usecase.RunMicroFirstInferenceUseCase
 import com.aiassistant.core.domain.inference.InferenceMode
 import com.aiassistant.core.domain.util.TokenCounter
 import com.aiassistant.feature.chat.presentation.ChatUiEvent
@@ -53,6 +54,7 @@ import com.aiassistant.feature.chat.presentation.inference.inferenceRequestMode
 import com.aiassistant.feature.chat.presentation.inference.normalizeInferenceRouting
 import com.aiassistant.feature.chat.presentation.inference.ownsCurrentMcpExecution
 import com.aiassistant.feature.chat.presentation.inference.selectInferenceMode
+import com.aiassistant.feature.chat.presentation.inference.selectMicroFirst
 import com.aiassistant.feature.chat.presentation.inference.toggleRouting
 import com.aiassistant.feature.chat.presentation.inference.withInferenceMetadata
 import com.aiassistant.feature.chat.presentation.inference.withInferenceMode
@@ -142,7 +144,8 @@ class ChatViewModel @Inject constructor(
     private val taskMemoryMerger: TaskMemoryMerger,
     private val calendarAssistant: CalendarAssistantService,
     private val voiceInputCoordinator: VoiceInputCoordinator,
-    private val runInferenceUseCase: RunInferenceUseCase
+    private val runInferenceUseCase: RunInferenceUseCase,
+    private val runMicroFirstInferenceUseCase: RunMicroFirstInferenceUseCase
 ) : ViewModel(), VoiceInputCoordinator.Observer {
     private var mcpExecutionGeneration: Long = 0L
 
@@ -521,6 +524,11 @@ class ChatViewModel @Inject constructor(
             is ChatUiEvent.InferenceModeSelected -> {
                 setInferenceMode(event.mode)
             }
+            is ChatUiEvent.MicroFirstToggled -> {
+                if (!_uiState.value.isLoading) {
+                    _uiState.value = _uiState.value.selectMicroFirst(event.enabled).normalizeInferenceRouting()
+                }
+            }
             is ChatUiEvent.RagToggled -> {
                 _uiState.value = _uiState.value.copy(ragEnabled = event.enabled)
             }
@@ -613,6 +621,8 @@ class ChatViewModel @Inject constructor(
             provider = _uiState.value.provider,
             configuredMode = _uiState.value.inferenceMode
         )
+        val microFirstSnapshot = _uiState.value.provider == AiProvider.LOCAL_OLLAMA &&
+            _uiState.value.microFirstEnabled
         val isLocalOrdinarySnapshot = _uiState.value.provider == AiProvider.LOCAL_OLLAMA &&
             inferenceModeSnapshot == null
                 val sendingChatId = _uiState.value.currentChatId
@@ -676,6 +686,45 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                if (microFirstSnapshot) {
+                    runMicroFirstInferenceUseCase(currentMessage).onSuccess { response ->
+                        val assistantMessage = Message(
+                            id = UUID.randomUUID().toString(),
+                            content = response.finalText,
+                            role = MessageRole.ASSISTANT,
+                            timestamp = System.currentTimeMillis()
+                        )
+                        chatRepository.saveMessage(assistantMessage, sendingChatId)
+                        chatRepository.updateChatMeta(
+                            sendingChatId,
+                            generateChatTitleIfNeeded(currentMessage),
+                            response.finalText.take(80)
+                        )
+                        _uiState.value = _uiState.value.copy(
+                            microFirstResultByMessageId = _uiState.value.microFirstResultByMessageId +
+                                (assistantMessage.id to response)
+                        )
+                        if (_uiState.value.currentChatId == sendingChatId) {
+                            _uiState.value = _uiState.value.copy(
+                                messages = _uiState.value.messages + assistantMessage,
+                                branches = updateBranchWithMessage(sendingBranchId, assistantMessage),
+                                isLoading = false,
+                                attachedFileName = null,
+                                attachedFileText = null
+                            )
+                            updateTokenEstimates()
+                        }
+                    }.onFailure { throwable ->
+                        if (throwable is CancellationException) throw throwable
+                        if (_uiState.value.currentChatId == sendingChatId) {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = throwable.message ?: "An unknown error occurred"
+                            )
+                        }
+                    }
+                    return@launch
+                }
                 if (inferenceModeSnapshot != null) {
                     val inferenceResult = runInferenceUseCase(finalMessage, inferenceModeSnapshot)
                     inferenceResult.onSuccess { response ->

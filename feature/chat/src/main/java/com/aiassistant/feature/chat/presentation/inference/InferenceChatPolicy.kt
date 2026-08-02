@@ -13,17 +13,26 @@ internal fun inferenceRequestMode(
 
 internal fun ChatUiState.selectInferenceMode(mode: InferenceMode?): ChatUiState = copy(
     inferenceMode = mode.takeIf { provider == AiProvider.LOCAL_OLLAMA },
-    routingEnabled = routingEnabled && (mode == null || provider != AiProvider.LOCAL_OLLAMA)
+    routingEnabled = routingEnabled && (mode == null || provider != AiProvider.LOCAL_OLLAMA),
+    microFirstEnabled = false
+)
+
+internal fun ChatUiState.selectMicroFirst(enabled: Boolean): ChatUiState = copy(
+    microFirstEnabled = enabled && provider == AiProvider.LOCAL_OLLAMA,
+    routingEnabled = routingEnabled && !enabled,
+    inferenceMode = inferenceMode.takeUnless { enabled }
 )
 
 internal fun ChatUiState.toggleRouting(enabled: Boolean): ChatUiState = copy(
     routingEnabled = enabled,
-    inferenceMode = inferenceMode.takeUnless { enabled }
+    inferenceMode = inferenceMode.takeUnless { enabled },
+    microFirstEnabled = microFirstEnabled && !enabled
 )
 
 internal fun ChatUiState.normalizeInferenceRouting(): ChatUiState = when {
-    provider != AiProvider.LOCAL_OLLAMA -> copy(routingEnabled = false, inferenceMode = null)
-    routingEnabled && inferenceMode != null -> copy(inferenceMode = null)
+    provider != AiProvider.LOCAL_OLLAMA -> copy(routingEnabled = false, inferenceMode = null, microFirstEnabled = false)
+    routingEnabled -> copy(inferenceMode = null, microFirstEnabled = false)
+    microFirstEnabled && inferenceMode != null -> copy(inferenceMode = null)
     else -> this
 }
 

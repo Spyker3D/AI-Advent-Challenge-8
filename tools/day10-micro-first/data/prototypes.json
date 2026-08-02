@@ -1,0 +1,7 @@
+{
+ "NETWORK_UNAVAILABLE":["Интернет отсутствует","Телефон находится в авиарежиме","Не удалось подключиться к сети","Запрос не отправляется без интернета","Network unavailable","No internet connection","сеть недоступна","cant connect im offline"],
+ "OPENAI_RATE_LIMIT":["Частота вызовов превысила допустимый предел","Квота исчерпана из-за большого числа обращений","Серия запросов отправлена слишком быстро","Сервис ограничил поток после резкого всплеска","API отклоняет обращения из-за превышения их количества","Request frequency exceeded the allowed quota","A rapid burst triggered request throttling","High request volume activated backoff"],
+ "OPENAI_TIMEOUT":["Запрос выполнялся дольше допустимого времени","Истёк установленный срок ожидания ответа","Модель не успела ответить до дедлайна","Request duration exceeded the timeout","No response arrived within the allowed interval","The response deadline expired","Слишком долго ждали завершения запроса","Generation remained pending until its time limit elapsed"],
+ "EMPTY_AI_RESPONSE":["Ассистент вернул пустой ответ","В сообщении нет текста","Ответ состоит только из пробелов","Получен пустой блок","Empty response","AI returned no content","ответ пуст","model output was blank"],
+ "LOCAL_HISTORY_UNAVAILABLE":["Локальная история не загрузилась","После перезапуска пропали чаты","Не удалось прочитать историю из базы","Сообщения не восстанавливаются локально","Local chat history unavailable","Chat database cannot be opened","история чата пропала","old conversations missing on device"]
+}
