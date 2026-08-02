@@ -38,8 +38,8 @@ def centroid(vectors):
     if any(len(v)!=len(vectors[0]) for v in vectors): raise InvalidVectorError("embedding dimensions differ")
     return normalize(sum(v[i] for v in vectors) for i in range(len(vectors[0])))
 
-def micro_decision(vector,centroids,min_score=MIN_SCORE,min_margin=MIN_MARGIN):
-    ranked=sorted(((label,cosine(vector,value)) for label,value in centroids.items()),key=lambda x:(-x[1],x[0]))
+def micro_decision(vector,prototype_vectors,min_score=MIN_SCORE,min_margin=MIN_MARGIN):
+    ranked=sorted(((label,max(cosine(vector,prototype) for prototype in vectors)) for label,vectors in prototype_vectors.items()),key=lambda x:(-x[1],x[0]))
     label,top=ranked[0]; second=ranked[1][1]; margin=top-second
     low_score=top<min_score; low_margin=margin<min_margin
     reason="LOW_SCORE" if low_score else "LOW_MARGIN" if low_margin else None
@@ -67,21 +67,27 @@ def embed_batch(base_url,model,texts,timeout):
     return normalized
 
 def fallback_schema():
-    text={"type":"string","minLength":1}
-    return {"type":"object","properties":{"category":{"type":"string","enum":list(ALL_LABELS)},"confidence":{"type":"number","minimum":0,"maximum":1},"title":text,"message":text,"user_action":text},"required":["category","confidence","title","message","user_action"],"additionalProperties":False}
+    reason={"type":"string","minLength":1,"maxLength":160}
+    return {"type":"object","properties":{"category":{"type":"string","enum":list(ALL_LABELS)},"confidence":{"type":"number","minimum":0,"maximum":1},"reason":reason},"required":["category","confidence","reason"],"additionalProperties":False}
 
 def parse_fallback_response(raw):
     try: value=json.loads(raw)
     except json.JSONDecodeError as error: raise ValueError("fallback response is not JSON") from error
     if not isinstance(value,dict) or set(value)!=set(fallback_schema()["required"]): raise ValueError("fallback fields do not match schema")
     if value["category"] not in ALL_LABELS or isinstance(value["confidence"],bool) or not isinstance(value["confidence"],(int,float)) or not 0<=value["confidence"]<=1: raise ValueError("invalid category or confidence")
-    for field in ("title","message","user_action"):
-        if not isinstance(value[field],str) or not value[field].strip() or not re.search("[А-Яа-яЁё]",value[field]): raise ValueError(f"{field} must be nonblank Russian text")
-    if any(label in value["user_action"].upper() for label in ALL_LABELS) or re.search(r"\b[A-Z][A-Z0-9_]{2,}\b",value["user_action"]): raise ValueError("user_action must not expose internal enum names")
+    if not isinstance(value["reason"],str) or not value["reason"].strip() or not re.search("[А-Яа-яЁё]",value["reason"]): raise ValueError("reason must be nonblank Russian text")
+    if len(value["reason"])>160: raise ValueError("reason must not exceed 160 characters")
     return value
 
 def fallback_classify(base_url,model,input_text,timeout):
-    system="Classify the support error. Return the schema with Russian presentation text; use AMBIGUOUS when unclear."
+    system=("Use a cause-first algorithm: identify the reported failure cause, distinguish it from symptoms and advice, "
+            "then choose exactly one category. NETWORK_UNAVAILABLE means absent network connectivity; "
+            "OPENAI_RATE_LIMIT means excessive request frequency, volume, quota, throttling, or HTTP 429; "
+            "OPENAI_TIMEOUT means elapsed duration, expired deadline, or no timely response; EMPTY_AI_RESPONSE means "
+            "a completed response with no usable content; LOCAL_HISTORY_UNAVAILABLE means locally stored chat history "
+            "cannot be read or restored; AMBIGUOUS means evidence is insufficient or supports multiple causes. "
+            "A recommendation to retry later does not determine the category and, without a stated cause, is AMBIGUOUS. "
+            "Return exactly category, confidence, and a short Russian reason explaining the cause.")
     for attempt in (1,2):
         current=system if attempt==1 else system+" Correct the previous invalid output; return only a valid object."
         try: response=post_json(base_url,"/api/generate",{"model":model,"system":current,"prompt":input_text,"stream":False,"format":fallback_schema(),"options":{"temperature":0}},timeout)
@@ -123,19 +129,19 @@ def base_result(case):
     return {**case,"micro_label":None,"top_score":None,"second_score":None,"margin":None,"micro_status":"UNSURE","actual_route":"FALLBACK","final_label":None,"correct_label":False,"correct_route":case["expected_route"]=="FALLBACK","fallback_reason":"PROTOTYPE_INITIALIZATION_ERROR","micro_latency_ms":0.0,"fallback_latency_ms":0.0,"total_latency_ms":0.0,"large_llm_calls":0,"error":None}
 
 def run(args):
-    prototypes,cases=load_inputs(args.data_dir); flat=[(label,text) for label in LABELS for text in prototypes[label]]; centers=None; setup_error=None
+    prototypes,cases=load_inputs(args.data_dir); flat=[(label,text) for label in LABELS for text in prototypes[label]]; references=None; setup_error=None
     try:
         vectors=embed_batch(args.base_url,args.micro_model,[item[1] for item in flat],args.timeout); grouped=defaultdict(list)
         for (label,_),vector in zip(flat,vectors): grouped[label].append(vector)
-        centers={label:centroid(grouped[label]) for label in LABELS}
+        references={label:grouped[label] for label in LABELS}
     except (RuntimeError,ValueError) as error: setup_error=str(error)
     results=[]
     for case in cases:
         total_start=time.perf_counter(); row=base_result(case); micro_start=time.perf_counter()
         try:
-            if centers is None: raise RuntimeError(setup_error or "centroids unavailable")
+            if references is None: raise RuntimeError(setup_error or "prototype embeddings unavailable")
             vector=embed_batch(args.base_url,args.micro_model,[case["input"]],args.timeout)[0]
-            try: decision=validate_micro_result(micro_decision(vector,centers,args.min_score,args.min_margin))
+            try: decision=validate_micro_result(micro_decision(vector,references,args.min_score,args.min_margin))
             except InvalidVectorError: raise
             except (IndexError,KeyError,TypeError,ValueError) as error: row["fallback_reason"]="MICRO_RESULT_INVALID"; row["error"]="micro: "+str(error); decision=None
             if decision is not None: row.update(decision); row["actual_route"]="MICRO" if row["micro_status"]=="OK" else "FALLBACK"

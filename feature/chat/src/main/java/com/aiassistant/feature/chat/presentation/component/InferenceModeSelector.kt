@@ -1,6 +1,7 @@
 package com.aiassistant.feature.chat.presentation.component
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ButtonDefaults
@@ -14,6 +15,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selectableGroup
+import androidx.compose.ui.unit.dp
 import com.aiassistant.core.domain.inference.InferenceMode
 
 @Composable
@@ -25,40 +27,69 @@ internal fun InferenceModeSelector(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    Column(
         modifier = modifier.fillMaxWidth().semantics { selectableGroup() },
-        horizontalArrangement = Arrangement.SpaceEvenly
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        inferenceModeOptions.forEach { option ->
-            val isSelected = !microFirstEnabled && selectedMode == option.mode
-            OutlinedButton(
-                onClick = { onModeSelected(option.mode) },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            InferenceModeButton(
+                label = "Ordinary",
+                selected = !microFirstEnabled && selectedMode == null,
+                onClick = { onModeSelected(null) },
                 enabled = enabled,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer
-                    else MaterialTheme.colorScheme.surface
-                ),
-                modifier = Modifier.semantics {
-                    selected = isSelected
-                    role = Role.RadioButton
-                }
-            ) { Text(option.label) }
+                modifier = Modifier.weight(1f)
+            )
+            InferenceModeButton(
+                label = "Monolithic",
+                selected = !microFirstEnabled && selectedMode == InferenceMode.MONOLITHIC,
+                onClick = { onModeSelected(InferenceMode.MONOLITHIC) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
         }
-        OutlinedButton(
-            onClick = onMicroFirstSelected,
-            enabled = enabled,
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = if (microFirstEnabled) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
-            ),
-            modifier = Modifier.semantics { selected = microFirstEnabled; role = Role.RadioButton }
-        ) { Text("Micro first") }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            InferenceModeButton(
+                label = "Multi-stage",
+                selected = !microFirstEnabled && selectedMode == InferenceMode.MULTI_STAGE,
+                onClick = { onModeSelected(InferenceMode.MULTI_STAGE) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
+            InferenceModeButton(
+                label = "Micro first",
+                selected = microFirstEnabled,
+                onClick = onMicroFirstSelected,
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
-private data class InferenceModeOption(val label: String, val mode: InferenceMode?)
-
-private val inferenceModeOptions = listOf(
-    InferenceModeOption("Ordinary", null),
-    InferenceModeOption("Monolithic", InferenceMode.MONOLITHIC),
-    InferenceModeOption("Multi-stage", InferenceMode.MULTI_STAGE)
-)
+@Composable
+private fun InferenceModeButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surface
+        ),
+        modifier = modifier.semantics {
+            this.selected = selected
+            role = Role.RadioButton
+        }
+    ) { Text(label) }
+}

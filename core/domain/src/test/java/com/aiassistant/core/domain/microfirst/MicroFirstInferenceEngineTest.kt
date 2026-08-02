@@ -37,6 +37,28 @@ class MicroFirstInferenceEngineTest {
     }
 
     @Test
+    fun `category score uses maximum prototype cosine`() = runBlocking {
+        val vectors = listOf(
+            axis(0), axis(0).map { -it },
+            axis(1), axis(1),
+            axis(2), axis(2),
+            axis(3), axis(3),
+            axis(4), axis(4)
+        )
+        val engine = MicroFirstInferenceEngine(
+            FakeEmbeddingClient(axis(0), vectors),
+            FakePrototypeProvider(prototypesPerCategory = 2),
+            FakeLlmClient()
+        )
+
+        val result = engine.execute("request").getOrThrow()
+
+        assertTrue(result.handledByMicro)
+        assertEquals(IncidentCategory.NETWORK_UNAVAILABLE, result.microResult?.label)
+        assertEquals(1.0, result.microResult?.score ?: 0.0, 0.000001)
+    }
+
+    @Test
     fun `low score uses strict local fallback with current input only`() = runBlocking {
         val llm = FakeLlmClient(mutableListOf(validFallback()))
         val engine = MicroFirstInferenceEngine(
@@ -52,6 +74,7 @@ class MicroFirstInferenceEngineTest {
         assertTrue(result.fallbackUsed)
         assertEquals(1, result.largeLlmCalls)
         assertEquals(MicroFirstConfig.FALLBACK_MODEL, result.fallbackModel)
+        assertEquals(MicroResponseFormatter.format(IncidentCategory.NETWORK_UNAVAILABLE), result.finalText)
         assertEquals("РўРѕР»СЊРєРѕ СЌС‚РѕС‚ Р·Р°РїСЂРѕСЃ", llm.requests.single().single { it.role.name == "USER" }.content)
         val options = llm.options.single()
         assertEquals(0.0, options.temperature)
@@ -130,6 +153,42 @@ class MicroFirstInferenceEngineTest {
     }
 
     @Test
+    fun `measured target margin 052497 remains safe fallback`() = runBlocking {
+        fun cosineVector(cosine: Double) = listOf(
+            cosine.toFloat(),
+            kotlin.math.sqrt(1.0 - cosine * cosine).toFloat(),
+            0f,
+            0f,
+            0f
+        )
+        val vectors = listOf(cosineVector(0.8), cosineVector(0.747503), axis(2), axis(3), axis(4))
+        val engine = MicroFirstInferenceEngine(
+            FakeEmbeddingClient(axis(0), vectors),
+            FakePrototypeProvider(),
+            FakeLlmClient(mutableListOf(validFallback()))
+        )
+
+        val result = engine.execute("target").getOrThrow()
+
+        assertTrue(result.fallbackUsed)
+        assertEquals(MicroFallbackReason.LOW_MARGIN, result.fallbackReason)
+        assertEquals(0.052497, result.microResult?.margin ?: 0.0, 0.00001)
+    }
+
+    @Test
+    fun `timeout category with rate prose is accepted without semantic retry`() = runBlocking {
+        val response = """{"category":"OPENAI_TIMEOUT","confidence":0.9,"reason":"Превышен лимит запросов и истекло время ожидания"}"""
+        val llm = FakeLlmClient(mutableListOf(response))
+        val engine = MicroFirstInferenceEngine(FakeEmbeddingClient(List(5) { 1f }), FakePrototypeProvider(), llm)
+
+        val result = engine.execute("request").getOrThrow()
+
+        assertEquals(1, result.largeLlmCalls)
+        assertEquals(1, llm.calls)
+        assertEquals(MicroResponseFormatter.format(IncidentCategory.OPENAI_TIMEOUT), result.finalText)
+    }
+
+    @Test
     fun `embedding cancellation propagates and never calls fallback`() = runBlocking {
         val llm = FakeLlmClient(mutableListOf(validFallback()))
         val embedding = object : EmbeddingClient {
@@ -166,16 +225,20 @@ class MicroFirstInferenceEngineTest {
 
     @Test
     fun `formatter supports five concrete categories and rejects ambiguous`() {
-        assertTrue(IncidentCategory.entries.filter { it != IncidentCategory.AMBIGUOUS }.all { MicroResponseFormatter.format(it) != null })
-        assertNull(MicroResponseFormatter.format(IncidentCategory.AMBIGUOUS))
+        assertTrue(IncidentCategory.entries.all { MicroResponseFormatter.format(it).isNotBlank() })
+        assertTrue(MicroResponseFormatter.format(IncidentCategory.AMBIGUOUS).isNotBlank())
     }
 
-    private class FakePrototypeProvider : MicroPrototypeProvider {
+    private class FakePrototypeProvider(
+        private val prototypesPerCategory: Int = 1
+    ) : MicroPrototypeProvider {
         var calls = 0
         override suspend fun loadPrototypes(): Result<Map<IncidentCategory, List<String>>> {
             calls++
             return Result.success(IncidentCategory.entries.filter { it != IncidentCategory.AMBIGUOUS }
-                .associateWith { listOf("prototype-${it.name}") })
+                .associateWith { category ->
+                    List(prototypesPerCategory) { index -> "prototype-${category.name}-$index" }
+                })
         }
     }
 
@@ -214,6 +277,6 @@ class MicroFirstInferenceEngineTest {
 
     private companion object {
         fun axis(index: Int) = List(5) { if (it == index) 1f else 0f }
-        fun validFallback() = """{"category":"NETWORK_UNAVAILABLE","confidence":0.9,"title":"РќРµС‚ СЃРµС‚Рё","message":"РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕРґРєР»СЋС‡РµРЅРёРµ","user_action":"РџСЂРѕРІРµСЂРёС‚СЊ РїРѕРґРєР»СЋС‡РµРЅРёРµ"}"""
+        fun validFallback() = """{"category":"NETWORK_UNAVAILABLE","confidence":0.9,"reason":"Нет сети"}"""
     }
 }

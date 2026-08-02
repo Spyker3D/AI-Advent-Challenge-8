@@ -18,7 +18,7 @@ class MicroFirstInferenceEngine @Inject constructor(
     private val llmClient: LlmClient
 ) {
     private val cacheMutex = Mutex()
-    @Volatile private var cachedCentroids: Map<IncidentCategory, List<Double>>? = null
+    @Volatile private var cachedPrototypeVectors: Map<IncidentCategory, List<List<Double>>>? = null
 
     suspend fun execute(input: String): Result<MicroFirstResult> {
         val totalStart = nowNanos()
@@ -50,7 +50,7 @@ class MicroFirstInferenceEngine @Inject constructor(
         return fallback(input).map { fallback ->
             val fallbackLatency = elapsedMs(fallbackStart)
             MicroFirstResult(
-                finalText = MicroResponseFormatter.format(fallback.response.title, fallback.response.message, fallback.response.userAction),
+                finalText = MicroResponseFormatter.format(fallback.response.category),
                 handledByMicro = false,
                 fallbackUsed = true,
                 microResult = microResult,
@@ -65,23 +65,25 @@ class MicroFirstInferenceEngine @Inject constructor(
     }
 
     suspend fun clearCacheForTests() {
-        cacheMutex.withLock { cachedCentroids = null }
+        cacheMutex.withLock { cachedPrototypeVectors = null }
     }
 
     private suspend fun classify(input: String): Classification {
         if (input.isBlank()) return Classification.Failure(MicroFallbackReason.MICRO_RESULT_INVALID)
-        val centroids = when (val initialized = centroids()) {
-            is Centroids.Success -> initialized.value
-            is Centroids.Failure -> return Classification.Failure(initialized.reason)
+        val prototypeVectors = when (val initialized = prototypeVectors()) {
+            is PrototypeVectors.Success -> initialized.value
+            is PrototypeVectors.Failure -> return Classification.Failure(initialized.reason)
         }
         val embeddingResult = callEmbedding(listOf(input))
         val embeddings = embeddingResult.getOrElse { return Classification.Failure(MicroFallbackReason.EMBEDDING_ERROR) }
         if (embeddings.size != 1) return Classification.Failure(MicroFallbackReason.INVALID_VECTOR)
         val query = VectorMath.normalize(embeddings.single())
             ?: return Classification.Failure(MicroFallbackReason.INVALID_VECTOR)
-        val ranked = centroids.map { (label, centroid) ->
-            val score = VectorMath.cosine(query, centroid)
-                ?: return Classification.Failure(MicroFallbackReason.INVALID_VECTOR)
+        val ranked = prototypeVectors.map { (label, vectors) ->
+            val score = vectors.maxOfOrNull { prototype ->
+                VectorMath.cosine(query, prototype) ?: Double.NaN
+            } ?: return Classification.Failure(MicroFallbackReason.INVALID_VECTOR)
+            if (!score.isFinite()) return Classification.Failure(MicroFallbackReason.INVALID_VECTOR)
             MicroCandidate(label, score)
         }.sortedWith(compareByDescending<MicroCandidate> { it.score }.thenBy { it.label.ordinal })
         if (ranked.size < 2 || ranked.any { !it.score.isFinite() }) {
@@ -95,40 +97,38 @@ class MicroFirstInferenceEngine @Inject constructor(
         return Classification.Success(MicroClassificationResult(label, score, margin, status, ranked))
     }
 
-    private suspend fun centroids(): Centroids {
-        cachedCentroids?.let { return Centroids.Success(it) }
+    private suspend fun prototypeVectors(): PrototypeVectors {
+        cachedPrototypeVectors?.let { return PrototypeVectors.Success(it) }
         return cacheMutex.withLock {
-            cachedCentroids?.let { return@withLock Centroids.Success(it) }
+            cachedPrototypeVectors?.let { return@withLock PrototypeVectors.Success(it) }
             val prototypes = try {
                 prototypeProvider.loadPrototypes()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Result.failure(e)
-            }.getOrElse { return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR) }
+            }.getOrElse { return@withLock PrototypeVectors.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR) }
             val categories = IncidentCategory.entries.filter { it != IncidentCategory.AMBIGUOUS }
             if (prototypes.keys != categories.toSet() || categories.any { prototypes[it].isNullOrEmpty() }) {
-                return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
+                return@withLock PrototypeVectors.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
             }
             val texts = categories.flatMap { prototypes.getValue(it) }
             val embedded = callEmbedding(texts).getOrElse {
-                return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
+                return@withLock PrototypeVectors.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
             }
-            if (embedded.size != texts.size) return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
-            val normalized = embedded.map { VectorMath.normalize(it) ?: return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR) }
-            if (normalized.map { it.size }.distinct().size != 1) return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
+            if (embedded.size != texts.size) return@withLock PrototypeVectors.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
+            val normalized = embedded.map { VectorMath.normalize(it) ?: return@withLock PrototypeVectors.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR) }
+            if (normalized.map { it.size }.distinct().size != 1) return@withLock PrototypeVectors.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
             var offset = 0
             val result = buildMap {
                 categories.forEach { category ->
                     val count = prototypes.getValue(category).size
-                    val centroid = VectorMath.centroid(normalized.subList(offset, offset + count))
-                        ?: return@withLock Centroids.Failure(MicroFallbackReason.PROTOTYPE_INITIALIZATION_ERROR)
-                    put(category, centroid)
+                    put(category, normalized.subList(offset, offset + count).toList())
                     offset += count
                 }
             }
-            cachedCentroids = result
-            Centroids.Success(result)
+            cachedPrototypeVectors = result
+            PrototypeVectors.Success(result)
         }
     }
 
@@ -192,9 +192,9 @@ class MicroFirstInferenceEngine @Inject constructor(
         data class Success(val value: MicroClassificationResult) : Classification()
         data class Failure(val reason: MicroFallbackReason) : Classification()
     }
-    private sealed class Centroids {
-        data class Success(val value: Map<IncidentCategory, List<Double>>) : Centroids()
-        data class Failure(val reason: MicroFallbackReason) : Centroids()
+    private sealed class PrototypeVectors {
+        data class Success(val value: Map<IncidentCategory, List<List<Double>>>) : PrototypeVectors()
+        data class Failure(val reason: MicroFallbackReason) : PrototypeVectors()
     }
     private data class FallbackCall(val response: FallbackResponse, val calls: Int)
 

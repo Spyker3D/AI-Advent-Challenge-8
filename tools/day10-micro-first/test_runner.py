@@ -10,22 +10,27 @@ def row(**updates):
 
 class ContractTests(unittest.TestCase):
  def test_dataset_exact_fields_and_groups(self):
-  prototypes,cases=runner.load_inputs(ROOT/"data"); self.assertTrue(all(len(set(v))>=8 for v in prototypes.values())); self.assertEqual(30,len(cases)); self.assertEqual({"simple":10,"boundary":10,"complex-noisy":10},Counter(x["group"] for x in cases)); self.assertTrue(all(set(x)=={"id","group","input","expected_label","expected_route"} for x in cases)); self.assertTrue(all(x["expected_route"]=="FALLBACK" for x in cases if x["expected_label"]=="AMBIGUOUS"))
+  prototypes,cases=runner.load_inputs(ROOT/"data"); self.assertTrue(all(len(set(v))>=8 for v in prototypes.values())); self.assertEqual(30,len(cases)); self.assertEqual({"simple":10,"boundary":10,"complex-noisy":10},Counter(x["group"] for x in cases)); self.assertTrue(all(set(x)=={"id","group","input","expected_label","expected_route"} for x in cases)); self.assertTrue(all(x["expected_route"]=="FALLBACK" for x in cases if x["expected_label"]=="AMBIGUOUS")); self.assertFalse({x.casefold() for values in prototypes.values() for x in values}&{x["input"].casefold() for x in cases})
+  rate=" ".join(prototypes["OPENAI_RATE_LIMIT"]).casefold(); self.assertNotIn("повторите попытку позже",rate); self.assertTrue(all(token in rate for token in ("частот","числа","серия","backoff")))
+  timeout=" ".join(prototypes["OPENAI_TIMEOUT"]).casefold(); self.assertTrue(all(token in timeout for token in ("срок","deadline","долго"))); self.assertNotIn("429",timeout)
  def test_exact_models_and_result_fields(self):
   self.assertEqual("nomic-embed-text:latest",runner.MICRO_MODEL); self.assertEqual("qwen2.5:7b-instruct",runner.FALLBACK_MODEL); self.assertEqual(20,len(runner.RESULT_FIELDS)); self.assertEqual(set(runner.RESULT_FIELDS),set(row()))
  def test_fallback_schema_and_russian_validation(self):
-  schema=runner.fallback_schema(); self.assertNotIn("enum",schema["properties"]["user_action"]); self.assertEqual([0,1],[schema["properties"]["confidence"]["minimum"],schema["properties"]["confidence"]["maximum"]])
-  valid={"category":"AMBIGUOUS","confidence":.4,"title":"Неясная ошибка","message":"Причина не определена","user_action":"Повторите попытку"}; self.assertEqual(valid,runner.parse_fallback_response(json.dumps(valid,ensure_ascii=False)))
-  with self.assertRaises(ValueError): runner.parse_fallback_response(json.dumps({**valid,"message":"English only"},ensure_ascii=False))
- def test_fallback_payload_has_no_embeddings_or_prototypes(self):
-  valid={"category":"AMBIGUOUS","confidence":.4,"title":"Неясно","message":"Причина неизвестна","user_action":"Уточните ошибку"}
-  with self.assertRaises(ValueError): runner.parse_fallback_response(json.dumps({**valid,"user_action":"Нажмите RETRY_ACTION"},ensure_ascii=False))
+  schema=runner.fallback_schema(); self.assertEqual({"category","confidence","reason"},set(schema["properties"])); self.assertEqual(["category","confidence","reason"],schema["required"]); self.assertEqual(160,schema["properties"]["reason"]["maxLength"]); self.assertEqual([0,1],[schema["properties"]["confidence"]["minimum"],schema["properties"]["confidence"]["maximum"]])
+  valid={"category":"AMBIGUOUS","confidence":.9,"reason":"Причина не определена"}; self.assertEqual(valid,runner.parse_fallback_response(json.dumps(valid,ensure_ascii=False)))
+  for invalid in ({**valid,"extra":"нет"},{**valid,"category":"UNKNOWN"},{**valid,"confidence":1.1},{**valid,"confidence":True},{**valid,"reason":"English only"},{**valid,"reason":"Недостаточно данных. "+"я"*160}):
+   with self.assertRaises(ValueError): runner.parse_fallback_response(json.dumps(invalid,ensure_ascii=False))
+ def test_fallback_payload_and_single_correction_retry(self):
+  valid={"category":"OPENAI_TIMEOUT","confidence":.8,"reason":"Истёк срок ожидания ответа"}
   with patch.object(runner,"post_json",return_value={"response":json.dumps(valid,ensure_ascii=False)}) as call:
-   original="исходный текст"; runner.fallback_classify("http://local",runner.FALLBACK_MODEL,original,1); payload=call.call_args.args[2]; self.assertEqual(original,payload["prompt"]); self.assertIn("system",payload); self.assertEqual({"temperature":0},payload["options"]); self.assertNotIn("embeddings",json.dumps(payload)); self.assertNotIn("prototypes",json.dumps(payload))
-
+   original="исходный текст"; result,calls=runner.fallback_classify("http://local",runner.FALLBACK_MODEL,original,1); self.assertEqual(valid,result); self.assertEqual(1,calls); self.assertEqual(1,call.call_count); payload=call.call_args.args[2]; self.assertEqual(original,payload["prompt"]); self.assertIn("cause-first",payload["system"]); self.assertTrue(all(label in payload["system"] for label in runner.ALL_LABELS)); self.assertIn("retry later does not determine",payload["system"]); self.assertEqual({"temperature":0},payload["options"]); self.assertEqual({"category","confidence","reason"},set(payload["format"]["properties"])); self.assertNotIn("embeddings",json.dumps(payload)); self.assertNotIn("prototypes",json.dumps(payload))
+  with patch.object(runner,"post_json",return_value={"response":"{}"}) as call:
+   with self.assertRaises(runner.FallbackError) as caught: runner.fallback_classify("http://local",runner.FALLBACK_MODEL,"не менять",1)
+   self.assertEqual(2,call.call_count); self.assertEqual(2,caught.exception.calls); self.assertTrue(all(item.args[2]["prompt"]=="не менять" for item in call.call_args_list)); self.assertNotEqual(call.call_args_list[0].args[2]["system"],call.call_args_list[1].args[2]["system"])
 class MathMetricsTests(unittest.TestCase):
  def test_math_and_threshold_reasons(self):
-  self.assertEqual([.6,.8],runner.normalize([3,4])); self.assertAlmostEqual(1,runner.cosine([1,0],[2,0])); decision=runner.micro_decision([1,1],{"A":[1,0],"B":[0,1]}); self.assertEqual("LOW_MARGIN",decision["fallback_reason"]); self.assertEqual("UNSURE",decision["micro_status"])
+  self.assertEqual([.6,.8],runner.normalize([3,4])); self.assertAlmostEqual(1,runner.cosine([1,0],[2,0])); decision=runner.micro_decision([1,1],{"A":[[1,0]],"B":[[0,1]]}); self.assertEqual("LOW_MARGIN",decision["fallback_reason"]); self.assertEqual("UNSURE",decision["micro_status"])
+  maximum=runner.micro_decision([1,0],{"A":[[1,0],[0,1]],"B":[[.8,.6]]}); self.assertEqual("A",maximum["micro_label"]); self.assertEqual(1.0,maximum["top_score"])
   with self.assertRaises(runner.InvalidVectorError): runner.normalize([float("nan")])
   with self.assertRaises(runner.InvalidVectorError): runner.normalize([float("inf")])
   self.assertEqual(("LOW_SCORE","LOW_MARGIN","EMBEDDING_ERROR","INVALID_VECTOR","PROTOTYPE_INITIALIZATION_ERROR","MICRO_RESULT_INVALID"),runner.FALLBACK_REASONS)

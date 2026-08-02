@@ -1,16 +1,14 @@
 package com.aiassistant.core.domain.microfirst
 
 import com.aiassistant.core.domain.inference.IncidentCategory
-import com.aiassistant.core.domain.inference.IncidentAction
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
 
 internal data class FallbackResponse(
     val category: IncidentCategory,
     val confidence: Double,
-    val title: String,
-    val message: String,
-    val userAction: String
+    val reason: String
 )
 
 internal sealed class FallbackParseResult {
@@ -19,9 +17,10 @@ internal sealed class FallbackParseResult {
 }
 
 internal object MicroFallbackContract {
-    const val PROMPT = """Classify only the current user request. Return exactly one JSON object matching the schema. Use Russian for title, message, and user_action. Do not put enum identifiers in user_action."""
-    const val CORRECTION = """The previous JSON contained invalid values. Correct it and return only one JSON object matching the schema."""
-    val SCHEMA: String = """{"type":"object","properties":{"category":{"type":"string","enum":[${IncidentCategory.entries.joinToString { "\"${it.name}\"" }}]},"confidence":{"type":"number","minimum":0,"maximum":1},"title":{"type":"string"},"message":{"type":"string"},"user_action":{"type":"string"}},"required":["category","confidence","title","message","user_action"],"additionalProperties":false}"""
+    const val PROMPT = """Use a cause-first algorithm: identify the reported failure cause, distinguish it from symptoms and advice, then choose exactly one category. NETWORK_UNAVAILABLE means absent network connectivity. OPENAI_RATE_LIMIT means excessive request frequency, volume, quota, throttling, or HTTP 429. OPENAI_TIMEOUT means elapsed duration, expired deadline, or no timely response. EMPTY_AI_RESPONSE means a completed response with no usable content. LOCAL_HISTORY_UNAVAILABLE means locally stored chat history cannot be read or restored. AMBIGUOUS means evidence is insufficient or supports multiple causes. A recommendation to retry later does not determine the category and, without a stated cause, is AMBIGUOUS. Return exactly one JSON object containing only category, confidence, and reason. reason must be a short Russian explanation of the cause. Do not add title, message, user_action, or other presentation fields."""
+    const val CORRECTION = """The previous JSON was structurally invalid. Correct it and return only one JSON object matching the schema."""
+    private val categoryEnum = IncidentCategory.entries.joinToString { JsonPrimitive(it.name).toString() }
+    val SCHEMA: String = """{"type":"object","properties":{"category":{"type":"string","enum":[$categoryEnum]},"confidence":{"type":"number","minimum":0,"maximum":1},"reason":{"type":"string","minLength":1,"maxLength":160}},"required":["category","confidence","reason"],"additionalProperties":false}"""
 
     fun parse(raw: String): FallbackParseResult {
         val value = try {
@@ -36,13 +35,10 @@ internal object MicroFallbackContract {
             val category = enumValueOf<IncidentCategory>(objectValue.string("category"))
             val confidence = objectValue.number("confidence")
             require(confidence in 0.0..1.0) { "confidence must be between 0 and 1" }
-            val title = objectValue.nonBlank("title")
-            val message = objectValue.nonBlank("message")
-            val action = objectValue.nonBlank("user_action")
-            require(listOf(title, message, action).all(::containsCyrillic)) { "presentation fields must contain Russian text" }
-            val enumNames = IncidentCategory.entries.map { it.name } + IncidentAction.entries.map { it.name }
-            require(enumNames.none { action.contains(it, ignoreCase = true) }) { "user_action must not contain enum identifiers" }
-            FallbackParseResult.Success(FallbackResponse(category, confidence, title, message, action))
+            val reason = objectValue.nonBlank("reason")
+            require(reason.length <= MAX_REASON_LENGTH) { "reason must be short" }
+            require(containsCyrillic(reason)) { "reason must contain Russian text" }
+            FallbackParseResult.Success(FallbackResponse(category, confidence, reason))
         } catch (e: Exception) {
             FallbackParseResult.Failure(true, e.message ?: "Invalid value")
         }
@@ -56,5 +52,6 @@ internal object MicroFallbackContract {
         get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asDouble
             ?: error("$key must be number")
     private fun containsCyrillic(value: String) = value.any { it.code in 0x0400..0x04ff }
-    private val FIELDS = setOf("category", "confidence", "title", "message", "user_action")
+    private val FIELDS = setOf("category", "confidence", "reason")
+    private const val MAX_REASON_LENGTH = 160
 }
